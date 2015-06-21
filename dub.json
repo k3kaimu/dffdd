@@ -1,0 +1,11 @@
+{
+    "name": "dffdd",
+    "description": "Digital Filter Library for Full Duplex writted in D",
+    "copyright": "Copyright © 2015, Kazuki KOMATSU",
+    "authors": ["Kazuki Komatsu"],
+    "targetType": "library",
+
+    "dependencies": {
+        "carbon": {"path": "../../../Github/carbon" }
+    }
+}

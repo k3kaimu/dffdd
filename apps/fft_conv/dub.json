@@ -1,0 +1,9 @@
+{
+	"name": "fft_conv",
+	"description": "A minimal D application.",
+	"copyright": "Copyright © 2015, komatsu",
+	"authors": ["komatsu"],
+	"dependencies": {
+        "dffdd" : { "path": "../../" },
+	}
+}

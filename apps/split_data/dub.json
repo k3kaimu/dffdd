@@ -1,0 +1,9 @@
+{
+	"name": "split_data",
+	"description": "A minimal D application.",
+	"copyright": "Copyright © 2015, komatsu",
+	"authors": ["komatsu"],
+	"dependencies": {
+        "dffdd" : { "path": "../../" },
+	}
+}
