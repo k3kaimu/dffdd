@@ -9,11 +9,12 @@ import std.string;
 import std.numeric;
 import std.math;
 import std.complex;
+import std.datetime;
 
 import carbon.stream;
 
 enum size_t P = 8;
-enum size_t N = 128;
+enum size_t N = 8;
 enum size_t Total = 1024*64;
 enum real beta = 0.00001;
 enum real sampFreq = 400e3;
@@ -33,11 +34,14 @@ private F atan(F)(F y, F x)
 void main(string[] args)
 {
     string sendFilename, recvFilename, outFilename;
+    bool bSpeedMode = false;
 
     getopt(args,
         "sendData", &sendFilename,
         "recvData", &recvFilename,
-        "outData", &outFilename);
+        "outData", &outFilename,
+        "speedMode", &bSpeedMode
+    );
 
     File sendFile = File(sendFilename),
          recvFile = File(recvFilename),
@@ -51,19 +55,23 @@ void main(string[] args)
     foreach(ref e; w) e[] = 0+0i;
     foreach(ref e; x) e[] = 0+0i;
 
-    cdouble[] sendBuf = new cdouble[blockSize],
-              recvBuf = new cdouble[blockSize],
-              writeBuf = new cdouble[blockSize];
+    cfloat[] sendBuf = new cfloat[blockSize],
+              recvBuf = new cfloat[blockSize],
+              writeBuf = new cfloat[blockSize];
 
-    creal oldPrompt = 0+0i;
-    real oldCarrErr = 0;
-    real carrNCOFreq = 400;
-    immutable DT = blockSize / sampFreq;
+    double[] fftResultRecv = new double[blockSize],
+             fftResultSIC = new double[blockSize];
+
+    //creal oldPrompt = 0+0i;
+    //real oldCarrErr = 0;
+    //real carrNCOFreq = 400;
+    //immutable DT = blockSize / sampFreq;
     real pmaxRecv = 1E-50L, pmaxSend = 1E-300L;
 
     Fft fftObj = new Fft(blockSize);
 
-    auto nco = lutNCO!(std.math.expi, 1024*16)(carrNCOFreq, DT, 0);
+    //auto nco = lutNCO!(std.math.expi, 1024*16)(carrNCOFreq, DT, 0);
+    auto startTime = Clock.currTime;
 
     foreach(_unused_; 0 .. Total)
     {
@@ -122,33 +130,34 @@ void main(string[] args)
                 if(i != 0) x[i] = x[i-1];
             }
 
-            if(_unused_ % 1000 == 0)
+            if(!bSpeedMode && _unused_ % 1000 == 0)
             {
                 outFile.writefln("%s,%s,%s,%s,%s,%s,%s,%s,%s,", _unused_, n.re, n.im, recvGets[_].re, recvGets[_].im, y.re, y.im, e.re, e.im);
-                outFile.flush();
             }
 
             writeBuf[_] = e;
         }
+        outFile.flush();
 
         pmaxRecv = (pmaxRecv + pmaxRecvMax) / 2;
         pmaxSend = (pmaxSend + pmaxSendMax) / 2;
 
-        /* update PLL */
-        immutable carrErr = atan(prompt.im, prompt.re) / 2 / PI,
-                  freqErr = atan2(oldPrompt.re * prompt.im - prompt.re * oldPrompt.im,
-                                  abs(oldPrompt.re * prompt.re) + abs(oldPrompt.im * prompt.im)) / PI;
+        ///* update PLL */
+        //immutable carrErr = atan(prompt.im, prompt.re) / 2 / PI,
+        //          freqErr = atan2(oldPrompt.re * prompt.im - prompt.re * oldPrompt.im,
+        //                          abs(oldPrompt.re * prompt.re) + abs(oldPrompt.im * prompt.im)) / PI;
 
-        carrNCOFreq += PLLAW * (carrErr - oldCarrErr)
-                     + PLLW2 * DT * carrErr
-                     + FLLW * DT * freqErr;
+        //carrNCOFreq += PLLAW * (carrErr - oldCarrErr)
+        //             + PLLW2 * DT * carrErr
+        //             + FLLW * DT * freqErr;
 
-        nco.freq = carrNCOFreq;
+        //nco.freq = carrNCOFreq;
 
-        oldPrompt = prompt;
-        oldCarrErr = carrErr;
+        //oldPrompt = prompt;
+        //oldCarrErr = carrErr;
 
-        if(_unused_ % 1000 == 0){
+        // fft
+        if(!bSpeedMode){
             auto cpxBuf1 = new Complex!double[blockSize];
             auto cpxBuf2 = writeBuf.map!(a => complex!double(a.re, a.im)).array();
             fftObj.fft(cpxBuf2, cpxBuf1);
@@ -161,22 +170,28 @@ void main(string[] args)
             recvBuf2[0 .. $/2] = recvBuf1[$/2 .. $];
             recvBuf2[$/2 .. $] = recvBuf1[0 .. $/2];
 
-
-            foreach(i, e; cpxBuf2)
-            {
-                outFile.writefln("%s,%s,%s,%s,", _unused_, i, recvBuf2[i].abs(), e.abs());
+            foreach(i; 0 .. blockSize){
+                fftResultRecv[i] += recvBuf2[i].re^^2 + recvBuf2[i].im^^2 / 1000;
+                fftResultSIC[i] = cpxBuf2[i].re^^2 + cpxBuf2[i].im^^2 / 1000;
             }
-            outFile.flush();
         }
 
-        //foreach(e; writeBuf){
-        //    writefln("%s: %s", _unused_, e.abs);
-        //    //outFile.writefln("%s,%s,%s,", e.re, e.im, e.abs);
-        //}
+        if(!bSpeedMode && _unused_ % 1000 == 0){
+            foreach(i; 0 .. blockSize)
+            {
+                auto before = 10*log10(fftResultRecv[i]),
+                     after = 10*log10(fftResultSIC[i]);
 
-        writefln("%s     %s", _unused_, writeBuf[$-1].abs);
-        //writefln("%s         %s", sendGets[0], recvGets[0]);
-        //writefln("%s       %s", pmaxSend, pmaxRecv);
-        //writeln(carrNCOFreq);
+                outFile.writefln("%s,%s,%s,%s,%s,%s,", _unused_, i, i*400e3/blockSize-200.0e3, before, after, before - after);
+            }
+            outFile.flush();
+
+            foreach(i; 0 .. blockSize){
+                fftResultRecv[i] = 0;
+                fftResultSIC[i] = 0;
+            }
+        }
+
+        writefln("%s     %s       %s[k samples/s]", _unused_, writeBuf[$-1].abs, (_unused_+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
     }
 }
