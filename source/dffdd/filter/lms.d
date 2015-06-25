@@ -1,58 +1,53 @@
 module dffdd.filter.lms;
 
+import std.complex;
+import std.math;
 
-struct LMS(F = float)
+final class PolynomialLMS(alias polyTermABS, uint P, C = Complex!float)
+if(P >= 1 && is(typeof(polyTermABS(C.init, P)) : typeof(C.init.re)))
 {
-    this(F mu, size_t lim = 1024)
+    import std.algorithm;
+
+    alias F = typeof(C.init.re);
+
+    this(real mu, size_t forgetCycle = 1024, real iniMaxPower = 0, real forgetCoeff = 0.50)
     {
         _mu = mu;
-        _lim = lim;
+        _cnt = 0;
+        _cycle = forgetCycle;
+        _fcoeff = forgetCoeff;
+        _maxPower = iniMaxPower;
+        foreach(p, ref ee; _maxPowerCoeff) ee = polyTermABS(_maxPower, p);
     }
 
 
-    void start(R)(R w)
+    void update(C[P][] w, C[P][] x, C x00, C e)
     {
-        //if(_x2.length != w.length)
-        //    _x2.length = w.length;
+        if(x.length == 0) return;
 
-        //_x2[] = 0;
-        _cnt = 1;
-        foreach(ref e; w) e = 0;
-        //_e2 = 0;
-    }
+        immutable history = x.length;
+        _subMaxPower = max(x00.re^^2 + x00.im^^2, _subMaxPower);
+        ++_cnt;
+        if(_cnt == _cycle){
+            _cnt = 0;
+            _maxPower = _maxPower * _fcoeff + _subMaxPower * (1 - _fcoeff);
+            _subMaxPower = 0;
 
-
-    void update(R1, R2, E)(R1 w, R2 x, E e)
-    {
-        import std.stdio;
-        //writeln(w);
-        //writeln(e);
-
-        //_e2 += e^^2/x[i];
-
-        foreach(i; 0 .. x.length){
-            //_x2[i] = (_x2[i]*_cnt + x[i]^^2)/(_cnt+1);
-            w[i] += _mu * e * x[i];// / (_x2[i] + 1);
+            foreach(p, ref ee; _maxPowerCoeff) ee = polyTermABS(_maxPower, p);
         }
-        if(_cnt < _lim) ++_cnt;
+
+        foreach(i; 0 .. history)
+            foreach(p; 0 .. P)
+                w[i][p] += _mu *  e * x[i][p].conj / _maxPowerCoeff[p];
     }
+
 
   private:
-    //F[] _x2;
-    size_t _cnt; size_t _lim;
-    F _mu;
-    //F _e2;
+    immutable real _mu;
+    size_t _cnt;
+    immutable size_t _cycle;
+    immutable real _fcoeff;
+    real _maxPower;
+    real[P] _maxPowerCoeff;
+    real _subMaxPower;
 }
-
-
-/*
-struct RLS(F = float)
-{
-    this();
-
-    void start(size_t stateSize);
-    void reset();
-
-    void update(E)(E[] w, E[] x, E[] e);
-}
-*/
