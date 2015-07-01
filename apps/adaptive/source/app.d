@@ -15,13 +15,15 @@ import carbon.stream;
 
 import dffdd.filter.lms;
 import dffdd.filter.polynomial;
+import dffdd.filter.diagonal;
+import dffdd.filter.mempoly;
 
 import dffdd.utils.fft;
 
-enum size_t P = 8;
-enum size_t N = 8;
+//enum size_t P = 7+1;
+//enum size_t N = 2;
 enum size_t Total = 1024*64;
-enum real beta = 1E-3;
+//enum real beta = 1E-4;
 enum real sampFreq = 400e3;
 enum size_t blockSize = 1024;
 enum real PLLB = 20;
@@ -38,16 +40,18 @@ private F atan(F)(F y, F x)
     return x.signbit ? atan2(-y, -x) : atan2(y, x);
 }
 
+
 void main(string[] args)
 {
     string sendFilename, recvFilename, outFilename;
-    bool bSpeedMode = false;
+    bool bSpeedMode = false, noOutput = false;
 
     getopt(args,
         "sendData", &sendFilename,
         "recvData", &recvFilename,
         "outData", &outFilename,
-        "speedMode", &bSpeedMode
+        "speedMode", &bSpeedMode,
+        "noOutput", &noOutput
     );
 
     File sendFile = File(sendFilename),
@@ -56,16 +60,23 @@ void main(string[] args)
 
     recvFile.seek(919 * 8);
 
-    // |x|^^(q), {p:q=p*2+1} = {0: 1, 1: 3, 2: 5, 3: 7}
-    auto updater = new PolynomialLMS!((x, p) => x.abs() ^^ (p*2+1), 4, cfloat)
-                                     (beta, 1024, 1, 0.5);
+    auto filter1 = {
+        auto state = new DiagonalState!(cfloat,
+                                        (x, xabs, p) => xabs^^(2*p) * x,
+                                        (xabs, p) => xabs^^(2*p+1),
+                                        (7+1)/2, 2)();
 
-    // |x|^^(q-1)*x, {p:q=p*2+1} = {0: 1, 1: 3, 2: 5, 3: 7}
-    auto filter = updater.polynomialFilter!((x, p) => x.abs()^^(p*2) * x, 4, cfloat)(N);
+        // set default power
+        foreach(ref e; state.power) e = 1;
+
+        auto adapter = new LMSAdapter!(typeof(state))(state, 1E-3, 1024, 0.5);
+
+        return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
+    }();
 
     cfloat[] sendBuf = new cfloat[blockSize],
-              recvBuf = new cfloat[blockSize],
-              outputBuf = new cfloat[blockSize];
+                    recvBuf = new cfloat[blockSize],
+                    outputBuf = new cfloat[blockSize];
 
     double[] fftResultRecv = new double[blockSize],
              fftResultSIC = new double[blockSize];
@@ -88,7 +99,7 @@ void main(string[] args)
         assert(sendGets.length == sendBuf.length);
         assert(recvGets.length == recvBuf.length);
 
-        filter.apply(sendGets, recvGets, outputBuf);
+        filter1.apply(sendGets, recvGets, outputBuf);
 
       version(OutputIteration)
       {
@@ -113,19 +124,32 @@ void main(string[] args)
             auto recvSpec = fftObj.fftWithSwap(recvBuf);
 
             foreach(i; 0 .. blockSize){
-                fftResultRecv[i] += recvSpec[i].re^^2 + recvSpec[i].im^^2 / 1000;
-                fftResultSIC[i] = outputSpec[i].re^^2 + outputSpec[i].im^^2 / 1000;
+                fftResultRecv[i] += (recvSpec[i].re^^2 + recvSpec[i].im^^2) / 1000;
+                fftResultSIC[i] += (outputSpec[i].re^^2 + outputSpec[i].im^^2) / 1000;
             }
         }
 
-        if(!bSpeedMode && blockIdx % 1000 == 0){
+        if(!bSpeedMode && blockIdx % 100 == 0){
+            real sum = 0; size_t fcnt;
             foreach(i; 0 .. blockSize)
             {
                 auto before = 10*log10(fftResultRecv[i]),
                      after = 10*log10(fftResultSIC[i]);
 
-                outFile.writefln("%s,%s,%s,%s,%s,%s,", blockIdx, i, i*400e3/blockSize-200.0e3, before, after, before - after);
+                real freq = i*sampFreq/blockSize-(sampFreq/2);
+                if(abs(freq) < 25e3){
+                    sum += 10.0L ^^(-(before - after)/10);
+                    ++fcnt;
+                }
+
+                if(!noOutput)
+                    outFile.writefln("%s,%s,%s,%s,%s,%s,", blockIdx, i, freq, before, after, before - after);
             }
+
+            writefln("%s     %s     %s     %s[k samples/s]", blockIdx, recvBuf[$-1].abs, outputBuf[$-1].abs, (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
+            //writefln("%s", state.weight[0][$-NN .. $].map!"a.abs()");
+            writefln("%s[dB]", 10*log10(sum / fcnt));
+
             outFile.flush();
 
             foreach(i; 0 .. blockSize){
@@ -135,6 +159,6 @@ void main(string[] args)
         }
       }
 
-        writefln("%s     %s     %s     %s[k samples/s]", blockIdx, recvBuf[$-1].abs, outputBuf[$-1].abs, (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
+        stdout.flush();
     }
 }

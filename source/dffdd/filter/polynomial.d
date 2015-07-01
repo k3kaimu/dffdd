@@ -6,10 +6,45 @@ import std.math;
 import std.stdio;
 
 import carbon.stream;
+import carbon.traits;
 
 import dffdd.filter.traits;
 
 
+final class PolynomialFilter(State, Adapter)
+{
+    alias C = typeof(State.init.state[0][0]);
+
+    this(State state, Adapter adapter)
+    {
+        _state = state;
+        _adapter = adapter;
+    }
+
+
+    void apply(in C[] tx, in C[] rx, C[] outputBuf)
+    in{
+        assert(tx.length == rx.length
+            && tx.length == outputBuf.length);
+    }
+    body{
+        foreach(i; 0 .. tx.length){
+            _state.update(tx[i]);
+
+            C error = _state.error(rx[i]);
+            outputBuf[i] = error;
+
+            _adapter.adapt(_state, error);
+        }
+    }
+
+
+  private:
+    State _state;
+    Adapter _adapter;
+}
+
+/+
 auto polynomialFilter(alias polyTerm, uint P, C = Complex!float, U)(U updater, size_t history)
 {
     return new PolynomialFilter!(polyTerm, P, C, U)(updater, history);
@@ -422,3 +457,4 @@ unittest
     }
 }
 */
++/

@@ -3,42 +3,45 @@ module dffdd.filter.lms;
 import std.complex;
 import std.math;
 
-final class PolynomialLMS(alias polyTermABS, uint P, C = Complex!float)
-if(P >= 1 && is(typeof(polyTermABS(C.init, P)) : typeof(C.init.re)))
+final class LMSAdapter(State)
 {
     import std.algorithm;
 
-    alias F = typeof(C.init.re);
+    enum size_t N = typeof(State.init.state).length;
+    enum size_t P = typeof(State.init.state[0]).length;
 
-    this(real mu, size_t forgetCycle = 1024, real iniMaxPower = 0, real forgetCoeff = 0.50)
+    alias C = typeof(State.init.state[0][0]);
+    alias F = typeof(State.init.power[0]);
+
+    this(State state, real mu, size_t forgetCycle = 1024, real forgetCoeff = 0.50)
     {
         _mu = mu;
         _cnt = 0;
         _cycle = forgetCycle;
         _fcoeff = forgetCoeff;
-        _maxPower = iniMaxPower;
-        foreach(p, ref ee; _maxPowerCoeff) ee = polyTermABS(_maxPower, p);
+        foreach(ref e; _subMaxPower) e = 0;
+        _maxPower = state.power;
     }
 
 
-    void update(C[P][] w, C[P][] x, C x00, C e)
+    void adapt(ref State state, C error)
     {
-        if(x.length == 0) return;
+        foreach(i; 0 .. P)
+            _subMaxPower[i] = max(state.power[i], _subMaxPower[i]);
 
-        immutable history = x.length;
-        _subMaxPower = max(x00.re^^2 + x00.im^^2, _subMaxPower);
         ++_cnt;
         if(_cnt == _cycle){
             _cnt = 0;
-            _maxPower = _maxPower * _fcoeff + _subMaxPower * (1 - _fcoeff);
-            _subMaxPower = 0;
 
-            foreach(p, ref ee; _maxPowerCoeff) ee = polyTermABS(_maxPower, p);
+            foreach(i; 0 .. P)
+                _maxPower[i] = _maxPower[i] * _fcoeff + _subMaxPower[i] * (1 - _fcoeff);
+
+            foreach(ref e; _subMaxPower) e = 0;
         }
 
-        foreach(i; 0 .. history)
+        foreach(i; 0 .. N)
             foreach(p; 0 .. P)
-                w[i][p] += _mu *  e * x[i][p].conj / _maxPowerCoeff[p];
+                state.weight[i][p] += _mu * error * state.state[i][p].conj / _maxPower[p];
     }
 
 
@@ -47,7 +50,6 @@ if(P >= 1 && is(typeof(polyTermABS(C.init, P)) : typeof(C.init.re)))
     size_t _cnt;
     immutable size_t _cycle;
     immutable real _fcoeff;
-    real _maxPower;
-    real[P] _maxPowerCoeff;
-    real _subMaxPower;
+    F[P] _maxPower;
+    F[P] _subMaxPower;
 }
