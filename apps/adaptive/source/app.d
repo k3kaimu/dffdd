@@ -20,18 +20,9 @@ import dffdd.filter.mempoly;
 
 import dffdd.utils.fft;
 
-//enum size_t P = 7+1;
-//enum size_t N = 2;
 enum size_t Total = 1024*64;
-//enum real beta = 1E-4;
 enum real sampFreq = 400e3;
 enum size_t blockSize = 1024;
-enum real PLLB = 20;
-enum real PLL_K = PLLB / 0.53;
-enum real PLLAW = 1.414 * PLL_K;
-enum real PLLW2 = PLL_K ^^ 2;
-enum real FLLB = 250;
-enum real FLLW = FLLB / 0.25;
 
 version = OutputSpectrum;
 
@@ -61,10 +52,6 @@ void main(string[] args)
     recvFile.seek(919 * 8);
 
     auto filter2 = {
-        //auto state = new DiagonalState!(cfloat,
-        //                                (x, xabs, p) => xabs^^(2*p) * x,
-        //                                (xabs, p) => xabs^^(2*p+1),
-        //                                P/2, N)();
         auto state = new MemoryPolynomialState!(cfloat, 4, 4, 4, 4, 4, 4)();
 
         // set default power
@@ -97,14 +84,8 @@ void main(string[] args)
     double[] fftResultRecv = new double[blockSize],
              fftResultSIC = new double[blockSize];
 
-    //creal oldPrompt = 0+0i;
-    //real oldCarrErr = 0;
-    //real carrNCOFreq = 400;
-    //immutable DT = blockSize / sampFreq;
-
     Fft fftObj = new Fft(blockSize);
 
-    //auto nco = lutNCO!(std.math.expi, 1024*16)(carrNCOFreq, DT, 0);
     auto startTime = Clock.currTime;
 
 
@@ -117,7 +98,6 @@ void main(string[] args)
 
         filter1.apply(sendGets, recvGets, intermBuf);
         filter2.apply(sendGets, intermBuf, outputBuf);
-        //filter2.apply(intermBuf, recvGets, outputBuf);
 
       version(OutputIteration)
       {
@@ -128,8 +108,6 @@ void main(string[] args)
             outFile.writefln("%s,%s,", (blockIdx*blockSize+i)/sampFreq, e.abs()^^2);
         }
         outFile.flush();
-        //if(blockIdx % 10 == 0)
-        //outFile.writefln("%s,%s,", (blockIdx+1)*blockSize/sampFreq, sum);
 
         if(blockIdx >= 40) throw new Exception("");
       }
@@ -165,7 +143,6 @@ void main(string[] args)
             }
 
             writefln("%s     %s     %s     %s[k samples/s]", blockIdx, recvBuf[$-1].abs, outputBuf[$-1].abs, (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
-            //writefln("%s", state.weight[0][$-NN .. $].map!"a.abs()");
             writefln("%s[dB]", 10*log10(sum / fcnt));
 
             outFile.flush();
