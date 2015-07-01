@@ -60,6 +60,21 @@ void main(string[] args)
 
     recvFile.seek(919 * 8);
 
+    auto filter2 = {
+        //auto state = new DiagonalState!(cfloat,
+        //                                (x, xabs, p) => xabs^^(2*p) * x,
+        //                                (xabs, p) => xabs^^(2*p+1),
+        //                                P/2, N)();
+        auto state = new MemoryPolynomialState!(cfloat, 4, 4, 4, 4, 4, 4)();
+
+        // set default power
+        foreach(ref e; state.power) e = 1;
+
+        auto adapter = new LMSAdapter!(typeof(state))(state, 1E-6, 1024*1024*1024, 0.5);
+
+        return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
+    }();
+
     auto filter1 = {
         auto state = new DiagonalState!(cfloat,
                                         (x, xabs, p) => xabs^^(2*p) * x,
@@ -76,6 +91,7 @@ void main(string[] args)
 
     cfloat[] sendBuf = new cfloat[blockSize],
                     recvBuf = new cfloat[blockSize],
+                    intermBuf = new cfloat[blockSize],
                     outputBuf = new cfloat[blockSize];
 
     double[] fftResultRecv = new double[blockSize],
@@ -99,7 +115,9 @@ void main(string[] args)
         assert(sendGets.length == sendBuf.length);
         assert(recvGets.length == recvBuf.length);
 
-        filter1.apply(sendGets, recvGets, outputBuf);
+        filter1.apply(sendGets, recvGets, intermBuf);
+        filter2.apply(sendGets, intermBuf, outputBuf);
+        //filter2.apply(intermBuf, recvGets, outputBuf);
 
       version(OutputIteration)
       {
