@@ -22,9 +22,9 @@ void main(string[] args)
 
     File ofile = File(output, "w");
     File ifile = File(input);
-    cdouble[] buf = new cdouble[1024*1024];
+    cfloat[] buf = new cfloat[1024*1024];
 
-    ifile.seek(offset * cdouble.sizeof);
+    ifile.seek(offset * cfloat.sizeof);
     while(total){
         auto rs = ifile.rawRead(buf[0 .. min($, total)]);
         total -= rs.length;
