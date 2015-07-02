@@ -18,9 +18,7 @@ final class MemoryPolynomialState(C, uint N, uint Pa, uint Pb, uint Pc, uint Mb,
 
     alias F = typeof(C.init.re);
 
-    enum size_t Pbc = max(Pb, Pc);
     enum size_t Pabc = max(Pa-1, Pb, Pc);
-    enum size_t Mbc = Mb + Mc;
     enum size_t Mabc = Mb + Mc + 1;
 
     C[Mc] xmemory;
