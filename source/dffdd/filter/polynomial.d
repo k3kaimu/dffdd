@@ -39,6 +39,9 @@ final class PolynomialFilter(State, Adapter)
     }
 
 
+    State state() @property { return _state; }
+
+
   private:
     State _state;
     Adapter _adapter;
