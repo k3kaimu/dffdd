@@ -36,37 +36,25 @@ void main(string[] args)
 {
     string sendFilename, recvFilename, outFilename;
     bool bSpeedMode = false, noOutput = false;
+    size_t seekOffset;
 
     getopt(args,
         "sendData", &sendFilename,
         "recvData", &recvFilename,
         "outData", &outFilename,
         "speedMode", &bSpeedMode,
-        "noOutput", &noOutput
+        "noOutput", &noOutput,
+        "offset", &seekOffset,
     );
 
     File sendFile = File(sendFilename),
          recvFile = File(recvFilename),
          outFile = File(outFilename, "w");
 
-    recvFile.seek(919 * 8);
+    recvFile.seek(seekOffset * 8);
 
     auto filter2 = {
-        auto state = new MemoryPolynomialState!(cfloat, 4, 4, 4, 4, 4, 4)();
-
-        // set default power
-        foreach(ref e; state.power) e = 1;
-
-        auto adapter = new LMSAdapter!(typeof(state))(state, 1E-6, 1024*1024*1024, 0.5);
-
-        return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
-    }();
-
-    auto filter1 = {
-        auto state = new DiagonalState!(cfloat,
-                                        (x, xabs, p) => xabs^^(2*p) * x,
-                                        (xabs, p) => xabs^^(2*p+1),
-                                        (7+1)/2, 2)();
+        auto state = new MemoryPolynomialState!(cfloat, 128,4,4,4)();
 
         // set default power
         foreach(ref e; state.power) e = 1;
@@ -75,6 +63,22 @@ void main(string[] args)
 
         return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
     }();
+
+    //auto filter2 = {
+    //    auto state = new DiagonalState!(cfloat,
+    //                                    (x, xabs, p) => xabs^^(2*p) * x,
+    //                                    (xabs, p) => xabs^^(2*p+1),
+    //                                    (11+1)/2, 4)();
+
+    //    // set default power
+    //    foreach(ref e; state.power) e = 1;
+
+    //    auto adapter = new LMSAdapter!(typeof(state))(state, 1E-4, 1024, 0.5);
+
+    //    return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
+    //}();
+
+    pragma(msg, filter2.state.state.length * filter2.state.state[0].length);
 
     cfloat[] sendBuf = new cfloat[blockSize],
                     recvBuf = new cfloat[blockSize],
@@ -96,8 +100,8 @@ void main(string[] args)
         assert(sendGets.length == sendBuf.length);
         assert(recvGets.length == recvBuf.length);
 
-        filter1.apply(sendGets, recvGets, intermBuf);
-        filter2.apply(sendGets, intermBuf, outputBuf);
+        //filter1.apply(sendGets, recvGets, intermBuf);
+        filter2.apply(sendGets, recvGets, outputBuf);
 
       version(OutputIteration)
       {
@@ -142,8 +146,7 @@ void main(string[] args)
                     outFile.writefln("%s,%s,%s,%s,%s,%s,", blockIdx, i, freq, before, after, before - after);
             }
 
-            writefln("%s     %s     %s     %s[k samples/s]", blockIdx, recvBuf[$-1].abs, outputBuf[$-1].abs, (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
-            writefln("%s[dB]", 10*log10(sum / fcnt));
+            writefln("%s,%s,[dB],%s,[k samples/s],", blockIdx, 10*log10(sum / fcnt), (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
 
             outFile.flush();
 
