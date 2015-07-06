@@ -8,86 +8,76 @@ import std.string;
 import std.numeric;
 import std.math;
 import std.complex;
+import std.exception;
 
 import carbon.math;
 import carbon.stream;
 
 import dffdd.dsp.convolution;
+import dffdd.utils.fft;
 
 
 void main(string[] args)
 {
-    string filenameA = "received.dat", filenameB = "reference.dat", outputFilename = "conv.csv";
-    real speedRatio = 1;
+    string sendFilename = "send.dat", recvFilename = "recv.dat", outputFilename = "output.csv";
     size_t blockSize = 1024;
+    size_t totalIteration = 1;
 
     getopt(args,
-        "recData", &filenameA,
-        "refData", &filenameB,
+        "sendData", &sendFilename,
+        "recvData", &recvFilename,
         "output", &outputFilename,
-        "speedRatio", &speedRatio,
-        "blockSize", &blockSize);
+        "blockSize", &blockSize,
+        "totalIteration", &totalIteration);
 
-    Complex!double[] inputB = getRefData(filenameB, blockSize);
+    enforce(blockSize.isPowOf2, "Invalid Argument: blockSize is not a power number of 2.");
 
-    outputConvolution(filenameA, inputB, blockSize, outputFilename);
+    Fft fftObj = new Fft(blockSize);
+
+    cfloat[] readBuf = new cfloat[blockSize];
+    File sendFile = File(sendFilename);
+    File recvFile = File(recvFilename);
+    File outputFile = File(outputFilename, "w");
+    Complex!float[] sendData = new Complex!float[blockSize],
+                    sendSpec = sendData.dup,
+                    recvData = sendData.dup,
+                    recvSpec = sendData.dup,
+                    rsltData = sendData.dup;
+
+    sendFile.readRawComplex(readBuf, sendData);
+    fftObj.fft(sendData, sendSpec);
+
+    foreach(iterIdx; 0 .. totalIteration)
+    {
+        if(iterIdx == 0)    recvFile.readRawComplex(readBuf, recvData);
+        else                recvFile.readRawComplexHalf(readBuf, recvData);
+        fftObj.fft(recvData, recvSpec);
+
+        fftObj.convolutionPower(recvSpec.frequencyDomain, sendSpec.frequencyDomain, rsltData);
+        foreach(i, e; rsltData[0 .. $/2])
+            outputFile.writefln("%s,%s,", iterIdx*blockSize/2+i, e.re);
+    }
 }
 
-Complex!double[] getRefData(string filename, size_t blockSize)
-{
-    double[2][] buf = new double[2][blockSize];
-    auto file = File(filename);
-    auto rs = file.rawRead(buf);
-    foreach(i; 0 .. blockSize - rs.length)
-        buf[rs.length+i][] = 0;
-    auto ret = new typeof(return)(blockSize);
-    foreach(i; 0 .. blockSize)
-        ret[i] = complex!double(buf[i][0], buf[i][1]);
 
-    return ret;
+void readRawComplex(File file, cfloat[] buf, Complex!float[] output)
+{
+    enforce(file.rawRead(buf).length == buf.length);
+    buf.copyToComplexArray(output);
 }
 
 
-void outputConvolution(CPX)(string filenameA, CPX[] refData, size_t size, string ofilename)
+void readRawComplexHalf(File file, cfloat[] buf, Complex!float[] output)
 {
-    File ifile = File(filenameA);
-    File file = File(ofilename, "w");
-    Complex!double[] buf1 = new Complex!double[size],
-                     buf2 = new Complex!double[size],
-                     buf3 = new Complex!double[size];
+    output[0 .. $/2] = output[$/2 .. $];
+    readRawComplex(file, buf[$/2 .. $], output[$/2 .. $]);
+}
 
-    double[2][] rawBuf = new double[2][size];
 
-    Fft fftObj = new Fft(size);
-    fftObj.fft(refData, buf2);
-
-    Complex!double[][] table;
-
-    bool endSW = false;
-    while(!endSW){
-        auto readBuf = ifile.rawRead(rawBuf);
-        immutable readLen = readBuf.length;
-        foreach(i; 0 .. readLen)
-            buf1[i] = complex!double(readBuf[i][0], readBuf[i][1]);
-
-        if(readLen != size){
-            endSW = true;
-            foreach(ref e; buf1[readLen .. size])
-                e = complex!double(0, 0);
-        }
-
-        writeln(buf1[0 .. 10]);
-        writeln(buf2[0 .. 10]);
-        fftObj.fft(buf1, buf3);
-
-        fftObj.convolutionPower(buf3, buf2, buf1);
-        table ~= buf1.dup;
-    }
-
-    foreach(i; 0 .. size){
-        foreach(j; 0 .. table.length)
-            file.writef("%s,", table[j][i].abs);
-
-        file.writeln();
-    }
+void copyToComplexArray(in cfloat[] input, Complex!float[] output)
+in{
+    assert(input.length <= output.length);
+}
+body{
+    foreach(i, e; input) output[i] = complex!float(e.re, e.im);
 }

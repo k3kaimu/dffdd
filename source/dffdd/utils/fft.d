@@ -41,3 +41,35 @@ body{
 
     return ret;
 }
+
+
+align(1)
+struct FrequencyDomain(C)
+{
+    C value;
+    alias value this;
+}
+
+
+FrequencyDomain!C frequencyDomain(C)(C c)
+{
+    return typeof(return)(c);
+}
+
+
+inout(C)[] convAuto(C)(inout(FrequencyDomain!C)[] array)
+{
+    return (cast(inout(C)*)array.ptr)[0 .. array.length];
+}
+
+unittest
+{
+    FrequencyDomain!(Complex!float)[] carr;
+    foreach(i; 0 .. 10) carr ~= complex!float(i, 0).frequencyDomain;
+
+    auto carr2 = carr.convAuto!(Complex!float[]);
+    foreach(i; 0 .. 10){
+        assert(approxEqual(carr[i].re, carr2[i].re));
+        assert(approxEqual(carr[i].im, carr2[i].im));
+    }
+}
