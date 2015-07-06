@@ -54,10 +54,7 @@ void main(string[] args)
     recvFile.seek(seekOffset * 8);
 
     auto filter2 = {
-        auto state = new MemoryPolynomialState!(cfloat, 128,4,4,4)();
-
-        // set default power
-        foreach(ref e; state.power) e = 1;
+        auto state = new MemoryPolynomialState!(cfloat, 128,4,4,4)(1);
 
         auto adapter = new LMSAdapter!(typeof(state))(state, 1E-3, 1024, 0.5);
 
