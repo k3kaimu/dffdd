@@ -23,14 +23,14 @@ final class MemoryPolynomialState(C, size_t N, size_t P, size_t Mf, size_t Mp)
     F[1 + 1 + (P-1)*(Mf+1+Mp)] power;
 
 
-    this()
+    this(F initP)
     {
         foreach(ref e; xmemory) e = complexZero!C;
         foreach(ref e; ymemory) e = complexZero!C;
         foreach(ref e; pmemory) e = 0;
         foreach(ref e; state) foreach(ref ee; e) ee = complexZero!C;
         foreach(ref e; weight) foreach(ref ee; e) ee = complexZero!C;
-        foreach(ref e; power) e = 0;
+        foreach(ref e; power) e = initP;
     }
 
 
