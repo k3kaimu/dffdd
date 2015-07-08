@@ -20,7 +20,7 @@ import dffdd.filter.mempoly;
 
 import dffdd.utils.fft;
 
-enum size_t Total = 1024*64;
+enum size_t Total = 1024*3;
 enum real sampFreq = 400e3;
 enum size_t blockSize = 1024;
 
@@ -54,7 +54,7 @@ void main(string[] args)
     recvFile.seek(seekOffset * 8);
 
     auto filter2 = {
-        auto state = new MemoryPolynomialState!(cfloat, 128,4,4,4)(1);
+        auto state = new MemoryPolynomialState!(cfloat, 16,4,2,2,true)(1);
 
         auto adapter = new LMSAdapter!(typeof(state))(state, 1E-3, 1024, 0.5);
 
