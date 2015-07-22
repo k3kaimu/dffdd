@@ -5,6 +5,10 @@
     "authors": ["Kazuki Komatsu"],
     "targetType": "library",
 
+    "__foo": "/usr/local/opt/openblas/lib",
+    "libs": ["openblas"],
+    "__dflags": ["-L/usr/local/opt/openblas/lib"],
+
     "dependencies": {
         "carbon": {"path": "../../../Github/carbon" }
     }

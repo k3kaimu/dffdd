@@ -7,6 +7,8 @@ final class LMSAdapter(State)
 {
     import std.algorithm;
 
+    enum bool usePower = true;
+
     enum size_t N = typeof(State.init.state).length;
     enum size_t P = typeof(State.init.state[0]).length;
 
@@ -24,7 +26,7 @@ final class LMSAdapter(State)
     }
 
 
-    void adapt(ref State state, C error)
+    void adapt(ref State state, C error) pure nothrow @safe @nogc
     {
         foreach(i; 0 .. P)
             _subMaxPower[i] = max(state.power[i], _subMaxPower[i]);
@@ -33,8 +35,9 @@ final class LMSAdapter(State)
         if(_cnt == _cycle){
             _cnt = 0;
 
-            foreach(i; 0 .. P)
-                _maxPower[i] = _maxPower[i] * _fcoeff + _subMaxPower[i] * (1 - _fcoeff);
+            //foreach(i; 0 .. P)
+            //    _maxPower[i] = _maxPower[i] * _fcoeff + _subMaxPower[i] * (1 - _fcoeff);
+            _maxPower[] = _maxPower[] * _fcoeff + _subMaxPower[] * (1 - _fcoeff);
 
             foreach(ref e; _subMaxPower) e = 0;
         }

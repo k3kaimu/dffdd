@@ -22,15 +22,18 @@ enum bool isState(S) = is(typeof((ref S s){
     C c;
     s.update(c);
 
-    auto psp = &(s.power);
-    static assert(isStaticArray!(typeof(*psp)));
-    static assert(typeof(*psp).length == typeof(*sep).length);
+    // .power is option
+    //auto psp = &(s.power);
+    //static assert(isStaticArray!(typeof(*psp)));
+    //static assert(typeof(*psp).length == typeof(*sep).length);
 
     C v = s.value;
 }));
 
 
 enum bool isWeightAdapter(U, S) = is(typeof((ref U u, ref S s){
+    enum bool usePower = U.usePower;
+
     alias C = typeof(s.state[0][0]);
     C e;
 

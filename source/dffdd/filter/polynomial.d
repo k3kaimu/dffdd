@@ -15,6 +15,7 @@ import dffdd.filter.traits;
 final class PolynomialFilter(State, Adapter)
 {
     alias C = typeof(State.init.state[0][0]);
+    size_t cnt;
 
     this(State state, Adapter adapter)
     {
@@ -29,14 +30,19 @@ final class PolynomialFilter(State, Adapter)
             && tx.length == outputBuf.length);
     }
     body{
-        foreach(i; 0 .. tx.length){
-            _state.update(tx[i]);
+        //if(cnt / (1024 * 16) % 16 != 0){
+            //_state.apply(tx, rx, outputBuf);
+        //}else{
+            foreach(i; 0 .. tx.length){
+                _state.update(tx[i]);
 
-            C error = _state.error(rx[i]);
-            outputBuf[i] = error;
+                C error = _state.error(rx[i]);
+                outputBuf[i] = error;
 
-            _adapter.adapt(_state, error);
-        }
+                _adapter.adapt(_state, error);
+            }
+        //}
+        cnt += tx.length;
     }
 
 

@@ -11,13 +11,17 @@ import carbon.traits;
 import dffdd.filter.traits;
 
 
-final class DiagonalState(C, alias polyTerm, alias polyTermABS, uint P, uint N)
+final class DiagonalState(C, alias polyTerm, alias polyTermABS, uint P, uint N, bool usePower = true)
 {
     alias F = typeof(C.init.re);
 
     C[P][N] weight;
     C[P][N] state;
+
+  //static if(usePower)
+  //{
     F[P] power;
+  //}
 
 
     this()
@@ -30,6 +34,7 @@ final class DiagonalState(C, alias polyTerm, alias polyTermABS, uint P, uint N)
 
         foreach(ref e; weight) foreach(ref ee; e) ee = zero;
         foreach(ref e; state) foreach(ref ee; e) ee = zero;
+        //static if(usePower)
         foreach(ref e; power) e = 0;
     }
 
@@ -43,6 +48,7 @@ final class DiagonalState(C, alias polyTerm, alias polyTermABS, uint P, uint N)
         foreach(p, ref e; state[0])
             e = polyTerm(c, cabs, p);
 
+      //static if(usePower)
         foreach(p, ref e; power)
             e = polyTermABS(cabs, p);
     }
