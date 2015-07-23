@@ -68,7 +68,7 @@ void main(string[] args)
         auto state = new MemoryPolynomialState!(cfloat, N, P, Mb, Mc, withDCBias, withIQImbalance)(1);
 
         //auto adapter = new LSAdapter!(typeof(state))(500);
-        auto adapter = new LMSAdapter!(typeof(state))(state, 1E-3, 1024, 0.5);
+        auto adapter = new LMSAdapter!(typeof(state))(state, 0.1, 1024, 0.5);
 
         return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
     }();
@@ -131,7 +131,7 @@ void main(string[] args)
                      after = 10*log10(fftResultSIC[i]);
 
                 real freq = i*sampFreq/blockSize-(sampFreq/2);
-                if(abs(freq) < 12.5e3){
+                if(abs(freq) < 50e3){
                     sum += 10.0L ^^(-(before - after)/10);
                     ++fcnt;
                 }
@@ -142,7 +142,7 @@ void main(string[] args)
 
             writefln("%s,%s,[dB],%s,[k samples/s],", blockIdx, 10*log10(sum / fcnt), (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
 
-            outFile.flush();
+            if(!noOutput) outFile.flush();
 
             foreach(i; 0 .. blockSize){
                 fftResultRecv[i] = 0;
