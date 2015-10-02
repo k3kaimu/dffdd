@@ -11,6 +11,9 @@ import std.range;
 import std.stdio;
 import std.stdio;
 import std.string;
+import std.json;
+import std.file;
+import std.exception;
 
 import carbon.stream;
 
@@ -21,25 +24,212 @@ import dffdd.filter.mempoly;
 import dffdd.filter.polynomial;
 import dffdd.utils.fft;
 
-enum size_t Total = 1024*30;
-enum real sampFreq = 400e3;
+//enum size_t Total = cast(size_t)sampFreq*2;
+//enum real sampFreq = 5e6;
 enum size_t blockSize = 1024;
 
-enum size_t N = 4;
-enum size_t P = 2;
-enum size_t Mb = 0;
-enum size_t Mc = 0;
-enum bool withDCBias = true;
-enum bool withIQImbalance = false;
+//enum size_t N = 4;
+//enum size_t P = 3;
+//enum size_t Mb = 0;
+//enum size_t Mc = 0;
+//enum bool withDCBias = true;
+//enum bool withIQImbalance = false;
 
-version = OutputSpectrum;
+//version = OutputSpectrum;
 
 
 void main(string[] args)
 {
+    JSONValue jv = readText(args[1]).parseJSON();
+    dfs(jv, jv["prefix"].str, jv);
+}
+
+
+void dfs(ref JSONValue root, string folder, ref JSONValue jv)
+{
+    enforce(jv.type == JSON_TYPE.OBJECT);
+
+    foreach(k, ref v; jv.object)
+    {
+        if(v.type != JSON_TYPE.OBJECT) continue;
+        if("ignore" in v.object) continue;
+
+
+        if("is_dir" in v.object)
+            dfs(root, buildPath(folder, k), v);
+        else
+            implMain(root, folder, k, v);
+    }
+
+    return;
+}
+
+
+void implMain(ref JSONValue root, string folder, string fnameId, ref JSONValue jv)
+{
+    immutable string sendFileNamePrefix = root["send_fn_prefix"].str,
+                     recvFileNamePrefix = root["recv_fn_prefix"].str,
+                     dataFileNameExt = root["data_fn_ext"].str,
+                     sendFileName = buildPath(folder, sendFileNamePrefix ~ fnameId ~ dataFileNameExt),
+                     recvFileName = buildPath(folder, recvFileNamePrefix ~ fnameId ~ dataFileNameExt);
+
+    impl(sendFileName, recvFileName, jv["fs"].floating, cast(ptrdiff_t)jv["offset"].integer, cast(size_t)jv["oversampling"].integer);
+}
+
+
+void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t offset, size_t oversampling)
+{
+    File sendFile = File(sendFileName),
+         recvFile = File(recvFileName);
+
+    if(offset > 0)
+        recvFile.seek(offset * 8);
+    else if(offset < 0)
+        sendFile.seek(-offset * 8);
+
+  version(AdaptiveUseWPH)
+  {
+    auto filter1 = {
+        auto state = new MemoryPolynomialState!(cfloat, 8, 2, 0, 0, false, true)(1);
+
+        auto adapter = new LMSAdapter!(typeof(state))(state, 0.175, 1024, 0.5);
+        //auto adapter = lsAdapter(state, 5000);
+
+        return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
+    }();
+  }
+  else
+  {
+    auto filter1 = (){
+        auto st1 = new PowerState!(cfloat, 8, 1, FilterOptions.usePower)(1),
+             st3 = new PowerState!(cfloat, 8, 3, FilterOptions.usePower)(1),
+             st1c = new PowerState!(cfloat, 8, 1, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             st3c = new PowerState!(cfloat, 8, 3, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st5 = new PowerState!(cfloat, 2, 5, FilterOptions.usePower)(1),
+             //st7 = new PowerState!(cfloat, 8, 7, FilterOptions.usePower)(1),
+             bis = new BiasState!(cfloat)();
+
+        return serialFilter(
+                st1,
+                //lsAdapter(st1, 5000),
+                lmsAdapter(st1, 0.175, 1024, 0.5),
+                st1c,
+                //lsAdapter(st1, 5000),
+                lmsAdapter(st1c, 0.175, 1024, 0.5),
+                st3,
+                //lsAdapter(st3, 5000),
+                lmsAdapter(st3, 0.175, 1024, 0.5),
+                st3c,
+                //lsAdapter(st3, 5000),
+                lmsAdapter(st3c, 0.175, 1024, 0.5),
+                //st5,
+                //lsAdapter(st5, 500),
+                //lmsAdapter(st5, 1E-2, 1024, 0.5),
+                //st7,
+                //lsAdapter(st7, 500),
+                //lmsAdapter(st7, 1E-1, 1024, 0.5),
+                //bis,
+                //lmsAdapter(bis, 1E-2, 1024, 0.5),
+                );
+    }();
+  }
+
+    cfloat[] sendBuf = new cfloat[blockSize],
+             recvBuf = new cfloat[blockSize],
+             intermBuf = new cfloat[blockSize],
+             outputBuf = new cfloat[blockSize];
+
+    double[] fftResultRecv = new double[blockSize],
+             fftResultSIC = new double[blockSize];
+
+    fftResultRecv[] = 0;
+    fftResultSIC[] = 0;
+
+    size_t sumCNT;
+
+    Fft fftObj = new Fft(blockSize);
+    auto startTime = Clock.currTime;
+
+    foreach(blockIdx; 0 .. 400)
+    {
+        auto sendGets = sendFile.rawRead(sendBuf);
+        auto recvGets = recvFile.rawRead(recvBuf);
+        assert(sendGets.length == sendBuf.length);
+        assert(recvGets.length == recvBuf.length);
+
+        filter1.apply(sendGets, recvGets, outputBuf);
+
+        // fft
+        {
+            auto outputSpec = fftObj.fftWithSwap(outputBuf);
+            auto recvSpec = fftObj.fftWithSwap(recvGets);
+
+            foreach(i; 0 .. blockSize){
+                fftResultRecv[i] += (recvSpec[i].re^^2 + recvSpec[i].im^^2);
+                fftResultSIC[i] += (outputSpec[i].re^^2 + outputSpec[i].im^^2);
+            }
+            ++sumCNT;
+        }
+
+        if(blockIdx % 100 == 0){
+            real sum = 0; size_t fcnt;
+            foreach(i; 0 .. blockSize)
+            {
+                auto before = 10*log10(fftResultRecv[i] / sumCNT),
+                     after = 10*log10(fftResultSIC[i] / sumCNT);
+
+                real freq = i*sampFreq/blockSize-(sampFreq/2);
+                //if(abs(freq) < sampFreq / oversampling / 2 * 0.5){
+                //    sum += 10.0L ^^(-(before - after)/10);
+                //    ++fcnt;
+                //}
+                if(oversampling == 1 && abs(freq) < sampFreq / 2 * 0.25
+                                     && abs(freq) > sampFreq / 10)
+                {
+                    sum += 10.0L ^^(-(before - after)/10);
+                    ++fcnt;
+                }else if(abs(freq) < sampFreq / oversampling / 2 * 0.5){
+                    sum += 10.0L ^^(-(before - after)/10);
+                    ++fcnt;
+                }
+            }
+
+            if(blockIdx == 300)
+            {
+                writefln("%s, %s, [dB]", sendFileName, 10*log10(sum / fcnt));
+
+                File outFile = File("fftout_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+
+                foreach(i; 0 .. blockSize)
+                {
+                    auto before = 10*log10(fftResultRecv[i] / sumCNT),
+                         after = 10*log10(fftResultSIC[i] / sumCNT);
+                    real freq = i*sampFreq/blockSize-(sampFreq/2);
+
+                    outFile.writefln("%s,%s,%s,%s,%s,%s,", blockIdx, i, freq, before, after, before - after);
+                }
+
+                return;
+            }
+
+            writefln("%s,[k samples/s],", (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
+
+            foreach(i; 0 .. blockSize){
+                fftResultRecv[i] = 0;
+                fftResultSIC[i] = 0;
+            }
+            sumCNT = 0;
+        }
+    }
+}
+
+
+/+
+void main(string[] args)
+{
     string sendFilename, recvFilename, outFilename;
     bool bSpeedMode = false, noOutput = false;
-    size_t seekOffset;
+    ptrdiff_t seekOffset;
 
     getopt(args,
         "sendData", &sendFilename,
@@ -62,18 +252,45 @@ void main(string[] args)
     if(!noOutput)
         outFile = File(outFilename, "w");
 
-    recvFile.seek(seekOffset * 8);
+    if(seekOffset > 0)
+        recvFile.seek(seekOffset * 8);
+    else if(seekOffset < 0)
+        sendFile.seek(-seekOffset * 8);
 
-    auto filter1 = {
-        auto state = new MemoryPolynomialState!(cfloat, N, P, Mb, Mc, withDCBias, withIQImbalance)(1);
+    //auto filter1 = {
+    //    auto state = new MemoryPolynomialState!(cfloat, N, P, Mb, Mc, withDCBias, withIQImbalance)(1);
 
-        //auto adapter = new LSAdapter!(typeof(state))(500);
-        auto adapter = new LMSAdapter!(typeof(state))(state, 0.1, 1024, 0.5);
+    //    //auto adapter = new LSAdapter!(typeof(state))(500);
+    //    auto adapter = new LMSAdapter!(typeof(state))(state, 1E-2, 1024, 0.5);
 
-        return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
-    }();
+    //    return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
+    //}();
+    
+    auto st1 = new PowerState!(cfloat, 4, 1, true)(1),
+         st3 = new PowerState!(cfloat, 1024, 3, false)(1),
+         st5 = new PowerState!(cfloat, 1024, 5, true)(1),
+         st7 = new PowerState!(cfloat, 1024, 7, true)(1),
+         bis = new BiasState!(cfloat)()
+         ;
 
-    pragma(msg, filter1.state.state.length * filter1.state.state[0].length);
+    auto filter1 = serialFilter(
+                                st1,
+                                //lsAdapter(st1, 500),
+                                lmsAdapter(st1, 1E-2, 1024, 0.5),
+                                //st3,
+                                //lsAdapter(st3, 500),
+                                //lmsAdapter(st3, 1E-3, 1024, 0.5),
+                                //st5,
+                                //lsAdapter(st5, 500),
+                                //lmsAdapter(st5, 1E-3, 1024, 0.5),
+                                //st7,
+                                //lsAdapter(st7, 500),
+                                //lmsAdapter(st7, 1E-3, 1024, 0.5),
+                                bis,
+                                lmsAdapter(bis, 2E-3, 1024, 0.5),
+                                );
+
+    //pragma(msg, filter1.state.state.length * filter1.state.state[0].length);
 
     cfloat[] sendBuf = new cfloat[blockSize],
              recvBuf = new cfloat[blockSize],
@@ -83,8 +300,9 @@ void main(string[] args)
     double[] fftResultRecv = new double[blockSize],
              fftResultSIC = new double[blockSize];
 
-    Fft fftObj = new Fft(blockSize);
+    size_t sumCNT;
 
+    Fft fftObj = new Fft(blockSize);
     auto startTime = Clock.currTime;
 
 
@@ -103,7 +321,7 @@ void main(string[] args)
         foreach(i, e; outputBuf){
             sum += e.abs()^^2/blockSize;
             if((blockIdx*blockSize+i) % 10 == 0)
-            outFile.writefln("%s,%s,", (blockIdx*blockSize+i)/sampFreq, e.abs()^^2);
+                outFile.writefln("%s,%s,", (blockIdx*blockSize+i)/sampFreq, e.abs()^^2);
         }
         outFile.flush();
 
@@ -118,20 +336,21 @@ void main(string[] args)
             auto recvSpec = fftObj.fftWithSwap(recvGets);
 
             foreach(i; 0 .. blockSize){
-                fftResultRecv[i] += (recvSpec[i].re^^2 + recvSpec[i].im^^2) / 1000;
-                fftResultSIC[i] += (outputSpec[i].re^^2 + outputSpec[i].im^^2) / 1000;
+                fftResultRecv[i] += (recvSpec[i].re^^2 + recvSpec[i].im^^2);
+                fftResultSIC[i] += (outputSpec[i].re^^2 + outputSpec[i].im^^2);
             }
+            ++sumCNT;
         }
 
         if(!bSpeedMode && blockIdx % 100 == 0){
             real sum = 0; size_t fcnt;
             foreach(i; 0 .. blockSize)
             {
-                auto before = 10*log10(fftResultRecv[i]),
-                     after = 10*log10(fftResultSIC[i]);
+                auto before = 10*log10(fftResultRecv[i] / sumCNT),
+                     after = 10*log10(fftResultSIC[i] / sumCNT);
 
                 real freq = i*sampFreq/blockSize-(sampFreq/2);
-                if(abs(freq) < 50e3){
+                if(abs(freq) < 1500e3){
                     sum += 10.0L ^^(-(before - after)/10);
                     ++fcnt;
                 }
@@ -148,6 +367,7 @@ void main(string[] args)
                 fftResultRecv[i] = 0;
                 fftResultSIC[i] = 0;
             }
+            sumCNT = 0;
         }else if(blockIdx % 1000 == 0)
             writefln("%s,%s,[k samples/s],", blockIdx, (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
       }
@@ -155,3 +375,4 @@ void main(string[] args)
         stdout.flush();
     }
 }
++/

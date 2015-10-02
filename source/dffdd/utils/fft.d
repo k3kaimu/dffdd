@@ -4,6 +4,7 @@ import std.algorithm : swap;
 import std.complex;
 import std.math;
 import std.numeric : Fft;
+import std.stdio : File;
 
 import carbon.math;
 
@@ -73,3 +74,21 @@ unittest
         assert(approxEqual(carr[i].im, carr2[i].im));
     }
 }
+
+
+cfloat[] rawReadComplex(File file, cfloat[] buf)
+{
+    return file.rawRead(buf);
+}
+
+
+Complex!float[] rawReadComplex(File file, cfloat[] buf, Complex!float[] output)
+{
+    auto res = file.rawReadComplex(buf);
+    foreach(i, e; res)
+        output[i] = complex!float(e.re, e.im);
+
+    return output[0 .. res.length];
+}
+
+

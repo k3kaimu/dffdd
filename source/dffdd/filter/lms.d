@@ -35,8 +35,6 @@ final class LMSAdapter(State)
         if(_cnt == _cycle){
             _cnt = 0;
 
-            //foreach(i; 0 .. P)
-            //    _maxPower[i] = _maxPower[i] * _fcoeff + _subMaxPower[i] * (1 - _fcoeff);
             _maxPower[] = _maxPower[] * _fcoeff + _subMaxPower[] * (1 - _fcoeff);
 
             foreach(ref e; _subMaxPower) e = 0;
@@ -55,4 +53,10 @@ final class LMSAdapter(State)
     immutable real _fcoeff;
     F[P] _maxPower;
     F[P] _subMaxPower;
+}
+
+
+auto lmsAdapter(State)(State state, real mu, size_t forgetCycle = 1024, real forgetCoeff = 0.50)
+{
+    return new LMSAdapter!State(state, mu, forgetCycle, forgetCoeff);
 }

@@ -6,3 +6,6 @@ __dummy.html
 *.csv
 *.dat
 *selections.json
+*.xlsx
+*.exe
+*.txt

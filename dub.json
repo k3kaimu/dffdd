@@ -6,7 +6,7 @@
     "targetType": "library",
 
     "__foo": "/usr/local/opt/openblas/lib",
-    "libs": ["openblas"],
+    "libs-osx": ["openblas"],
     "__dflags": ["-L/usr/local/opt/openblas/lib"],
 
     "dependencies": {

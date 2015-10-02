@@ -40,7 +40,10 @@ body{
 /**
 
 */
-C[] convolutionPower(FftObj, C)(FftObj fftObj, in FrequencyDomain!(C[]) specA, in FrequencyDomain!(C[]) specB, C[] dst)
+C[] convolutionPower(FftObj, C)(FftObj fftObj,
+                                in FrequencyDomain!(C[]) specA,
+                                in FrequencyDomain!(C[]) specB,
+                                C[] dst)
 {
     dst = convolution(fftObj, specA, specB, dst);
     foreach(ref e; dst)
@@ -55,21 +58,45 @@ Parameters:
     + smpPerSym := 1シンボルあたりのサンプル数, ただし、OFDMなら1
     + thr := 捕捉しきい値[dB]
 */
-Nullable!size_t findSignal(FftObj)(FftObj fftObj,
-                                   in FrequencyDomain!(C[]) haystackSpec,
-                                   in FrequencyDomain!(C[]) needleSpec,
-                                   size_t smpPerSym, real thr)
-in{
-    assert(haystackSpec.length == needleSpec.length);
-}
-body{
+Nullable!size_t findConvolutionPeak(FftObj)(
+                    FftObj fftObj,
+                    in FrequencyDomain!(Complex!float[]) sendSpec,
+                    in FrequencyDomain!(Complex!float[]) recvSpec,
+                    Complex!float[] convDst,
+                    real dBThreshold = 20,
+                    bool onlyHalf = false)
+{
+    fftObj.convolutionPower(recvSpec, sendSpec, convDst);
+
+    real maxP = -real.infinity;
+    size_t maxIdx;
+    foreach(i, ref e; convDst[0 .. onlyHalf ? $/2 : $]){
+        auto p = e.re^^2 + e.im^^2;
+        e = p;
+
+        if(maxP < p){
+            maxP = p;
+            maxIdx = i;
+        }
+    }
+
+    real sum = 0;
+    size_t sumCnt;
+    foreach(i, e; convDst[0 .. onlyHalf ? $/2 : $]){
+        if((max(i, maxIdx) - min(i, maxIdx)) > convDst.length/10){
+            sum += e.re;
+            ++sumCnt;
+        }
+    }
+    sum /= sumCnt;
+
+    auto snr = maxP / sum;
+    auto snrdB = 10*log10(snr);
+
     Nullable!size_t nullV;
 
-    
-
-    //if(haystack.length < needle.length) return nullV;
-    //if(needle.length > haystack.length)
-    //    swap(haystack, needle);
-
-
+    if(snrdB > dBThreshold)
+        return Nullable!size_t(maxIdx);
+    else
+        return nullV;
 }

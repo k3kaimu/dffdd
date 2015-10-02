@@ -6,6 +6,12 @@ import std.math;
 import std.stdio;
 
 
+LSAdapter!(State, NumOfADCBits) lsAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L)
+{
+    return new typeof(return)(L);
+}
+
+
 final class LSAdapter(State, size_t NumOfADCBits = 12)
 {
     import std.algorithm;
