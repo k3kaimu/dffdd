@@ -165,7 +165,7 @@ final class MemoryPolynomialState(C, size_t N, size_t P, size_t Mf, size_t Mp, b
 }
 
 
-final class PowerState(C, size_t N, size_t P, ubyte filterSpec)
+final class PowerState(C, size_t N, size_t P, ubyte filterSpec = 0)
 {
     private
     {
