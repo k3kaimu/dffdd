@@ -73,27 +73,27 @@ void main(string[] args)
 }
 
 
-//void readRawComplex(File file, cfloat[] buf, Complex!float[] output)
-//{
-//    enforce(file.rawRead(buf).length == buf.length);
-//    buf.copyToComplexArray(output);
-//}
+void readRawComplex(File file, cfloat[] buf, Complex!float[] output)
+{
+    enforce(file.rawRead(buf).length == buf.length);
+    buf.copyToComplexArray(output);
+}
 
 
-//void readRawComplexHalf(File file, cfloat[] buf, Complex!float[] output)
-//{
-//    output[0 .. $/2] = output[$/2 .. $];
-//    readRawComplex(file, buf[$/2 .. $], output[$/2 .. $]);
-//}
+void readRawComplexHalf(File file, cfloat[] buf, Complex!float[] output)
+{
+    output[0 .. $/2] = output[$/2 .. $];
+    readRawComplex(file, buf[$/2 .. $], output[$/2 .. $]);
+}
 
 
-//void copyToComplexArray(in cfloat[] input, Complex!float[] output)
-//in{
-//    assert(input.length <= output.length);
-//}
-//body{
-//    foreach(i, e; input) output[i] = complex!float(e.re, e.im);
-//}
+void copyToComplexArray(in cfloat[] input, Complex!float[] output)
+in{
+    assert(input.length <= output.length);
+}
+body{
+    foreach(i, e; input) output[i] = complex!float(e.re, e.im);
+}
 
 
 Nullable!size_t findConvolutionPeak(FftObj)(
