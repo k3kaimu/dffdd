@@ -20,6 +20,7 @@ import carbon.stream;
 import dffdd.filter.diagonal;
 import dffdd.filter.lms;
 import dffdd.filter.ls;
+import dffdd.filter.rls;
 import dffdd.filter.mempoly;
 import dffdd.filter.polynomial;
 import dffdd.utils.fft;
@@ -36,6 +37,7 @@ enum size_t blockSize = 1024;
 //enum bool withIQImbalance = false;
 
 //version = OutputSpectrum;
+//version = AdaptiveUseWPH;
 
 
 void main(string[] args)
@@ -53,7 +55,6 @@ void dfs(ref JSONValue root, string folder, ref JSONValue jv)
     {
         if(v.type != JSON_TYPE.OBJECT) continue;
         if("ignore" in v.object) continue;
-
 
         if("is_dir" in v.object)
             dfs(root, buildPath(folder, k), v);
@@ -79,6 +80,9 @@ void implMain(ref JSONValue root, string folder, string fnameId, ref JSONValue j
 
 void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t offset, size_t oversampling)
 {
+    if(!exists(sendFileName) || !exists(recvFileName))
+        return;
+
     File sendFile = File(sendFileName),
          recvFile = File(recvFileName);
 
@@ -87,13 +91,18 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
     else if(offset < 0)
         sendFile.seek(-offset * 8);
 
+    //sendFile.seek(1_000_000 * 8);
+    //recvFile.seek(1_000_000 * 8);
+
   version(AdaptiveUseWPH)
   {
     auto filter1 = {
-        auto state = new MemoryPolynomialState!(cfloat, 8, 2, 0, 0, false, true)(1);
+        auto state = new MemoryPolynomialState!(cfloat, 8, 4, 0, 0, false, true)(1);
 
-        auto adapter = new LMSAdapter!(typeof(state))(state, 0.175, 1024, 0.5);
-        //auto adapter = lsAdapter(state, 5000);
+        //writeln("Use");
+        //auto adapter = new LMSAdapter!(typeof(state))(state, 0.01, 1024, 0.5);
+        auto adapter = makeRLSAdapter(state, 0.999, 1E-7);
+        //auto adapter = lsAdapter(state, 8*20);
 
         return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
     }();
@@ -102,29 +111,73 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
   {
     auto filter1 = (){
         auto st1 = new PowerState!(cfloat, 8, 1, FilterOptions.usePower)(1),
-             st3 = new PowerState!(cfloat, 8, 3, FilterOptions.usePower)(1),
              st1c = new PowerState!(cfloat, 8, 1, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             st1a = new PowerState!(cfloat, 8, 1, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+             st3 = new PowerState!(cfloat, 8, 3, FilterOptions.usePower)(1),
              st3c = new PowerState!(cfloat, 8, 3, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st5 = new PowerState!(cfloat, 2, 5, FilterOptions.usePower)(1),
+             st3a = new PowerState!(cfloat, 8, 3, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+             st5 = new PowerState!(cfloat, 8, 5, FilterOptions.usePower)(1),
+             st5c = new PowerState!(cfloat, 8, 5, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             st5a = new PowerState!(cfloat, 8, 5, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+             st7 = new PowerState!(cfloat, 8, 7, FilterOptions.usePower)(1),
+             st7c = new PowerState!(cfloat, 8, 7, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             st7a = new PowerState!(cfloat, 8, 7, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+
+             st1_2 = new PowerState!(cfloat, 2, 1)(1),
+             st1c_2 = new PowerState!(cfloat, 2, 1, FilterOptions.useConjugate)(1),
+             st3_2 = new PowerState!(cfloat, 2, 3)(1),
+             st3c_2 = new PowerState!(cfloat, 2, 3, FilterOptions.useConjugate)(1),
+             //st3_2 = new PowerState!(cfloat, 2, 3, FilterOptions.withConjugate)(1),
+             //st5_2 = new PowerState!(cfloat, 2, 5, FilterOptions.withConjugate)(1),
+             //st7_2 = new PowerState!(cfloat, 2, 7, FilterOptions.withConjugate)(1),
+             //st1c = new PowerState!(cfloat, 8, 1, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st3c = new PowerState!(cfloat, 8, 3, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st5c = new PowerState!(cfloat, 8, 5, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st7c = new PowerState!(cfloat, 8, 7, FilterOptions.useConjugate | FilterOptions.usePower)(1),
              //st7 = new PowerState!(cfloat, 8, 7, FilterOptions.usePower)(1),
              bis = new BiasState!(cfloat)();
 
         return serialFilter(
+                st1_2,
+                makeRLSAdapter(st1_2, 0.98, 1E-7),
+                //st1c_2,
+                //makeRLSAdapter(st1c_2, 0.98, 1E-7),
+                //st3_2,
+                //makeRLSAdapter(st3_2, 0.999, 1E-7),
+                //st3c_2,
+                //makeRLSAdapter(st3c_2, 0.999, 1E-7),
                 st1,
-                //lsAdapter(st1, 5000),
-                lmsAdapter(st1, 0.175, 1024, 0.5),
+                //lsAdapter(st1, 400),
+                lmsAdapter(st1, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st1, 0.999, 1E-7),
                 st1c,
-                //lsAdapter(st1, 5000),
-                lmsAdapter(st1c, 0.175, 1024, 0.5),
+                //lsAdapter(st1c, 1000),
+                lmsAdapter(st1c, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st1c, 0.999, 1E-7),
                 st3,
-                //lsAdapter(st3, 5000),
-                lmsAdapter(st3, 0.175, 1024, 0.5),
+                //lsAdapter(st3, 400),
+                lmsAdapter(st3, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st3, 0.999, 1E-7),
                 st3c,
-                //lsAdapter(st3, 5000),
-                lmsAdapter(st3c, 0.175, 1024, 0.5),
-                //st5,
-                //lsAdapter(st5, 500),
-                //lmsAdapter(st5, 1E-2, 1024, 0.5),
+                //lsAdapter(st3c, 1000),
+                lmsAdapter(st3c, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st3c, 0.999, 1E-7),
+                st5,
+                //lsAdapter(st5, 1000),
+                lmsAdapter(st5, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st5, 0.999, 1E-7),
+                st5c,
+                //lsAdapter(st5c, 1000),
+                lmsAdapter(st5c, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st5c, 0.999, 1E-7),
+                st7,
+                //lsAdapter(st7, 1000),
+                lmsAdapter(st7, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st7, 0.999, 1E-7),
+                st7c,
+                //lsAdapter(st7c, 1000),
+                lmsAdapter(st7c, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st7c, 0.999, 1E-7),
                 //st7,
                 //lsAdapter(st7, 500),
                 //lmsAdapter(st7, 1E-1, 1024, 0.5),
@@ -150,14 +203,25 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
     Fft fftObj = new Fft(blockSize);
     auto startTime = Clock.currTime;
 
-    foreach(blockIdx; 0 .. 400)
+    File powerFile = File("errorout_long_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+
+    foreach(blockIdx; -400 .. 400)
     {
         auto sendGets = sendFile.rawRead(sendBuf);
         auto recvGets = recvFile.rawRead(recvBuf);
         assert(sendGets.length == sendBuf.length);
         assert(recvGets.length == recvBuf.length);
 
+        if(blockIdx < 0) continue;
+
         filter1.apply(sendGets, recvGets, outputBuf);
+
+        if(blockIdx == 300)
+        {
+            File outFile = File("signalout_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+            foreach(i; 0 .. blockSize)
+                outFile.writefln("%s,%s,%s,%s,%s,", i, sendGets[i].re, recvGets[i].re, recvGets[i].re - outputBuf[i].re, outputBuf[i].re);
+        }
 
         // fft
         {
@@ -169,6 +233,47 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
                 fftResultSIC[i] += (outputSpec[i].re^^2 + outputSpec[i].im^^2);
             }
             ++sumCNT;
+        }
+
+        if(blockIdx == 0)
+        {
+            File outFile = File("errorout_start_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+            foreach(i; 0 .. blockSize){
+                auto pr = recvGets[i].re^^2 + recvGets[i].im^^2,
+                     po = outputBuf[i].re^^2 + outputBuf[i].im^^2,
+                     c = 10*log10(po / pr);
+                outFile.writefln("%s,%s,%s,%s,", i, pr, po, c);
+            }
+        }
+        else if(blockIdx == 300)
+        {
+            real sumR = 0, sumO = 0;
+            File outFile = File("errorout_end_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+            foreach(i; 0 .. blockSize){
+                auto pr = recvGets[i].re^^2 + recvGets[i].im^^2,
+                     po = outputBuf[i].re^^2 + outputBuf[i].im^^2,
+                     c = 10*log10(po / pr);
+
+                sumR += pr;
+                sumO += po;
+                outFile.writefln("%s,%s,%s,%s,", i, pr, po, c);
+            }
+
+            writefln("%s, %s [dB]", sendFileName, 10*log10(sumO / sumR));
+        }
+        
+        {
+            real sumR = 0, sumO = 0;
+            foreach(i; 0 .. blockSize){
+                auto pr = recvGets[i].re^^2 + recvGets[i].im^^2,
+                     po = outputBuf[i].re^^2 + outputBuf[i].im^^2,
+                     c = 10*log10(po / pr);
+
+                sumR += pr;
+                sumO += po;
+            }
+
+            powerFile.writefln("%s,%s,%s,%s", blockIdx*blockSize, sumR, sumO, 10*log10(sumO / sumR));
         }
 
         if(blockIdx % 100 == 0){
@@ -196,7 +301,7 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
 
             if(blockIdx == 300)
             {
-                writefln("%s, %s, [dB]", sendFileName, 10*log10(sum / fcnt));
+                //writefln("%s, %s [dB]", sendFileName, 10*log10(sum / fcnt));
 
                 File outFile = File("fftout_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
 
@@ -212,7 +317,7 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
                 return;
             }
 
-            writefln("%s,[k samples/s],", (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
+            //writefln("%s [k samples/s],", (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
 
             foreach(i; 0 .. blockSize){
                 fftResultRecv[i] = 0;

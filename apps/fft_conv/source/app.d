@@ -47,6 +47,9 @@ void main(string[] args)
                     recvSpec = sendData.dup,
                     rsltData = sendData.dup;
 
+    sendFile.seek(1_000_000 * 8);
+    recvFile.seek(1_000_000 * 8);
+
     sendFile.seek(offset*8);
 
     sendFile.readRawComplex(readBuf, sendData);

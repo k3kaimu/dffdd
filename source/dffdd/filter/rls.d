@@ -14,7 +14,7 @@ final class RLSAdapter(State)
 
     enum size_t N = typeof(State.init.state).length;
     enum size_t P = typeof(State.init.state[0]).length;
-    static assert(P == 1);
+    //static assert(P == 1);
 
     alias C = typeof(State.init.state[0][0]);
     alias F = typeof(C.init.re);
@@ -30,10 +30,11 @@ final class RLSAdapter(State)
 
     void adapt(ref State state, C error)
     {
-        foreach_reverse(i; 1 .. N*P)
-            _u[i] = _u[i-1];
+        foreach_reverse(i; P .. N*P)
+            _u[i] = _u[i-P];
 
-        _u[0] = state.state[0][0];
+        foreach(i; 0 .. P)
+            _u[i] = state.state[0][i];
 
         auto u = _u.pref,
              uh = u.hermitian,
@@ -46,9 +47,16 @@ final class RLSAdapter(State)
         SMatrix!(C, N*P, 1) k = pu.pref / (1 + uhpu);
         p = p * _lambdaInv - k.pref * uhp.pref;
 
-        foreach(i; 0 .. N*P){
-            auto kc = k[i].conj;
-            state.weight[i][0] += kc * error;
+        //foreach(i; 0 .. N*P){
+        //    auto kc = k[i].conj;
+        //    state.weight[i][0] += kc * error;
+        //}
+        foreach(i; 0 .. N){
+            foreach(j; 0 .. P){
+                auto idx = i*P+j;
+                auto kc = k[idx].conj;
+                state.weight[i][j] += kc * error;
+            }
         }
     }
 
