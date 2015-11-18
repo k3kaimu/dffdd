@@ -41,7 +41,43 @@ void shiftBack(T)(T[] array) @trusted
 }
 
 
-final class MemoryPolynomialState(C, size_t N, size_t P, size_t Mf, size_t Mp, bool withDCBias = true, bool withIQImbalance = true, bool usePower = true)
+final class FIRFilter(C, size_t N, bool usePower = false)
+if(N > 0)
+{
+    C[1][N] state;
+    C[1][N] weight;
+    static if(usePower) typeof(C.re)[1] power;
+
+
+    this()
+    {
+        foreach(ref e; state) e = complexZero!C;
+        foreach(ref e; weight) e = complexZero!C;
+        static if(usePower) power[0] = 1;
+    }
+
+
+    void update(C x)
+    {
+        foreach_reverse(i; 1 .. N)
+            state[i] = state[i-1];
+
+        state[0] = x;
+        static if(usePower) power[0] = x.re ^^2 + x.im ^^ 2;
+    }
+
+
+    C error(C y)
+    {
+        foreach(i; 0 .. N)
+            y -= state[i][0] * weight[i][0];
+
+        return y;
+    }
+}
+
+
+final class MemoryPolynomialState(C, size_t N, size_t P, size_t Mf, size_t Mp, bool withDCBias = true, bool withIQImbalance = true, bool usePower = true, size_t startP = 0)
 {
     alias F = typeof(C.re);
 
@@ -114,7 +150,7 @@ final class MemoryPolynomialState(C, size_t N, size_t P, size_t Mf, size_t Mp, b
     {
         ymemory[0] = c;
         c = ymemory[Mf];
-        foreach(i; 0 .. state.length) foreach(j; 0 .. state[0].length){
+        foreach(i; 0 .. state.length) foreach(j; startP .. state[0].length){
             c -= state[i][j] * weight[i][j];
         }
 
@@ -197,6 +233,11 @@ final class PowerState(C, size_t N, size_t P, ubyte filterSpec = 0)
       {
         state[0][0] = c;
       }
+      else static if(P % 2 == 1)
+      {
+        auto sqc = c.re^^2 + c.im^^2;
+        state[0][0] = sqc^^(P/2) * c;
+      }
       else
       {
         auto cabs = c.abs();
@@ -252,7 +293,7 @@ final class PowerState(C, size_t N, size_t P, ubyte filterSpec = 0)
 }
 
 
-final class GeneralPowerState(C, size_t N, size_t P, size_t Mf = 0, size_t Mp = 0, ubyte filterSpec)
+final class GeneralPowerState(C, size_t N, size_t P, size_t Mf = 0, size_t Mp = 0, ubyte filterSpec = 0)
 if(P > 1)
 {
   private
@@ -288,7 +329,7 @@ if(P > 1)
         foreach(ref e; pmemory) e = 0;
         foreach(ref e; state) foreach(ref ee; e) ee = complexZero!C;
         foreach(ref e; weight) foreach(ref ee; e) ee = complexZero!C;
-        foreach(ref e; power) e = initP;
+        static if(usePower) foreach(ref e; power) e = initP;
     }
 
 
@@ -300,9 +341,9 @@ if(P > 1)
         state.shiftBack;
 
         xmemory[0] = c;
-        immutable cabs2 = c.re^^2 + c.im^^2;
+        immutable cabs = c.abs();
 
-        pmemory[0] = cabs2^^(P-1);
+        pmemory[0] = cabs^^(P-1);
 
         immutable xk = xmemory[Mf];
 
@@ -393,6 +434,51 @@ final class BiasState(C)
             dst[i] = rx[i] - bias;
     }
 }
+
+
+auto inputTransformer(alias f, State, T...)(State state, T args)
+{
+    return new InputTransformer!(State, f)(state, args);
+}
+
+
+final class InputTransformer(S, alias f, T...)
+{
+    this(S state, T args)
+    {
+        sp = state;
+        this.args = args;
+    }
+
+
+    void update(C)(C c)
+    {
+        sp.update(f(c, args));
+    }
+
+
+    C error(C)(C c)
+    {
+        return sp.error(c);
+    }
+
+
+    void apply(C)(in C[] tx, in C[] rx, C[] dst)
+    {
+        foreach(ic, C c; tx)
+        {
+            this.update(c);
+            dst[ic] = this.error(rx[ic]);
+        }
+    }
+
+
+    S sp;
+    T args;
+
+    alias sp this;
+}
+
 
 __EOF__
 

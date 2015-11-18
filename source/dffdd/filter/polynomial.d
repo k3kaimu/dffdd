@@ -79,6 +79,9 @@ if(StateORAdapter.length % 2 == 0)
     alias States = GetStride2!(0);
     alias Adapters = GetStride2!(1);
 
+    static assert(States.length == StateORAdapter.length / 2);
+    static assert(Adapters.length == StateORAdapter.length / 2);
+
     States states;
     Adapters adapters;
 

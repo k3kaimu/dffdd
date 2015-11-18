@@ -27,7 +27,7 @@ import dffdd.utils.fft;
 
 //enum size_t Total = cast(size_t)sampFreq*2;
 //enum real sampFreq = 5e6;
-enum size_t blockSize = 1024;
+enum ptrdiff_t blockSize = 1024;
 
 //enum size_t N = 4;
 //enum size_t P = 3;
@@ -80,6 +80,9 @@ void implMain(ref JSONValue root, string folder, string fnameId, ref JSONValue j
 
 void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t offset, size_t oversampling)
 {
+    writeln(sendFileName);
+    writeln(recvFileName);
+
     if(!exists(sendFileName) || !exists(recvFileName))
         return;
 
@@ -94,14 +97,15 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
     //sendFile.seek(1_000_000 * 8);
     //recvFile.seek(1_000_000 * 8);
 
+
   version(AdaptiveUseWPH)
   {
     auto filter1 = {
         auto state = new MemoryPolynomialState!(cfloat, 8, 4, 0, 0, false, true)(1);
 
         //writeln("Use");
-        //auto adapter = new LMSAdapter!(typeof(state))(state, 0.01, 1024, 0.5);
-        auto adapter = makeRLSAdapter(state, 0.999, 1E-7);
+        //auto adapter = new LMSAdapter!(typeof(state))(state, 0.0068, 1024, 0.5);
+        //auto adapter = makeRLSAdapter(state, 0.998, 1E-7);
         //auto adapter = lsAdapter(state, 8*20);
 
         return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
@@ -110,79 +114,100 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
   else
   {
     auto filter1 = (){
-        auto st1 = new PowerState!(cfloat, 8, 1, FilterOptions.usePower)(1),
-             st1c = new PowerState!(cfloat, 8, 1, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             st1a = new PowerState!(cfloat, 8, 1, FilterOptions.withConjugate | FilterOptions.usePower)(1),
-             st3 = new PowerState!(cfloat, 8, 3, FilterOptions.usePower)(1),
-             st3c = new PowerState!(cfloat, 8, 3, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             st3a = new PowerState!(cfloat, 8, 3, FilterOptions.withConjugate | FilterOptions.usePower)(1),
-             st5 = new PowerState!(cfloat, 8, 5, FilterOptions.usePower)(1),
-             st5c = new PowerState!(cfloat, 8, 5, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             st5a = new PowerState!(cfloat, 8, 5, FilterOptions.withConjugate | FilterOptions.usePower)(1),
-             st7 = new PowerState!(cfloat, 8, 7, FilterOptions.usePower)(1),
-             st7c = new PowerState!(cfloat, 8, 7, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             st7a = new PowerState!(cfloat, 8, 7, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+        auto st1 = (new FIRFilter!(cfloat, 8, true)),
+             st1c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj),
+             //st1c = new HammersteinBranch!(cfloat, a => a.conj(), 2, FilterOptions.usePower)(1),
+             //st1a = new HammersteinBranch!(cfloat, a => a.conj(), 2, 1, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+             //st3 = new HammersteinBranch!(cfloat, a => a*(a.re^^2 + a.im^^2), 2, FilterOptions.usePower)(1),
+             st2a = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => (x.re^^2 + x.im^^2)+0i ),
+             st2b = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x^^2 ),
+             st3 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (x.re^^2 + x.im^^2)),
+             st3c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)),
+             st4a = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => (x.re^^2 + x.im^^2)^^2 + 0i),
+             //st4b = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => (x.re^^2 + x.im^^2)^^2 * x^^2),
+             //st3c = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)),
+             st5 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (x.re^^2 + x.im^^2)^^2),
+             st5c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^2),
+             //st6 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (a => a^^2*sqrt(a))(x.re^^2 + x.im^^2)),
+             //st5c = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^2),
+             st7 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (x.re^^2 + x.im^^2)^^3),
+             st7c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^3),
+             //st7c = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^3),
+             //st2 = new HammersteinBranch!(cfloat, 2, 2, 0, 0, FilterOptions.usePower)(1),
+             //st3c = new HammersteinBranch!(cfloat, 2, 3, 0, 0, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st3a = new HammersteinBranch!(cfloat, 2, 3, 0, 0, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+             //st5 = new HammersteinBranch!(cfloat, 2, 5, 0, 0, FilterOptions.usePower)(1),
+             //st5c = new HammersteinBranch!(cfloat, 2, 5, 0, 0, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st5a = new HammersteinBranch!(cfloat, 2, 5, 0, 0, FilterOptions.withConjugate | FilterOptions.usePower)(1),
+             //st7 = new HammersteinBranch!(cfloat, 2, 7, 0, 0, FilterOptions.usePower)(1),
+             //st7c = new HammersteinBranch!(cfloat, 2, 7, 0, 0, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st7a = new HammersteinBranch!(cfloat, 2, 7, 0, 0, FilterOptions.withConjugate | FilterOptions.usePower)(1),
 
-             st1_2 = new PowerState!(cfloat, 2, 1)(1),
-             st1c_2 = new PowerState!(cfloat, 2, 1, FilterOptions.useConjugate)(1),
-             st3_2 = new PowerState!(cfloat, 2, 3)(1),
-             st3c_2 = new PowerState!(cfloat, 2, 3, FilterOptions.useConjugate)(1),
-             //st3_2 = new PowerState!(cfloat, 2, 3, FilterOptions.withConjugate)(1),
-             //st5_2 = new PowerState!(cfloat, 2, 5, FilterOptions.withConjugate)(1),
-             //st7_2 = new PowerState!(cfloat, 2, 7, FilterOptions.withConjugate)(1),
-             //st1c = new PowerState!(cfloat, 8, 1, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st3c = new PowerState!(cfloat, 8, 3, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st5c = new PowerState!(cfloat, 8, 5, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st7c = new PowerState!(cfloat, 8, 7, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st7 = new PowerState!(cfloat, 8, 7, FilterOptions.usePower)(1),
+             st1_2 = (new FIRFilter!(cfloat, 2)),
+             //st1c_2 = new HammersteinBranch!(cfloat, 2, 1, FilterOptions.useConjugate)(1),
+             st3_2 = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x * x.conj),
+             //st3c_2 = new HammersteinBranch!(cfloat, 2, 3, 0, 0, FilterOptions.useConjugate)(1),
+             //st3_2 = new HammersteinBranch!(cfloat, 2, 3, FilterOptions.withConjugate)(1),
+             //st5_2 = new HammersteinBranch!(cfloat, 2, 5, FilterOptions.withConjugate)(1),
+             //st7_2 = new HammersteinBranch!(cfloat, 2, 7, FilterOptions.withConjugate)(1),
+             //st1c = new HammersteinBranch!(cfloat, 8, 1, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st3c = new HammersteinBranch!(cfloat, 8, 3, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st5c = new HammersteinBranch!(cfloat, 8, 5, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st7c = new HammersteinBranch!(cfloat, 8, 7, FilterOptions.useConjugate | FilterOptions.usePower)(1),
+             //st7 = new HammersteinBranch!(cfloat, 8, 7, FilterOptions.usePower)(1),
              bis = new BiasState!(cfloat)();
 
         return serialFilter(
-                st1_2,
-                makeRLSAdapter(st1_2, 0.98, 1E-7),
+                //st1_2,
+                //makeRLSAdapter(st1_2, 0.92, 1E-7),
                 //st1c_2,
                 //makeRLSAdapter(st1c_2, 0.98, 1E-7),
                 //st3_2,
-                //makeRLSAdapter(st3_2, 0.999, 1E-7),
+                //makeRLSAdapter(st3_2, 0.92, 1E-7),
                 //st3c_2,
                 //makeRLSAdapter(st3c_2, 0.999, 1E-7),
                 st1,
                 //lsAdapter(st1, 400),
-                lmsAdapter(st1, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st1, 0.999, 1E-7),
+                lmsAdapter(st1, 0.010, 1024, 0.5),
+                //makeRLSAdapter(st1, 0.9997, 1E-7),
                 st1c,
                 //lsAdapter(st1c, 1000),
-                lmsAdapter(st1c, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st1c, 0.999, 1E-7),
+                lmsAdapter(st1c, 0.010, 1024, 0.5),
                 st3,
                 //lsAdapter(st3, 400),
-                lmsAdapter(st3, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st3, 0.999, 1E-7),
+                lmsAdapter(st3, 0.010, 1024, 0.5),
+                //makeRLSAdapter(st3, 0.9997, 1E-7),
                 st3c,
                 //lsAdapter(st3c, 1000),
-                lmsAdapter(st3c, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st3c, 0.999, 1E-7),
+                lmsAdapter(st3c, 0.010, 1024, 0.5),
+                //makeRLSAdapter(st3c, 0.9997, 1E-7),
+                //st4a,
+                //lmsAdapter(st4a, 0.010, 1024, 0.5),
                 st5,
                 //lsAdapter(st5, 1000),
-                lmsAdapter(st5, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st5, 0.999, 1E-7),
+                lmsAdapter(st5, 0.010, 1024, 0.5),
+                //makeRLSAdapter(st5, 0.9997, 1E-7),
                 st5c,
                 //lsAdapter(st5c, 1000),
-                lmsAdapter(st5c, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st5c, 0.999, 1E-7),
+                lmsAdapter(st5c, 0.010, 1024, 0.5),
+                //makeRLSAdapter(st5c, 0.9997, 1E-7),
                 st7,
                 //lsAdapter(st7, 1000),
-                lmsAdapter(st7, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st7, 0.999, 1E-7),
+                lmsAdapter(st7, 0.010, 1024, 0.5),
+                //makeRLSAdapter(st7, 0.9997, 1E-7),
                 st7c,
                 //lsAdapter(st7c, 1000),
-                lmsAdapter(st7c, 0.0085, 1024, 0.5),
-                //makeRLSAdapter(st7c, 0.999, 1E-7),
-                //st7,
-                //lsAdapter(st7, 500),
-                //lmsAdapter(st7, 1E-1, 1024, 0.5),
-                //bis,
-                //lmsAdapter(bis, 1E-2, 1024, 0.5),
+                lmsAdapter(st7c, 0.010, 1024, 0.5),
+                //makeRLSAdapter(st7c, 0.9997, 1E-7),
+                //st5,
+                //lmsAdapter(st5, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st5, 1, 1E-7),
+                //st3,
+                //lmsAdapter(st3, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st3, 1, 1E-7),
+                //st1,
+                //lmsAdapter(st1, 0.0085, 1024, 0.5),
+                //makeRLSAdapter(st1, 1, 1E-7),
                 );
     }();
   }
@@ -190,7 +215,9 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
     cfloat[] sendBuf = new cfloat[blockSize],
              recvBuf = new cfloat[blockSize],
              intermBuf = new cfloat[blockSize],
-             outputBuf = new cfloat[blockSize];
+             outputBuf = new cfloat[blockSize],
+             interBuf1 = new cfloat[blockSize],
+             interBuf2 = new cfloat[blockSize];
 
     double[] fftResultRecv = new double[blockSize],
              fftResultSIC = new double[blockSize];
@@ -205,7 +232,7 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
 
     File powerFile = File("errorout_long_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
 
-    foreach(blockIdx; -400 .. 400)
+    foreach(blockIdx; -400*1024/blockSize .. 400*1024/blockSize)
     {
         auto sendGets = sendFile.rawRead(sendBuf);
         auto recvGets = recvFile.rawRead(recvBuf);
@@ -214,9 +241,13 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
 
         if(blockIdx < 0) continue;
 
+        writeln(blockIdx);
+        //filter7.apply(sendGets, recvGets, interBuf1);
+        //filter5.apply(sendGets, interBuf1, interBuf2);
+        //filter3.apply(sendGets, interBuf2, interBuf1);
         filter1.apply(sendGets, recvGets, outputBuf);
 
-        if(blockIdx == 300)
+        if(blockIdx == 300*1024/blockSize)
         {
             File outFile = File("signalout_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
             foreach(i; 0 .. blockSize)
@@ -245,7 +276,7 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
                 outFile.writefln("%s,%s,%s,%s,", i, pr, po, c);
             }
         }
-        else if(blockIdx == 300)
+        else if(blockIdx == 300*1024/blockSize)
         {
             real sumR = 0, sumO = 0;
             File outFile = File("errorout_end_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
@@ -276,7 +307,7 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
             powerFile.writefln("%s,%s,%s,%s", blockIdx*blockSize, sumR, sumO, 10*log10(sumO / sumR));
         }
 
-        if(blockIdx % 100 == 0){
+        if(blockIdx % (100*1024/blockSize) == 0){
             real sum = 0; size_t fcnt;
             foreach(i; 0 .. blockSize)
             {
@@ -299,7 +330,7 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
                 }
             }
 
-            if(blockIdx == 300)
+            if(blockIdx == 300*1024/blockSize)
             {
                 //writefln("%s, %s [dB]", sendFileName, 10*log10(sum / fcnt));
 
