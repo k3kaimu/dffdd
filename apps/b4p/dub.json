@@ -1,0 +1,13 @@
+{
+    "name": "b4p",
+    "authors": [
+        "Kazuki Komatsu"
+    ],
+    "dependencies": {
+        "dffdd" : { "path": "../../" }
+    },
+    "description": "simulator",
+    "copyright": "Copyright © 2016, Kazuki Komatsu",
+    "license": "NYSL",
+    "buildOptions": ["ignoreDeprecations"]
+}
