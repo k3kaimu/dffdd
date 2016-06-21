@@ -68,7 +68,7 @@ unittest
     FrequencyDomain!(Complex!float)[] carr;
     foreach(i; 0 .. 10) carr ~= complex!float(i, 0).frequencyDomain;
 
-    auto carr2 = carr.convAuto!(Complex!float[]);
+    auto carr2 = carr.convAuto!(Complex!float);
     foreach(i; 0 .. 10){
         assert(approxEqual(carr[i].re, carr2[i].re));
         assert(approxEqual(carr[i].im, carr2[i].im));

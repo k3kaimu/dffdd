@@ -205,3 +205,52 @@ unittest{
     oct2bin("FFFE", result[0 .. 11], 0, 0);
     assert(result, cast(byte[])[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1]);
 }
+
+
+
+/**
+渡されたビット列を表すレンジの要素を，nbitまとめたレンジを返します．
+packBinaryDigitsとtoBinaryDigitsは互いに逆関数の関係にあります．
+*/
+auto packBinaryDigits(I, bool fromLSB = true, R)(R rng, size_t nDigits)
+if(isInputRange!R && isIntegral!I && is(Unqual!(ElementType!R) == bool))
+in{
+    assert(nDigits <= I.sizeof * 8);
+}
+body{
+    static struct BinaryDigitsPacker()
+    {
+        I front() const { return _front; }
+
+
+        void popFront()
+        {
+            _front = 0;
+            foreach(i; 0 .. _nDigs){
+                if(_rng.empty){
+                    _empty = true;
+                    return;
+                }
+
+                if(_rng.front)
+                    _front += 1 << i;
+
+                _rng.popFront();
+            }
+        }
+
+
+        bool empty() const @property { return _empty; }
+
+
+      private:
+        R _rng;
+        I _front;
+        size_t _nDigs;
+        bool _empty;
+    }
+
+
+    return BinaryDigitsPacker!()(rng, 0, nDigits, false);
+}
+
