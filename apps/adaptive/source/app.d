@@ -14,6 +14,7 @@ import std.string;
 import std.json;
 import std.file;
 import std.exception;
+import std.typetuple;
 
 import carbon.stream;
 
@@ -24,6 +25,8 @@ import dffdd.filter.rls;
 import dffdd.filter.mempoly;
 import dffdd.filter.polynomial;
 import dffdd.utils.fft;
+import dffdd.filter.orthogonalize;
+import dffdd.utils.jsvisitor;
 
 //enum size_t Total = cast(size_t)sampFreq*2;
 //enum real sampFreq = 5e6;
@@ -38,56 +41,62 @@ enum ptrdiff_t blockSize = 1024;
 
 //version = OutputSpectrum;
 //version = AdaptiveUseWPH;
+//version = OutputCancelledSignal;
+
+alias BasisFunctions = TypeTuple!(x => x,
+                                  x => x.conj,
+                                  x => x * (x.re^^2 + x.im^^2),
+                                  x => x.conj * (x.re^^2 + x.im^^2),
+                                  x => x * (x.re^^2 + x.im^^2)^^2,
+                                  x => x.conj * (x.re^^2 + x.im^^2)^^2,
+                                  x => x * (x.re^^2 + x.im^^2)^^4,
+                                  x => x.conj * (x.re^^2 + x.im^^2)^^4,
+                                  );
 
 
 void main(string[] args)
 {
-    JSONValue jv = readText(args[1]).parseJSON();
-    dfs(jv, jv["prefix"].str, jv);
-}
-
-
-void dfs(ref JSONValue root, string folder, ref JSONValue jv)
-{
-    enforce(jv.type == JSON_TYPE.OBJECT);
-
-    foreach(k, ref v; jv.object)
+    static struct Visitor
     {
-        if(v.type != JSON_TYPE.OBJECT) continue;
-        if("ignore" in v.object) continue;
+        string resultDir;
 
-        if("is_dir" in v.object)
-            dfs(root, buildPath(folder, k), v);
-        else
-            implMain(root, folder, k, v);
+
+        Visitor onDirectory(VisitorData data)
+        {
+            return this;
+        }
+
+
+        void onFile(VisitorData data)
+        {
+            auto dir = this.resultDir.buildPath(buildPath(data.parentKeys));
+            impl(dir, data.txFileName, data.rxFileName, data.samplingFreq, data.offsetTX, data.oversampling, data.parentKeys.length);
+        }
     }
 
-    return;
+    Visitor v;
+    v.resultDir = expandTilde("~/exp_result").buildPath((x => [x[2][2..$],x[0],x[1],x[3],x[4],x[5]].join("_"))((x => x.filter!"a.length".array)(__DATE__.split(" ") ~ __TIME__.split(":"))));
+
+    auto rootJSON = args[1].readText().parseJSON();
+    visitJSON(rootJSON, v);
 }
 
 
-void implMain(ref JSONValue root, string folder, string fnameId, ref JSONValue jv)
+void impl(string resultDir, string sendFileName, string recvFileName, real sampFreq, ptrdiff_t offset, size_t oversampling, size_t depth)
 {
-    immutable string sendFileNamePrefix = root["send_fn_prefix"].str,
-                     recvFileNamePrefix = root["recv_fn_prefix"].str,
-                     dataFileNameExt = root["data_fn_ext"].str,
-                     sendFileName = buildPath(folder, sendFileNamePrefix ~ fnameId ~ dataFileNameExt),
-                     recvFileName = buildPath(folder, recvFileNamePrefix ~ fnameId ~ dataFileNameExt);
-
-    impl(sendFileName, recvFileName, jv["fs"].floating, cast(ptrdiff_t)jv["offset"].integer, cast(size_t)jv["oversampling"].integer);
-}
-
-
-void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t offset, size_t oversampling)
-{
-    writeln(sendFileName);
-    writeln(recvFileName);
-
+    //writeln(sendFileName);
+    //writeln(recvFileName);
     if(!exists(sendFileName) || !exists(recvFileName))
         return;
 
+    mkdirRecurse(resultDir);
+
     File sendFile = File(sendFileName),
          recvFile = File(recvFileName);
+
+    // offsetのところで相関ピークだけど，一個後ろのサンプルにも相関値がいくらかあるはず．
+    offset -= 1;    // txからみて-1, rxからみて+1
+    //offset += 1;
 
     if(offset > 0)
         recvFile.seek(offset * 8);
@@ -104,8 +113,8 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
         auto state = new MemoryPolynomialState!(cfloat, 8, 4, 0, 0, false, true)(1);
 
         //writeln("Use");
-        //auto adapter = new LMSAdapter!(typeof(state))(state, 0.0068, 1024, 0.5);
-        //auto adapter = makeRLSAdapter(state, 0.998, 1E-7);
+        //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
+        auto adapter = makeRLSAdapter(state, 1, 1E-7);
         //auto adapter = lsAdapter(state, 8*20);
 
         return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
@@ -113,53 +122,67 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
   }
   else
   {
-    auto filter1 = (){
-        auto st1 = (new FIRFilter!(cfloat, 8, true)),
-             st1c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj),
-             //st1c = new HammersteinBranch!(cfloat, a => a.conj(), 2, FilterOptions.usePower)(1),
-             //st1a = new HammersteinBranch!(cfloat, a => a.conj(), 2, 1, FilterOptions.withConjugate | FilterOptions.usePower)(1),
-             //st3 = new HammersteinBranch!(cfloat, a => a*(a.re^^2 + a.im^^2), 2, FilterOptions.usePower)(1),
-             st2a = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => (x.re^^2 + x.im^^2)+0i ),
-             st2b = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x^^2 ),
-             st3 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (x.re^^2 + x.im^^2)),
-             st3c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)),
-             st4a = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => (x.re^^2 + x.im^^2)^^2 + 0i),
-             //st4b = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => (x.re^^2 + x.im^^2)^^2 * x^^2),
-             //st3c = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)),
-             st5 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (x.re^^2 + x.im^^2)^^2),
-             st5c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^2),
-             //st6 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (a => a^^2*sqrt(a))(x.re^^2 + x.im^^2)),
-             //st5c = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^2),
-             st7 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x * (x.re^^2 + x.im^^2)^^3),
-             st7c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^3),
-             //st7c = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x.conj * (x.re^^2 + x.im^^2)^^3),
-             //st2 = new HammersteinBranch!(cfloat, 2, 2, 0, 0, FilterOptions.usePower)(1),
-             //st3c = new HammersteinBranch!(cfloat, 2, 3, 0, 0, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st3a = new HammersteinBranch!(cfloat, 2, 3, 0, 0, FilterOptions.withConjugate | FilterOptions.usePower)(1),
-             //st5 = new HammersteinBranch!(cfloat, 2, 5, 0, 0, FilterOptions.usePower)(1),
-             //st5c = new HammersteinBranch!(cfloat, 2, 5, 0, 0, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st5a = new HammersteinBranch!(cfloat, 2, 5, 0, 0, FilterOptions.withConjugate | FilterOptions.usePower)(1),
-             //st7 = new HammersteinBranch!(cfloat, 2, 7, 0, 0, FilterOptions.usePower)(1),
-             //st7c = new HammersteinBranch!(cfloat, 2, 7, 0, 0, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st7a = new HammersteinBranch!(cfloat, 2, 7, 0, 0, FilterOptions.withConjugate | FilterOptions.usePower)(1),
 
-             st1_2 = (new FIRFilter!(cfloat, 2)),
-             //st1c_2 = new HammersteinBranch!(cfloat, 2, 1, FilterOptions.useConjugate)(1),
-             st3_2 = (new FIRFilter!(cfloat, 2)).inputTransformer!(x => x * x.conj),
-             //st3c_2 = new HammersteinBranch!(cfloat, 2, 3, 0, 0, FilterOptions.useConjugate)(1),
-             //st3_2 = new HammersteinBranch!(cfloat, 2, 3, FilterOptions.withConjugate)(1),
-             //st5_2 = new HammersteinBranch!(cfloat, 2, 5, FilterOptions.withConjugate)(1),
-             //st7_2 = new HammersteinBranch!(cfloat, 2, 7, FilterOptions.withConjugate)(1),
-             //st1c = new HammersteinBranch!(cfloat, 8, 1, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st3c = new HammersteinBranch!(cfloat, 8, 3, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st5c = new HammersteinBranch!(cfloat, 8, 5, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st7c = new HammersteinBranch!(cfloat, 8, 7, FilterOptions.useConjugate | FilterOptions.usePower)(1),
-             //st7 = new HammersteinBranch!(cfloat, 8, 7, FilterOptions.usePower)(1),
-             bis = new BiasState!(cfloat)();
+  //version(AdaptiveUseWPH)
+    //enum filterName = "parallelFilter";
+  //else
+    //enum filterName = "serialFilter";
+
+
+    auto orthogonalizer = new GramSchmidtOBFFactory!(cfloat, BasisFunctions)();
+
+    {
+        orthogonalizer.start();
+        File sendFile2 = File(sendFileName);
+        sendFile2.seek(1024*8*100);
+        scope(exit)
+            orthogonalizer.finish();
+
+        cfloat[] buf = new cfloat[1024];
+
+        foreach(i; -400 .. 400){
+            ptrdiff_t n = sendFile2.rawRead(buf).length;
+            if(i < 0) continue;
+
+            orthogonalizer.put(buf[0 .. n]);
+        }
+    }
+
+    cfloat[][BasisFunctions.length] coefs;
+    foreach(i, ref e; coefs){
+        e = new cfloat[BasisFunctions.length];
+        orthogonalizer.getCoefs(i, e);
+        //foreach(j, ref ee; e){
+        //    if(i == j) ee = 1+0i;
+        //    else ee = 0+0i;
+        //}
+    }
+
+    //writeln(coefs);
+    //if(coefs[0]) return;
+    //coefs[0][0] = 1+0i;
+    //writeln(coefs[0]);
+
+    auto filter1 = (){
+        auto st1 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[0].dup);
+        auto st12 = (new FIRFilter!(cfloat, 3, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[0].dup);
+        auto st1c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[1].dup);
+        //auto st2 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
+        auto st3 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
+        //auto st32 = (new FIRFilter!(cfloat, 3, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
+        auto st3c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[3].dup);
+        auto st5 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[4].dup);
+        auto st5c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[5].dup);
+        auto st7 = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[6].dup);
+        auto st7c = (new FIRFilter!(cfloat, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[7].dup);
+        //auto st5 = (new FIRFilter!(cfloat, 16, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[4].dup);
+        //auto st7 = (new FIRFilter!(cfloat, 16, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[5].dup);
 
         return serialFilter(
-                //st1_2,
-                //makeRLSAdapter(st1_2, 0.92, 1E-7),
+                //st12,
+                //makeRLSAdapter(st12, 0.98, 1E-7),
+                //st32,
+                //makeRLSAdapter(st32, 0.98, 1E-7),
                 //st1c_2,
                 //makeRLSAdapter(st1c_2, 0.98, 1E-7),
                 //st3_2,
@@ -167,46 +190,59 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
                 //st3c_2,
                 //makeRLSAdapter(st3c_2, 0.999, 1E-7),
                 st1,
-                //lsAdapter(st1, 400),
-                lmsAdapter(st1, 0.010, 1024, 0.5),
-                //makeRLSAdapter(st1, 0.9997, 1E-7),
+                //lsAdapter(st1, 50000),
+                lmsAdapter(st1, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st1, 0.99, 1E-7),
                 st1c,
                 //lsAdapter(st1c, 1000),
-                lmsAdapter(st1c, 0.010, 1024, 0.5),
+                lmsAdapter(st1c, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st1c, 1 - 1E-4, 1E-7),
+                //st2,
+                //lsAdapter(st2, 5000),
+                //lmsAdapter(st2, 0.002, 1024, 0.5),
+                //makeRLSAdapter(st2, /*0.9997*/1, 1E-7),
                 st3,
-                //lsAdapter(st3, 400),
-                lmsAdapter(st3, 0.010, 1024, 0.5),
-                //makeRLSAdapter(st3, 0.9997, 1E-7),
+                //lsAdapter(st3, 50000),
+                lmsAdapter(st3, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st3, 1 - 1E-4, 1E-7),
                 st3c,
                 //lsAdapter(st3c, 1000),
-                lmsAdapter(st3c, 0.010, 1024, 0.5),
-                //makeRLSAdapter(st3c, 0.9997, 1E-7),
+                lmsAdapter(st3c, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st3c, 1 - 1E-4, 1E-7),
+                //st4,
+                //lsAdapter(st4, 5000),
+                //lmsAdapter(st4, 0.002, 1024, 0.5),
+                //makeRLSAdapter(st4, /*0.9997*/1, 1E-7),
                 //st4a,
-                //lmsAdapter(st4a, 0.010, 1024, 0.5),
+                //lmsAdapter(st4a, 0.0005, 1024, 0.5),
                 st5,
-                //lsAdapter(st5, 1000),
-                lmsAdapter(st5, 0.010, 1024, 0.5),
-                //makeRLSAdapter(st5, 0.9997, 1E-7),
+                //lsAdapter(st5, 5000),
+                lmsAdapter(st5, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st5, 1 - 1E-4, 1E-7),
                 st5c,
                 //lsAdapter(st5c, 1000),
-                lmsAdapter(st5c, 0.010, 1024, 0.5),
-                //makeRLSAdapter(st5c, 0.9997, 1E-7),
+                lmsAdapter(st5c, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st5c, 1 - 1E-4, 1E-7),
                 st7,
-                //lsAdapter(st7, 1000),
-                lmsAdapter(st7, 0.010, 1024, 0.5),
+                //lsAdapter(st7, 5000),
+                lmsAdapter(st7, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st7, 1 - 1E-6, 1E-7),
+                //st12,
+                //lsAdapter(st1, 5000),
+                //lmsAdapter(st12, 0.010, 1024, 0.5),
                 //makeRLSAdapter(st7, 0.9997, 1E-7),
                 st7c,
                 //lsAdapter(st7c, 1000),
-                lmsAdapter(st7c, 0.010, 1024, 0.5),
-                //makeRLSAdapter(st7c, 0.9997, 1E-7),
+                lmsAdapter(st7c, 0.001, 1024, 0.5),
+                //makeRLSAdapter(st7c, 1 - 1E-6, 1E-7),
                 //st5,
                 //lmsAdapter(st5, 0.0085, 1024, 0.5),
                 //makeRLSAdapter(st5, 1, 1E-7),
                 //st3,
-                //lmsAdapter(st3, 0.0085, 1024, 0.5),
+                //lmsAdapter(st3, 0.01, 1024, 0.5),
                 //makeRLSAdapter(st3, 1, 1E-7),
                 //st1,
-                //lmsAdapter(st1, 0.0085, 1024, 0.5),
+                //lmsAdapter(st1, 0.01, 1024, 0.5),
                 //makeRLSAdapter(st1, 1, 1E-7),
                 );
     }();
@@ -220,7 +256,8 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
              interBuf2 = new cfloat[blockSize];
 
     double[] fftResultRecv = new double[blockSize],
-             fftResultSIC = new double[blockSize];
+             fftResultSIC = new double[blockSize],
+             fftResultFilterOutput = new double[blockSize];
 
     fftResultRecv[] = 0;
     fftResultSIC[] = 0;
@@ -230,26 +267,53 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
     Fft fftObj = new Fft(blockSize);
     auto startTime = Clock.currTime;
 
-    File powerFile = File("errorout_long_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+    //immutable string fileSuffix = format("%-(%s_%)", sendFileName.stripExtension.pathSplitter.array[$ >= depth ? $-depth : 0 .. $]);
 
-    foreach(blockIdx; -400*1024/blockSize .. 400*1024/blockSize)
+    File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
+    version(OutputCancelledSignal) File cancelledFile = File(buildPath(resultDir, "cancelled_signal.dat"), "w");
+
+  version(OutputCancelledSignal)
+  {
+    immutable ptrdiff_t startIdx = -400*1024/blockSize,
+                        endIdx = ptrdiff_t.max,
+                        learningEndIdx = 400*1024/blockSize;
+  }
+  else
+  {
+    immutable ptrdiff_t startIdx = -400*1024/blockSize,
+                        endIdx = 400*1024/blockSize,
+                        learningEndIdx = 400*1024/blockSize;
+  }
+
+    foreach(blockIdx; startIdx .. endIdx)
     {
         auto sendGets = sendFile.rawRead(sendBuf);
         auto recvGets = recvFile.rawRead(recvBuf);
-        assert(sendGets.length == sendBuf.length);
-        assert(recvGets.length == recvBuf.length);
+        //enforce(sendGets.length == sendBuf.length);
+        if(sendGets.length != sendBuf.length) return; // end
+        //enforce(recvGets.length == recvBuf.length);
+        if(recvGets.length != recvBuf.length) return; // end
 
         if(blockIdx < 0) continue;
 
-        writeln(blockIdx);
+      version(OutputCancelledSignal)
+      {
+        if(blockIdx % (100*1024/blockSize) == 0)
+            writefln("idx=%s, %s [k samples/s],", blockIdx, (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
+      }
+
+        //writeln(blockIdx);
         //filter7.apply(sendGets, recvGets, interBuf1);
         //filter5.apply(sendGets, interBuf1, interBuf2);
         //filter3.apply(sendGets, interBuf2, interBuf1);
-        filter1.apply(sendGets, recvGets, outputBuf);
+        if(blockIdx < learningEndIdx)
+          filter1.apply!true(sendGets, recvGets, outputBuf);
+        else
+          filter1.apply!false(sendGets, recvGets, outputBuf);
 
         if(blockIdx == 300*1024/blockSize)
         {
-            File outFile = File("signalout_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+            File outFile = File(buildPath(resultDir, "signalout.csv"), "w");
             foreach(i; 0 .. blockSize)
                 outFile.writefln("%s,%s,%s,%s,%s,", i, sendGets[i].re, recvGets[i].re, recvGets[i].re - outputBuf[i].re, outputBuf[i].re);
         }
@@ -259,256 +323,86 @@ void impl(string sendFileName, string recvFileName, real sampFreq, ptrdiff_t off
             auto outputSpec = fftObj.fftWithSwap(outputBuf);
             auto recvSpec = fftObj.fftWithSwap(recvGets);
 
+            real sumR = 0, sumO = 0;
             foreach(i; 0 .. blockSize){
-                fftResultRecv[i] += (recvSpec[i].re^^2 + recvSpec[i].im^^2);
-                fftResultSIC[i] += (outputSpec[i].re^^2 + outputSpec[i].im^^2);
+                immutable real pr = recvSpec[i].re^^2 + recvSpec[i].im^^2,
+                               po = outputSpec[i].re^^2 + outputSpec[i].im^^2;
+
+                fftResultRecv[i] += pr;
+                fftResultSIC[i] += po;
+                fftResultFilterOutput[i] += (x => x.re^^2 + x.im^^2)(recvSpec[i] - outputSpec[i]);
+                real freq = i*sampFreq/blockSize-(sampFreq/2);
+
+                if(abs(freq) <= (sampFreq / 2 / oversampling * 0.80)){
+                    if(abs(freq) >= (sampFreq / 64)){
+                        sumR += pr;
+                        sumO += po;
+                    }
+                }
             }
+
+            powerFile.writefln("%s,%s,%s,%s,", blockIdx*blockSize, sumR, sumO, 10*log10(sumO / sumR));
             ++sumCNT;
+        }
+
+        /*
+        波形出力の場合
+        */
+        version(OutputCancelledSignal){
+            // 400以上は波形出力したら終わる
+            if(blockIdx > 400*1024/blockSize){
+                cancelledFile.rawWrite(outputBuf);
+                continue;
+            }
         }
 
         if(blockIdx == 0)
         {
-            File outFile = File("errorout_start_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
+            File outFile = File(buildPath(resultDir, "errorout_start.csv"), "w");
             foreach(i; 0 .. blockSize){
+                if(i > 20000) break;
                 auto pr = recvGets[i].re^^2 + recvGets[i].im^^2,
                      po = outputBuf[i].re^^2 + outputBuf[i].im^^2,
-                     c = 10*log10(po / pr);
+                     c = -1*10*log10(po / pr);
+
                 outFile.writefln("%s,%s,%s,%s,", i, pr, po, c);
             }
-        }
-        else if(blockIdx == 300*1024/blockSize)
-        {
-            real sumR = 0, sumO = 0;
-            File outFile = File("errorout_end_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
-            foreach(i; 0 .. blockSize){
-                auto pr = recvGets[i].re^^2 + recvGets[i].im^^2,
-                     po = outputBuf[i].re^^2 + outputBuf[i].im^^2,
-                     c = 10*log10(po / pr);
-
-                sumR += pr;
-                sumO += po;
-                outFile.writefln("%s,%s,%s,%s,", i, pr, po, c);
-            }
-
-            writefln("%s, %s [dB]", sendFileName, 10*log10(sumO / sumR));
-        }
-        
-        {
-            real sumR = 0, sumO = 0;
-            foreach(i; 0 .. blockSize){
-                auto pr = recvGets[i].re^^2 + recvGets[i].im^^2,
-                     po = outputBuf[i].re^^2 + outputBuf[i].im^^2,
-                     c = 10*log10(po / pr);
-
-                sumR += pr;
-                sumO += po;
-            }
-
-            powerFile.writefln("%s,%s,%s,%s", blockIdx*blockSize, sumR, sumO, 10*log10(sumO / sumR));
         }
 
         if(blockIdx % (100*1024/blockSize) == 0){
-            real sum = 0; size_t fcnt;
-            foreach(i; 0 .. blockSize)
-            {
-                auto before = 10*log10(fftResultRecv[i] / sumCNT),
-                     after = 10*log10(fftResultSIC[i] / sumCNT);
-
-                real freq = i*sampFreq/blockSize-(sampFreq/2);
-                //if(abs(freq) < sampFreq / oversampling / 2 * 0.5){
-                //    sum += 10.0L ^^(-(before - after)/10);
-                //    ++fcnt;
-                //}
-                if(oversampling == 1 && abs(freq) < sampFreq / 2 * 0.25
-                                     && abs(freq) > sampFreq / 10)
-                {
-                    sum += 10.0L ^^(-(before - after)/10);
-                    ++fcnt;
-                }else if(abs(freq) < sampFreq / oversampling / 2 * 0.5){
-                    sum += 10.0L ^^(-(before - after)/10);
-                    ++fcnt;
-                }
-            }
-
             if(blockIdx == 300*1024/blockSize)
             {
-                //writefln("%s, %s [dB]", sendFileName, 10*log10(sum / fcnt));
+                File outFile = File(buildPath(resultDir, "fftout.csv"), "w");
 
-                File outFile = File("fftout_%-(%s_%).csv".format(sendFileName.pathSplitter().array()[1 .. $]), "w");
-
+                real sumR = 0, sumO = 0;
                 foreach(i; 0 .. blockSize)
                 {
-                    auto before = 10*log10(fftResultRecv[i] / sumCNT),
-                         after = 10*log10(fftResultSIC[i] / sumCNT);
+                    auto pr = fftResultRecv[i],
+                         po = fftResultSIC[i],
+                         before = 10*log10(fftResultRecv[i] / sumCNT),
+                         after = 10*log10(fftResultSIC[i] / sumCNT),
+                         filterOutput = 10*log10(fftResultFilterOutput[i] / sumCNT);
                     real freq = i*sampFreq/blockSize-(sampFreq/2);
 
-                    outFile.writefln("%s,%s,%s,%s,%s,%s,", blockIdx, i, freq, before, after, before - after);
+                    if(abs(freq) <= (sampFreq / 2 / oversampling * 0.80)){
+                        if(abs(freq) >= (sampFreq / 64)){
+                            sumR += pr;
+                            sumO += po;
+                        }
+                    }
+
+                    outFile.writefln("%s,%s,%s,%s,%s,%s,%s", blockIdx, i, freq, filterOutput, before, after, before - after);
                 }
 
-                return;
+                writefln("%s, %s [dB](%s / %s = %s)", sendFileName, 10*log10(sumO / sumR), sumR, sumO, sumR / sumO);
             }
-
-            //writefln("%s [k samples/s],", (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
 
             foreach(i; 0 .. blockSize){
                 fftResultRecv[i] = 0;
                 fftResultSIC[i] = 0;
+                fftResultFilterOutput[i] = 0;
             }
             sumCNT = 0;
         }
     }
 }
-
-
-/+
-void main(string[] args)
-{
-    string sendFilename, recvFilename, outFilename;
-    bool bSpeedMode = false, noOutput = false;
-    ptrdiff_t seekOffset;
-
-    getopt(args,
-        "sendData", &sendFilename,
-        "recvData", &recvFilename,
-        "outData", &outFilename,
-        "speedMode", &bSpeedMode,
-        "noOutput", &noOutput,
-        "offset", &seekOffset,
-    );
-
-    if(outFilename == null && !noOutput){
-        auto currTime = Clock.currTime;
-        outFilename = format("output_%s_%d_%d_%d_%d_%s_%s_%s.csv", sendFilename.baseName.stripExtension, N, P, Mb, Mc, withDCBias ? "t" : "f", withIQImbalance ? "t" : "f", currTime.toISOString());
-    }
-
-    File sendFile = File(sendFilename),
-         recvFile = File(recvFilename),
-         outFile/* = File(outFilename, "w")*/;
-
-    if(!noOutput)
-        outFile = File(outFilename, "w");
-
-    if(seekOffset > 0)
-        recvFile.seek(seekOffset * 8);
-    else if(seekOffset < 0)
-        sendFile.seek(-seekOffset * 8);
-
-    //auto filter1 = {
-    //    auto state = new MemoryPolynomialState!(cfloat, N, P, Mb, Mc, withDCBias, withIQImbalance)(1);
-
-    //    //auto adapter = new LSAdapter!(typeof(state))(500);
-    //    auto adapter = new LMSAdapter!(typeof(state))(state, 1E-2, 1024, 0.5);
-
-    //    return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
-    //}();
-    
-    auto st1 = new PowerState!(cfloat, 4, 1, true)(1),
-         st3 = new PowerState!(cfloat, 1024, 3, false)(1),
-         st5 = new PowerState!(cfloat, 1024, 5, true)(1),
-         st7 = new PowerState!(cfloat, 1024, 7, true)(1),
-         bis = new BiasState!(cfloat)()
-         ;
-
-    auto filter1 = serialFilter(
-                                st1,
-                                //lsAdapter(st1, 500),
-                                lmsAdapter(st1, 1E-2, 1024, 0.5),
-                                //st3,
-                                //lsAdapter(st3, 500),
-                                //lmsAdapter(st3, 1E-3, 1024, 0.5),
-                                //st5,
-                                //lsAdapter(st5, 500),
-                                //lmsAdapter(st5, 1E-3, 1024, 0.5),
-                                //st7,
-                                //lsAdapter(st7, 500),
-                                //lmsAdapter(st7, 1E-3, 1024, 0.5),
-                                bis,
-                                lmsAdapter(bis, 2E-3, 1024, 0.5),
-                                );
-
-    //pragma(msg, filter1.state.state.length * filter1.state.state[0].length);
-
-    cfloat[] sendBuf = new cfloat[blockSize],
-             recvBuf = new cfloat[blockSize],
-             intermBuf = new cfloat[blockSize],
-             outputBuf = new cfloat[blockSize];
-
-    double[] fftResultRecv = new double[blockSize],
-             fftResultSIC = new double[blockSize];
-
-    size_t sumCNT;
-
-    Fft fftObj = new Fft(blockSize);
-    auto startTime = Clock.currTime;
-
-
-    foreach(blockIdx; 0 .. Total)
-    {
-        auto sendGets = sendFile.rawRead(sendBuf);
-        auto recvGets = recvFile.rawRead(recvBuf);
-        assert(sendGets.length == sendBuf.length);
-        assert(recvGets.length == recvBuf.length);
-
-        filter1.apply(sendGets, recvGets, outputBuf);
-
-      version(OutputIteration)
-      {
-        real sum = 0;
-        foreach(i, e; outputBuf){
-            sum += e.abs()^^2/blockSize;
-            if((blockIdx*blockSize+i) % 10 == 0)
-                outFile.writefln("%s,%s,", (blockIdx*blockSize+i)/sampFreq, e.abs()^^2);
-        }
-        outFile.flush();
-
-        if(blockIdx >= 40) throw new Exception("");
-      }
-
-      version(OutputSpectrum)
-      {
-        // fft
-        if(!bSpeedMode){
-            auto outputSpec = fftObj.fftWithSwap(outputBuf);
-            auto recvSpec = fftObj.fftWithSwap(recvGets);
-
-            foreach(i; 0 .. blockSize){
-                fftResultRecv[i] += (recvSpec[i].re^^2 + recvSpec[i].im^^2);
-                fftResultSIC[i] += (outputSpec[i].re^^2 + outputSpec[i].im^^2);
-            }
-            ++sumCNT;
-        }
-
-        if(!bSpeedMode && blockIdx % 100 == 0){
-            real sum = 0; size_t fcnt;
-            foreach(i; 0 .. blockSize)
-            {
-                auto before = 10*log10(fftResultRecv[i] / sumCNT),
-                     after = 10*log10(fftResultSIC[i] / sumCNT);
-
-                real freq = i*sampFreq/blockSize-(sampFreq/2);
-                if(abs(freq) < 1500e3){
-                    sum += 10.0L ^^(-(before - after)/10);
-                    ++fcnt;
-                }
-
-                if(!noOutput)
-                    outFile.writefln("%s,%s,%s,%s,%s,%s,", blockIdx, i, freq, before, after, before - after);
-            }
-
-            writefln("%s,%s,[dB],%s,[k samples/s],", blockIdx, 10*log10(sum / fcnt), (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
-
-            if(!noOutput) outFile.flush();
-
-            foreach(i; 0 .. blockSize){
-                fftResultRecv[i] = 0;
-                fftResultSIC[i] = 0;
-            }
-            sumCNT = 0;
-        }else if(blockIdx % 1000 == 0)
-            writefln("%s,%s,[k samples/s],", blockIdx, (blockIdx+1) * blockSize / ((Clock.currTime - startTime).total!"msecs"() / 1000.0L) / 1000.0L);
-      }
-
-        stdout.flush();
-    }
-}
-+/
