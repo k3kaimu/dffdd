@@ -7,19 +7,21 @@ import std.algorithm;
 
 import dffdd.gps.code;
 
-enum GPSCode { L1CA, L2CM, L2CL, MIX }
+enum GPSCode { L1CA, L2CM, L2CL, /*MIX*/ }
 
 void main(string[] args)
 {
     GPSCode code = GPSCode.L1CA;
     uint prn = 1;
     string filename;
+    bool bWaveForm;
 
     auto opt = getopt(
         args,
-        "prn", &prn,
-        "code", &code,
-        "output", &filename
+        "prn", "PRN number", &prn,
+        "code", "L1CA or L2CM or L2CL or MIX(L1CA + L2CM + L2CL)", &code,
+        "output", "file name", &filename,
+        "waveform", &bWaveForm,
     );
 
     if(opt.helpWanted)
@@ -34,26 +36,26 @@ void main(string[] args)
     {
       case GPSCode.L1CA:
         auto sig = L1CACode.repeatStream(prn);
-        outputToFile(sig, filename, L1CACode.codeLength);
+        outputToFile(sig, filename, L1CACode.codeLength, bWaveForm);
         break;
 
       case GPSCode.L2CM:
         auto sig = L2CMCode.repeatStream(prn);
-        outputToFile(sig, filename, L2CMCode.codeLength);
+        outputToFile(sig, filename, L2CMCode.codeLength, bWaveForm);
         break;
 
       case GPSCode.L2CL:
         auto sig = L2CLCode.repeatStream(prn);
-        outputToFile(sig, filename, L2CLCode.codeLength);
+        outputToFile(sig, filename, L2CLCode.codeLength, bWaveForm);
         break;
 
-      case GPSCode.MIX:
-        outputMIXToFile(prn, filename, L2CLCode.codeLength*3);
+      //case GPSCode.MIX:
+      //  outputMIXToFile(prn, filename, L2CLCode.codeLength*3, bWaveForm);
     }
 }
 
 
-void outputToFile(S)(S signal, string filename, ptrdiff_t numSamples)
+void outputToFile(S)(S signal, string filename, ptrdiff_t numSamples, bool bWaveForm)
 {
     auto file = File(filename, "w");
     auto bits = new byte[1024*8];
@@ -62,44 +64,58 @@ void outputToFile(S)(S signal, string filename, ptrdiff_t numSamples)
     {
         auto res = signal.readOp!"a=(b==1?0:1)"(bits[0 .. min(numSamples*8, $)]);
         assert(res.length % 8 == 0);
-        immutable nbyte = res.length / 8;
-        assert(nbyte <= numSamples);
 
-        foreach(idx; 0 .. nbyte)
+        if(bWaveForm)
         {
-            auto i = idx * 8;
-            res[idx] = 0;
-            foreach(j; 0 .. 8)
-                res[idx] += res[i+j] << j;
+            cfloat[] buf = new cfloat[res.length];
+            foreach(i, ref e; buf)
+                e = res[i] == 0 ? 1+0i : -1+0i;
+
+            file.rawWrite(buf);
+            numSamples -= res.length;
         }
+        else
+        {
+            immutable nbyte = res.length / 8;
+            assert(nbyte <= numSamples);
 
-        file.rawWrite(res[0 .. nbyte]);
-        numSamples -= nbyte*8;
+            foreach(idx; 0 .. nbyte)
+            {
+                auto i = idx * 8;
+                res[idx] = 0;
+                foreach(j; 0 .. 8)
+                    res[idx] += res[i+j] << j;
+            }
+
+
+            file.rawWrite(res[0 .. nbyte]);
+            numSamples -= nbyte*8;
+        }
     }
 }
 
 
-void outputMIXToFile(uint prn, string filename, ptrdiff_t numSamples)
-{
-    auto file = File(filename, "w");
-    auto l1ca = L1CACode.repeatStream(prn);
-    auto l2cm = L2CMCode.repeatStream(prn);
-    auto l2cl = L2CLCode.repeatStream(prn);
+//void outputMIXToFile(uint prn, string filename, ptrdiff_t numSamples)
+//{
+//    auto file = File(filename, "w");
+//    auto l1ca = L1CACode.repeatStream(prn);
+//    auto l2cm = L2CMCode.repeatStream(prn);
+//    auto l2cl = L2CLCode.repeatStream(prn);
 
-    while(numSamples > 0)
-    {
-        ubyte[8][3] bits;
-        assert(l1ca.readOp!"a=(b==1?0:1)"(bits[0][]).length == 8);
-        assert(l2cm.readOp!"a=(b==1?0:1)"(bits[1][]).length == 8);
-        assert(l2cl.readOp!"a=(b==1?0:1)"(bits[2][]).length == 8);
+//    while(numSamples > 0)
+//    {
+//        ubyte[8][3] bits;
+//        assert(l1ca.readOp!"a=(b==1?0:1)"(bits[0][]).length == 8);
+//        assert(l2cm.readOp!"a=(b==1?0:1)"(bits[1][]).length == 8);
+//        assert(l2cl.readOp!"a=(b==1?0:1)"(bits[2][]).length == 8);
 
-        uint uint3;
-        foreach(i; 0 .. 3)
-            foreach(j; 0 .. 8)
-                uint3 += bits[i][j] << (i + j*3);
+//        uint uint3;
+//        foreach(i; 0 .. 3)
+//            foreach(j; 0 .. 8)
+//                uint3 += bits[i][j] << (i + j*3);
 
-        ubyte[] data = (cast(ubyte*)&uint3)[0 .. 3];
-        file.rawWrite(data);
-        numSamples -= 3*8;
-    }
-}
+//        ubyte[] data = (cast(ubyte*)&uint3)[0 .. 3];
+//        file.rawWrite(data);
+//        numSamples -= 3*8;
+//    }
+//}

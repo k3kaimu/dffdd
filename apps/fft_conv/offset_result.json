@@ -1,0 +1,260 @@
+{
+    "data_fn_ext": ".dat",
+    "description": "室内実験",
+    "exp1": {
+        "att30_2M": {
+            "OFDM_16QAM": {
+                "fs": 2e+06,
+                "offset": -1062,
+                "oversampling": 4
+            },
+            "is_dir": true
+        },
+        "is_dir": true
+    },
+    "exp2": {
+        "att30_2M": {
+            "0dB": {
+                "fs": 2e+06,
+                "offset": 18013,
+                "oversampling": 4
+            },
+            "10dB": {
+                "fs": 2e+06,
+                "offset": 524,
+                "oversampling": 4
+            },
+            "2dB": {
+                "fs": 2e+06,
+                "offset": 11402,
+                "oversampling": 4
+            },
+            "4dB": {
+                "fs": 2e+06,
+                "offset": 15992,
+                "oversampling": 4
+            },
+            "6dB": {
+                "fs": 2e+06,
+                "offset": 11132,
+                "oversampling": 4
+            },
+            "8dB": {
+                "fs": 2e+06,
+                "offset": 5788,
+                "oversampling": 4
+            },
+            "is_dir": true,
+            "m10dB": {
+                "fs": 2e+06,
+                "offset": 26180,
+                "oversampling": 4
+            },
+            "m2dB": {
+                "fs": 2e+06,
+                "offset": 6811,
+                "oversampling": 4
+            },
+            "m4dB": {
+                "fs": 2e+06,
+                "offset": 4992,
+                "oversampling": 4
+            },
+            "m6dB": {
+                "fs": 2e+06,
+                "offset": 10752,
+                "oversampling": 4
+            },
+            "m8dB": {
+                "fs": 2e+06,
+                "offset": -15151,
+                "oversampling": 4
+            }
+        },
+        "is_dir": true
+    },
+    "exp3": {
+        "att40_16QAM": {
+            "0dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -4991,
+                "oversampling": 4
+            },
+            "10dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 3707,
+                "oversampling": 4
+            },
+            "2dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -8288,
+                "oversampling": 4
+            },
+            "4dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 52575,
+                "oversampling": 4
+            },
+            "6dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -22414,
+                "oversampling": 4
+            },
+            "8dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 17250,
+                "oversampling": 4
+            },
+            "is_dir": true,
+            "m10dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -18562,
+                "oversampling": 4
+            },
+            "m2dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -11918,
+                "oversampling": 4
+            },
+            "m4dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -2210,
+                "oversampling": 4
+            },
+            "m6dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 96861,
+                "oversampling": 4
+            },
+            "m8dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -12283,
+                "oversampling": 4
+            }
+        },
+        "att40_QPSK": {
+            "0dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -6955,
+                "oversampling": 4
+            },
+            "10dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -11025,
+                "oversampling": 4
+            },
+            "2dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 24252,
+                "oversampling": 4
+            },
+            "4dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -21039,
+                "oversampling": 4
+            },
+            "6dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -1064,
+                "oversampling": 4
+            },
+            "8dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 5689,
+                "oversampling": 4
+            },
+            "is_dir": true,
+            "m10dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 39630,
+                "oversampling": 4
+            },
+            "m2dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 1493,
+                "oversampling": 4
+            },
+            "m4dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 27749,
+                "oversampling": 4
+            },
+            "m6dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -18029,
+                "oversampling": 4
+            },
+            "m8dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 18976,
+                "oversampling": 4
+            }
+        },
+        "is_dir": true
+    },
+    "exp4": {
+        "att40_16QAM": {
+            "0dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 31914,
+                "oversampling": 4
+            },
+            "10dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 2076,
+                "oversampling": 4
+            },
+            "12dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -38302,
+                "oversampling": 4
+            },
+            "14dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 10807,
+                "oversampling": 4
+            },
+            "16dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 70447,
+                "oversampling": 4
+            },
+            "18dB_scrambled": {
+                "fs": 2e+06,
+                "offset": 7004,
+                "oversampling": 4
+            },
+            "20dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -1669,
+                "oversampling": 4
+            },
+            "2dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -39470,
+                "oversampling": 4
+            },
+            "4dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -10897,
+                "oversampling": 4
+            },
+            "6dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -47682,
+                "oversampling": 4
+            },
+            "8dB_scrambled": {
+                "fs": 2e+06,
+                "offset": -1418,
+                "oversampling": 4
+            },
+            "is_dir": true
+        },
+        "is_dir": true
+    },
+    "name": "exp151205",
+    "prefix": "\/Users\/komatsu\/expData\/exp_151205\/",
+    "recv_fn_prefix": "RX1_",
+    "send_fn_prefix": "TX1_"
+}

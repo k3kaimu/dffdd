@@ -71,7 +71,7 @@ Nullable!size_t findConvolutionPeak(FftObj)(
     real maxP = -real.infinity;
     size_t maxIdx;
     foreach(i, ref e; convDst[0 .. onlyHalf ? $/2 : $]){
-        auto p = e.re^^2 + e.im^^2;
+        auto p = e.re^^2 + e.im^^2;         // ここ2乗必要？
         e = p;
 
         if(maxP < p){

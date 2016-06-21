@@ -1,34 +1,57 @@
 import std.stdio;
 
-import dffdd.filter.ls;
+import dffdd.filter.orthogonalize;
+import carbon.linear;
+import std.numeric;
+
+enum size_t Dim = 4;
+alias C = cdouble;
+alias F = double;
+import std.complex;
+import std.string;
+import std.math;
+
+
+//SMatrix!(F, Dim, Dim) diag(M)(M arr)
+//{
+//    typeof(return) dst;
+//    foreach(i; 0 .. Dim)
+//        foreach(j; 0 .. Dim){
+//            dst[i, j] = i == j ? arr[i] : 0;
+//        }
+
+//    return dst;
+//}
+enum size_t FFTSIZE = 4*1024*1024;
 
 void main()
 {
-    cfloat[6][5] mat;
-    cfloat[6] vec;
-    float[30] s;
+    Fft fft = new Fft(FFTSIZE);
+    auto file = File(readln().chomp(), "r");
+    auto ofile = File("output.csv", "w");
+    file.seek(400 * 1024 * 8);
 
-    mat[0][0] = 0i -0.09; mat[1][0] = 0i +0.14; mat[2][0] = 0i -0.46; mat[3][0] = 0i +0.68; mat[4][0] = 0i +1.29;
-    mat[0][1] = 0i -1.56; mat[1][1] = 0i +0.20; mat[2][1] = 0i +0.29; mat[3][1] = 0i +1.09; mat[4][1] = 0i +0.51;
-    mat[0][2] = 0i -1.48; mat[1][2] = 0i -0.43; mat[2][2] = 0i +0.89; mat[3][2] = 0i -0.71; mat[4][2] = 0i -0.96;
-    mat[0][3] = 0i -1.09; mat[1][3] = 0i +0.84; mat[2][3] = 0i +0.77; mat[3][3] = 0i +2.11; mat[4][3] = 0i -1.27;
-    mat[0][4] = 0i +0.08; mat[1][4] = 0i +0.55; mat[2][4] = 0i -1.13; mat[3][4] = 0i +0.14; mat[4][4] = 0i +1.74;
-    mat[0][5] = 0i -1.59; mat[1][5] = 0i -0.72; mat[2][5] = 0i +1.06; mat[3][5] = 0i +1.24; mat[4][5] = 0i +0.34;
+    cfloat[] buf = new cfloat[FFTSIZE];
+    buf = file.rawRead(buf);
 
-    vec[0] = 0i +7.4;
-    vec[1] = 0i +4.2;
-    vec[2] = 0i -8.3;
-    vec[3] = 0i +1.8;
-    vec[4] = 0i +8.6;
-    vec[5] = 0i +2.1;
+    Complex!float[] cbuf = new Complex!float[](FFTSIZE);
+    foreach(i, ref e; cbuf)
+        e = Complex!float(buf[i].re, buf[i].im);
 
-    int rank, info;
-    LAPACKE_cgelss(102, 6, 5, 1, mat[0].ptr, 6,
-               vec.ptr, 6, s.ptr, 0.01f,
-               &rank/*, work.ptr, 1024, rwork.ptr, &info*/).writeln;
+    auto res = fft.fft(cbuf).dup;
+    writeln("FFT end");
 
-    writeln(vec);
-    writeln(s);
-    writeln(rank);
-    writeln(info);
+    real max = 0;
+    foreach(i; 0 .. FFTSIZE/2){
+        res[i] = Complex!float((res[i].re^^2 + res[i].im^^2), 0);
+        if(res[i].re > max) max = res[i].re;
+    }
+
+    foreach(i; 0 .. FFTSIZE/2){
+        real freq = 5.0e6 / FFTSIZE * i;
+        if((500e3 - 5e3) < freq && freq < (500e3 + 5e3)){
+            real dB = 10*log10((res[i].re)/max);
+            ofile.writefln("%7.1f,%s,%s,", freq, res[i].re, dB);
+        }
+    }
 }
