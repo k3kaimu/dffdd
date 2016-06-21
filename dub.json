@@ -6,10 +6,31 @@
     "targetType": "library",
 
     "__foo": "/usr/local/opt/openblas/lib",
-    "libs-osx": ["openblas"],
-    "__dflags": ["-L/usr/local/opt/openblas/lib"],
+    "libs-osx": ["openblas", "itpp", "stdc++"],
+    "lflags-osx": ["-L/usr/local/opt/openblas/lib", "-L-litpp", "-L-lstdc++"],
 
     "dependencies": {
-        "carbon": {"path": "../../../Github/carbon" }
-    }
+        "carbon": { "path": "../../../github/carbon" },
+        "dranges": { "path": "../../../github/dranges" },
+        "pyd": "~>0.9.8",
+    },
+    "subConfigurations": {
+        "pyd": "python27",
+    },
+
+    "configurations":[
+        {
+            "name": "library",
+        },
+
+        {
+            "name": "preBuildCopyCommand",
+            "copyFiles": ["cpp/ditpp.cpp"],
+        },
+
+        {
+            "name": "preBuildPostCopyCommand",
+            "preGenerateCommands": ["g++ -std=c++14 -c ditpp.cpp"]
+        }
+    ]
 }
