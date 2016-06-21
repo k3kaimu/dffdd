@@ -13,6 +13,18 @@ import carbon.traits;
 import dffdd.filter.traits;
 
 
+void learning(F, C)(ref F filter, in C[] tx, in C[] rx, C[] outputBuf)
+{
+    filter.apply!true(tx, tx, outputBuf);
+}
+
+
+void cancelling(F, C)(ref F filter, in C[] tx, in C[] rx, C[] outputBuf)
+{
+    filter.apply!false(tx, rx, outputBuf);
+}
+
+
 final class PolynomialFilter(State, Adapter)
 {
     alias C = typeof(State.init.state[0][0]);
@@ -25,24 +37,21 @@ final class PolynomialFilter(State, Adapter)
     }
 
 
-    void apply(C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
+    void apply(bool bLearning = true, C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
     in{
         assert(tx.length == rx.length
             && tx.length == outputBuf.length);
     }
     body{
-        //if(cnt / (1024 * 16) % 16 != 0){
-            //_state.apply(tx, rx, outputBuf);
-        //}else{
-            foreach(i; 0 .. tx.length){
-                _state.update(tx[i]);
+        foreach(i; 0 .. tx.length){
+            _state.update(tx[i]);
 
-                C error = _state.error(rx[i]);
-                outputBuf[i] = error;
+            C error = _state.error(rx[i]);
+            outputBuf[i] = error;
 
-                _adapter.adapt(_state, error);
-            }
-        //}
+          static if(bLearning)
+            _adapter.adapt(_state, error);
+        }
         cnt += tx.length;
     }
 
@@ -100,7 +109,7 @@ if(StateORAdapter.length % 2 == 0)
     }
 
 
-    void apply(C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
+    void apply(bool bLearning, C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
     in{
         assert(tx.length == rx.length
             && tx.length == outputBuf.length);
@@ -112,6 +121,8 @@ if(StateORAdapter.length % 2 == 0)
             foreach(j, T; States){
                 states[j].update(txv);
                 error = states[j].error(error);
+
+              static if(bLearning)
                 adapters[j].adapt(states[j], error);
             }
             outputBuf[i] = error;
@@ -161,7 +172,7 @@ if(StateORAdapter.length % 2 == 0)
     }
 
 
-    void apply(C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
+    void apply(bool bLearning = true, C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
     in{
         assert(tx.length == rx.length
             && tx.length == outputBuf.length);
@@ -175,6 +186,8 @@ if(StateORAdapter.length % 2 == 0)
                 auto ev = states[j].error(rx[i]);
                 error -= (rx[i] - ev);
             }
+
+          static if(bLearning)
             foreach(j, T; States)
                 adapters[j].adapt(states[j], error);
 

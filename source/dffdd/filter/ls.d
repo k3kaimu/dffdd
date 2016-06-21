@@ -95,7 +95,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
 
         int rankN = void;
 
-        LAPACKE_cgelss(102, cast(int)_L, cast(int)M*N, 1, _mx.ptr, cast(int)_L, _yv.ptr, cast(int)max(_L, M*N), sworkSpace.ptr, 0.00001f, &rankN);
+        LAPACKE_cgelss(102, cast(int)_L, cast(int)M*N, 1, cast(cfloat*)_mx.ptr, cast(int)_L, cast(cfloat*)_yv.ptr, cast(int)max(_L, M*N), sworkSpace.ptr, 0.00001f, &rankN);
 
         foreach(i; 0 .. N*M) w[i] += _yv[i];
         return 0;

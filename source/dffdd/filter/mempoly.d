@@ -21,6 +21,12 @@ enum FilterOptions
     usePower         = 1 << 3,
 }
 
+
+bool hasOption(string name)(ubyte value)
+{
+    return mixin("(value & FilterOptions." ~ name ~ ") != 0");
+}
+
 //alias FilterSpec = std.typecons.BitFlags!FilterOptions;
 
 //alias WithDCBias = Flag!"withDCBias";
@@ -201,98 +207,94 @@ final class MemoryPolynomialState(C, size_t N, size_t P, size_t Mf, size_t Mp, b
 }
 
 
-final class PowerState(C, size_t N, size_t P, ubyte filterSpec = 0)
+final class MultiBasisFunctionsState(C, size_t N, bool usePower, Funcs...)
+if(Funcs.length > 0)
 {
-    private
-    {
-        static assert(!(filterSpec & FilterOptions.withDCBias), "Cannot set 'withDCBias'");
-        enum bool withIQImbalance = (filterSpec & FilterOptions.withConjugate) != 0;
-        enum bool useConjugate = (filterSpec & FilterOptions.useConjugate) != 0;
-        enum bool usePower = (filterSpec & FilterOptions.usePower) != 0;
-    }
-
-
     alias F = typeof(C.re);
+    enum size_t numOfFuncs = Funcs.length;
 
-    C[1 + withIQImbalance][N] state;
-    C[1 + withIQImbalance][N] weight;
-    static if(usePower) F[1 + withIQImbalance] power;
+    C[numOfFuncs][N] state;
+    C[numOfFuncs][N] weight;
+    size_t cnt;
+
+  static if(usePower)
+  {
+    F[numOfFuncs] power;
+  }
+
 
     this(F initP)
     {
-        foreach(i, ref e; state) e[] = complexZero!C;
-        foreach(i, ref e; weight) e[] = complexZero!C;
-        static if(usePower) power[] = initP;
+        //foreach(ref e; xmemory) e = complexZero!C;
+        //foreach(ref e; ymemory) e = complexZero!C;
+        foreach(ref e; state) foreach(ref ee; e) ee = complexZero!C;
+        foreach(ref e; weight) foreach(ref ee; e) ee = complexZero!C;
+        static if(usePower) foreach(ref e; power) e = initP;
     }
 
 
-    private enum updateMethod = q{
-        state.shiftBack();
+    void update(C xk) pure nothrow @safe @nogc
+    {
+        state.shiftBack;
 
-      static if(P == 1)
-      {
-        state[0][0] = c;
-      }
-      else static if(P % 2 == 1)
-      {
-        auto sqc = c.re^^2 + c.im^^2;
-        state[0][0] = sqc^^(P/2) * c;
-      }
-      else
-      {
-        auto cabs = c.abs();
-        state[0][0] = (cabs ^^ (P-1)) * c;
-      }
+        foreach(fi, f; Funcs)
+            state[0][fi] = f(xk);
 
-      static if(withIQImbalance)
-      {
-        state[0][1] = state[0][0].conj;
-      }
-
-        auto cp = state[0][0];
-        static if(usePower) power[] = cp.re^^2 + cp.im^^2;
-    };
-
-
-    private enum errorMethod = q{
-        foreach(i; 0 .. N)
-        {
-            c -= state[i][0] * weight[i][0];
-
-          static if(withIQImbalance)
-            c -= state[i][1] * weight[i][1];
+      static if(usePower)
+        foreach(i, ref pe; power){
+            auto e = state[0][i];
+            pe = e.re^^2 + e.im^^2;
         }
-    };
-
-
-    void update(C c)
-    {
-        static if(useConjugate) c = c.conj;
-        mixin(updateMethod);
     }
 
 
-    C error(C c)
+    C error(C c) pure nothrow @safe @nogc
     {
-        mixin(errorMethod);
+        foreach(i; 0 .. N) foreach(j; 0 .. numOfFuncs)
+            c -= state[i][j] * weight[i][j];
+
         return c;
     }
 
 
-    void apply(in C[] tx, in C[] rx, C[] dst)
+    void apply(in C[] tx, in C[] rx, C[] dst) pure nothrow @safe @nogc
     {
-        foreach(ic, C c; tx)
-        {
-            static if(useConjugate) c = c.conj;
-            mixin(updateMethod);
-            c = rx[ic];
-            mixin(errorMethod);
-            dst[ic] = c;
+        foreach(ic, c; tx){
+            update(c);
+            dst[ic] = error(rx[ic]);
         }
     }
 }
 
 
+template PowerState(C, size_t N, size_t P, ubyte filterSpec = 0)
+if(!filterSpec.hasOption!"withDCBias")
+{
+    import std.format;
+    import std.array;
+
+    string buildArgs()
+    {
+        auto app = appender!string();
+
+        foreach(i; 0 .. (P+1)/2){
+            immutable p = filterSpec.hasOption!"useConjugate" ? "x.conj" : "x";
+
+            app.formattedWrite("(x => %s * (x.re^^2 + x.im^^2)^^%s), ", p, i*2);
+
+            if(filterSpec.hasOption!"withConjugate")
+                app.formattedWrite("(x => %s.conj * (x.re^^2 + x.im^^2)^^%s), ", p, i*2);
+        }
+
+        return app.data;
+    }
+
+
+    mixin(format("alias PowerState = MultiBasisFunctionsState!(C, N, %s, %s);", filterSpec.hasOption!"usePower", buildArgs()));
+}
+
+
+/*
 final class GeneralPowerState(C, size_t N, size_t P, size_t Mf = 0, size_t Mp = 0, ubyte filterSpec = 0)
 if(P > 1)
 {
@@ -400,7 +402,7 @@ if(P > 1)
             dst[ic] = c;
         }
     }
-}
+}*/
 
 
 final class BiasState(C)
@@ -438,7 +440,7 @@ final class BiasState(C)
 
 auto inputTransformer(alias f, State, T...)(State state, T args)
 {
-    return new InputTransformer!(State, f)(state, args);
+    return new InputTransformer!(State, f, T)(state, args);
 }
 
 
@@ -467,7 +469,7 @@ final class InputTransformer(S, alias f, T...)
     {
         foreach(ic, C c; tx)
         {
-            this.update(c);
+            this.update(f(c, args));
             dst[ic] = this.error(rx[ic]);
         }
     }
@@ -477,121 +479,4 @@ final class InputTransformer(S, alias f, T...)
     T args;
 
     alias sp this;
-}
-
-
-__EOF__
-
-
-final class MemoryPolynomialStateBySIMD(C, size_t N, size_t P, size_t Mf, size_t Mp, bool withDCBias = true, bool withIQImbalance = true, bool usePower = true)
-{
-    alias F = typeof(C.re);
-
-    C[Mf+1] ymemory;
-    C[Mf+1+Mp] xmemory;
-    //F[P-1][Mf+1+Mp] pmemory;
-    Vector!(F[SIMD_N])[(Mf+1+Mp).alignSize(SIMD_N)][P-1] pmemory;
-    Vector!(F[SIMD_N])[(Mf+1+Mp).alignSize(SIMD_N) * (P-1) * (withIQImbalance ? 2 : 1) + 1][N] reState, imState, reWeight, imWeight;
-
-    size_t cnt;
-
-  static if(usePower)
-  {
-    F[withDCBias + (1 + (P-1)*(Mf+1+Mp)) * (withIQImbalance ? 2 : 1)] power;
-  }
-
-
-    this(F initP)
-    {
-        foreach(ref e; xmemory) e = complexZero!C;
-        foreach(ref e; ymemory) e = complexZero!C;
-        foreach(ref e; pmemory) e = 0;
-        foreach(ref e; reState) foreach(ref ee; e) ee[] = 0;
-        foreach(ref e; imState) foreach(ref ee; e) ee[] = 0;
-        foreach(ref e; reWeight) foreach(ref ee; e) ee[] = 0;
-        foreach(ref e; imWeight) foreach(ref ee; e) ee[] = 0;
-        static if(usePower) foreach(ref e; power) e = initP;
-    }
-
-
-    void update(C c) pure nothrow @safe @nogc
-    {
-        xmemory.shiftBack;
-        ymemory.shiftBack;
-        pmemory.shiftBack;
-        state.shiftBack;
-
-        xmemory[0] = c;
-        immutable cabs2 = c.re^^2 + c.im^^2;
-
-        foreach(p; 2 .. P+1)
-            pmemory[0][p-2] = cabs2^^(p-1);
-
-        immutable xk = xmemory[Mf];
-        //static if(withDCBias) state[0][0] = complexZero!C + 1;    // 1 + 0i
-        //state[0][withDCBias + 0] = xk;
-        //static if(withIQImbalance) state[0][withDCBias + 1 + (P-1)*(Mf+1+Mp)] = xk.conj;
-
-        //foreach(p; 2-2 .. P+1-2) foreach(m; 0 .. Mp+Mf+1){
-        //    auto xx = xk * pmemory[m][p];
-        //    state[0][withDCBias + 1 + p*(Mp+Mf+1) + m] = xx;
-
-        //  static if(withIQImbalance)
-        //    state[0][withDCBias + 1 + (P-1)*(Mf+1+Mp) + 1 + p*(Mf+Mp+1) + m] = xx.conj;
-        //}
-        foreach(p; 2-2 .. P+1-2) foreach()
-
-      static if(usePower)
-        foreach(i; 0 .. power.length){
-            auto e = state[0][i];
-            power[i] = e.re^^2 + e.im^^2;
-        }
-    }
-
-
-    C error(C c) pure nothrow @safe @nogc
-    {
-        ymemory[0] = c;
-        c = ymemory[Mf];
-        foreach(i; 0 .. state.length) foreach(j; 0 .. state[0].length){
-            c -= state[i][j] * weight[i][j];
-        }
-
-        return c;
-    }
-
-
-    void apply(in C[] tx, in C[] rx, C[] dst) pure nothrow @safe @nogc
-    {
-        foreach(ic, c; tx){
-            xmemory.shiftBack;
-            ymemory.shiftBack;
-            pmemory.shiftBack;
-            state.shiftBack;
-
-            xmemory[0] = c;
-            immutable cabs2 = c.re^^2 + c.im^^2;
-
-            foreach(p; 2 .. P+1)
-                pmemory[0][p-2] = cabs2^^(p-1);
-
-            immutable xk = xmemory[Mf];
-            static if(withDCBias) state[0][0] = complexZero!C + 1;    // 1 + 0i
-            state[0][withDCBias + 0] = xk;
-            static if(withIQImbalance) state[0][withDCBias + 1 + (P-1)*(Mf+1+Mp)] = xk.conj;
-
-            foreach(p; 2-2 .. P+1-2) foreach(m; 0 .. Mp+Mf+1){
-                auto xx = xk * pmemory[m][p];
-                state[0][withDCBias + 1 + p*(Mp+Mf+1) + m] = xx;
-
-              static if(withIQImbalance)
-                state[0][withDCBias + 1 + (P-1)*(Mf+1+Mp) + 1 + p*(Mf+Mp+1) + m] = xx.conj;
-            }
-
-            ymemory[0] = rx[ic];
-            dst[ic] = ymemory[Mf];
-            foreach(i; 0 .. state.length) foreach(j; 0 .. state[0].length)
-                dst[ic] -= state[i][j] * weight[i][j];
-        }
-    }
 }

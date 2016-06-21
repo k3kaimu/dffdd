@@ -4,6 +4,7 @@ import carbon.math;
 import carbon.linear;
 import std.stdio;
 import std.math;
+import std.complex;
 
 
 final class RLSAdapter(State)
@@ -23,7 +24,11 @@ final class RLSAdapter(State)
     this(State state, real lambda, real delta = 1E-3)
     {
         _lambdaInv = 1/lambda;
-        _u = ones!float * (0+0i);
+
+        C zero;
+        zero = 0;
+
+        _u = ones!float * zero;
         _p = identity!float * ((1/delta) + complexZero!C);
     }
 
@@ -76,6 +81,8 @@ RLSAdapter!State makeRLSAdapter(State)(State state, real lambda, real delta = 1E
 
 unittest
 {
-    auto state = new PowerState!(cfloat, 8, 1);
-    auto rlsAdapter = makeRLSAdaptr(state, 0.5);
+    import dffdd.filter.mempoly;
+
+    auto state = new PowerState!(cfloat, 8, 1)(1);
+    auto rlsAdapter = makeRLSAdapter(state, 0.5);
 }

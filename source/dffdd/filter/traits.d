@@ -6,7 +6,7 @@ enum bool isState(S) = is(typeof((ref S s){
     auto ssp = &(s.state);
     static assert(isStaticArray!(typeof(*ssp)));
 
-    auto sep = &(ss[0]);
+    auto sep = &(ssp[0]);
     static assert(isStaticArray!(typeof(*sep)));
 
     alias C = typeof(s.state[0][0]);
@@ -52,20 +52,25 @@ unittest
         C[1][1] weight;
         C[1][1] state;
         float[1] power;
+        C _value;
 
         void update(C c)
         {
             state[0][0] = c; power[0] = c.abs()^^2;
         }
+
+        C value() { return weight[0][0] * state[0][0]; }
     }
 
     static assert(isState!(TestState1));
 
     static struct TestAdapter1
     {
+        enum bool usePower = false;
+
         void adapt(ref TestState1 s, C e)
         {
-            s.weight[0] += e;
+            s.weight[0][0] += e;
         }
     }
 
