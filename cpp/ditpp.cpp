@@ -3,6 +3,29 @@
 
 using namespace itpp;
 
+#ifdef _WIN64
+   //define something for Windows (64-bit)
+#elif _WIN32
+   //define something for Windows (32-bit)
+#elif __APPLE__
+    #include "TargetConditionals.h"
+    #if TARGET_OS_IPHONE && TARGET_IPHONE_SIMULATOR
+        // define something for simulator   
+    #elif TARGET_OS_IPHONE
+        // define something for iphone  
+    #else
+        #define TARGET_OS_OSX 1
+        #define THREAD_LOCAL __thread
+    #endif
+#elif __linux
+    #define THREAD_LOCAL thread_local
+#elif __unix // all unices not caught above
+    // Unix
+#elif __posix
+    // POSIX
+#endif
+
+
 namespace WITPP
 {
   itpp::bvec& to_bvec(itpp::bvec& dst, unsigned char const * src, uint32_t len)
@@ -97,9 +120,9 @@ namespace WITPP
     uint32_t demodulate_bits(const itpp::QAM * obj, float const * signalCpx, uint32_t signal_len, unsigned char * bits, uint32_t * bits_len)
     {
         // auto& cv1 = tls<itpp::cvec, __LINE__, 0>;
-        __thread static itpp::cvec* _cv1 = nullptr;
+        THREAD_LOCAL static itpp::cvec* _cv1 = nullptr;
         // auto& bv1 = tls<itpp::bvec, __LINE__, 0>;
-        __thread static itpp::bvec* _bv1 = nullptr;
+        THREAD_LOCAL static itpp::bvec* _bv1 = nullptr;
 
         if(_cv1 == nullptr || _bv1 == nullptr)
         {
@@ -140,9 +163,9 @@ namespace WITPP
     uint32_t modulate_bits(const itpp::QAM * obj, unsigned char const * bits, uint32_t bits_len, float * sigs, uint32_t * sigs_len)
     {
         // auto& cv1 = tls<itpp::cvec, __LINE__, 0>;
-        __thread static itpp::cvec* _cv1;
+        THREAD_LOCAL static itpp::cvec* _cv1;
         // auto& bv1 = tls<itpp::bvec, __LINE__, 0>;
-        __thread static itpp::bvec* _bv1;
+        THREAD_LOCAL static itpp::bvec* _bv1;
 
         if(_cv1 == nullptr || _bv1 == nullptr)
         {
@@ -184,8 +207,8 @@ namespace WITPP
 
     uint32_t modulate(itpp::OFDM * obj, float const * input, uint32_t inp_len, float * output, uint32_t * out_len)
     {
-        __thread static itpp::cvec* _cv1;
-        __thread static itpp::cvec* _cv2;
+        THREAD_LOCAL static itpp::cvec* _cv1;
+        THREAD_LOCAL static itpp::cvec* _cv2;
 
         if(_cv1 == nullptr || _cv2 == nullptr)
         {
@@ -215,8 +238,8 @@ namespace WITPP
 
     uint32_t demodulate(itpp::OFDM * obj, float const * input, uint32_t inp_len, float * output, uint32_t * out_len)
     {
-        __thread static itpp::cvec* _cv1;
-        __thread static itpp::cvec* _cv2;
+        THREAD_LOCAL static itpp::cvec* _cv1;
+        THREAD_LOCAL static itpp::cvec* _cv2;
 
         if(_cv1 == nullptr || _cv2 == nullptr)
         {

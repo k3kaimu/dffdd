@@ -20,6 +20,7 @@
 				"dub generate --config=preBuildPostCopyCommand visuald"
 			],
 			"sourceFiles-osx": ["ditpp.o"],
+			"sourceFiles-linux": ["ditpp-linux.o"],
 		},
 
 
