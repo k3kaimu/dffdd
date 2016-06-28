@@ -108,7 +108,7 @@ void main()
     auto _modOFDMTest = modOFDM(4);
     immutable ofdmModSignalPower = randomBits(1).connectToModulator(_modOFDMTest).measurePower(1024*1024);
 
-    foreach_reverse(p; iota(20, 100, 10))
+    foreach_reverse(p; iota(20, 100, 10).parallel)
     //foreach(p; iota(10, 21))
     {
         auto resultDir = "snr_%s".format(p);
