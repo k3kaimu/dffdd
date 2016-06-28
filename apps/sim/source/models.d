@@ -210,18 +210,14 @@ template Model(alias Constant)
 
         auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
 
-        writeln("orthogonalizer setting up now...");
-
         {
             orthogonalizer.start();
             scope(exit)
                 orthogonalizer.finish();
 
-            writeln("orthogonalizer setting up now...");
 
             auto signal = randomBits(1).connectToModulator(mod);
 
-            writeln("orthogonalizer setting up now...");
             //.put(orthogonalizer, signal.take(1024*400));
             Complex!float[] buf = new Complex!float[1024];
             foreach(i; 0 .. 1024){
@@ -234,7 +230,6 @@ template Model(alias Constant)
                 .put(orthogonalizer, buf);
             }
 
-            writeln("orthogonalizer setting up now...");
         }
 
         Complex!float[][BasisFunctions.length] coefs;
@@ -242,8 +237,6 @@ template Model(alias Constant)
             e = new Complex!float[BasisFunctions.length];
             orthogonalizer.getCoefs(i, e);
         }
-
-        writeln("orthogonalizer is setup-ed");
 
         auto st1 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[0].dup);
         auto st12 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[0].dup);
