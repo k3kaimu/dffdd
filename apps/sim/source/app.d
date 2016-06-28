@@ -108,14 +108,14 @@ void main()
     auto _modOFDMTest = modOFDM(4);
     immutable ofdmModSignalPower = randomBits(1).connectToModulator(_modOFDMTest).measurePower(1024*1024);
 
-    foreach_reverse(p; iota(20, 80, 10))
+    foreach_reverse(p; iota(20, 100, 10))
     //foreach(p; iota(10, 21))
     {
         auto resultDir = "snr_%s".format(p);
         mkdirRecurse(resultDir);
 
-        StopWatch sw;
-        sw.start();
+        //StopWatch sw;
+        //sw.start();
         ulong[40] cntList;
         //immutable p = 23;
         //immutable totalBits = p > 20 ? Constant.BERCounter.totalBits : Constant.BERCounter.totalBits / 10;
@@ -131,11 +131,16 @@ void main()
             //auto desiredBits = desiredRandomBits();
 
             //auto _foo_ = PowerControlAmplifier.makeBlock(thermalNoise(), 1.V);
+            real* switchSIGain = new real,
+                  switchDSGain = new real;
+            *switchSIGain = 1;
+            *switchDSGain = 1;
 
             auto noise = thermalNoise();
             auto received = siRandomBits()
                             .connectToModulator(ofdm)
                                 .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterMD.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                            .tmap!"a * (*b)"(switchSIGain)
                                 //.binaryFun!((r, idx) => idx == 0 ? (r.tee(makeInstrument!(cfloat, r => r.writePSD(File("psd_afterMD_%sdB_1.csv", "w"), Constant.samplingFreq, 1024))).toWrappedRange) : r.toWrappedRange)(pIdx)
                             //.connectToUpSampler()
                                 //.binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterUS.csv"), "w"), Constant.samplingFreq * Constant.UpDownSampler.scaleOfUpSampling, 1024 * Constant.UpDownSampler.scaleOfUpSampling))).toWrappedRange)(resultDir)
@@ -193,8 +198,8 @@ void main()
 
             writeln("Some env is setup-ed");
 
-            //auto filter = makeCascadeHammersteinFilter(ofdm);
-            auto filter = makeParallelHammersteinFilter(ofdm);
+            auto filter = makeCascadeHammersteinFilter(ofdm);
+            //auto filter = makeParallelHammersteinFilter(ofdm);
 
             writeln("Filter is setup-ed");
 
@@ -286,6 +291,27 @@ void main()
                 //}
             }
 
+            {
+                StopWatch sw;
+                sw.start();
+
+                foreach(blockIdx; 0 .. 10000)
+                {
+                    foreach(i; 0 .. blockSize){
+                        recvs[i] = (a => complex(a.re, a.im))(received.front);
+                        refrs[i] = (a => complex(a.re, a.im))(reference.front);
+
+                        received.popFront();
+                        reference.popFront();
+                    }
+
+                    filter.apply!true(refrs, recvs, outps);
+                }
+
+                sw.stop();
+                writefln("%s[ksps]", 10000 * blockSize * 1.0 / sw.peek.msecs);
+            }
+
             auto recvPSD = makeInstrument!(Complex!float, r => r.map!"a.re + a.im*1i".writePSD(File(buildPath(resultDir, "psd_beforeSIC.csv"), "w"), Constant.samplingFreq, 1024));
             auto sicPSD = makeInstrument!(Complex!float, r => r.map!"a.re + a.im*1i".writePSD(File(buildPath(resultDir, "psd_afterSIC.csv"), "w"), Constant.samplingFreq, 1024));
             auto foutPSD = makeInstrument!(Complex!float, r => r.map!"a.re + a.im*1i".writePSD(File(buildPath(resultDir, "psd_filter_output.csv"), "w"), Constant.samplingFreq, 1024));
@@ -308,6 +334,20 @@ void main()
                 .put(recvPSD, recvs);
                 .put(sicPSD, outps);
                 .put(foutPSD, refrs);
+            }
+
+
+            auto noisePSD = makeInstrument!(Complex!float, r => r.map!"a.re + a.im*1i".writePSD(File(buildPath(resultDir, "psd_noise.csv"), "w"), Constant.samplingFreq, 1024));
+
+            *switchSIGain = 0;
+            received.popFrontN(blockSize * 4);
+            foreach(blockIdx; 0 .. 64)
+            {
+                foreach(i; 0 .. blockSize){
+                    recvs[i] = (a => complex(a.re, a.im))(received.front);
+                    received.popFront();
+                }
+                .put(noisePSD, recvs);
             }
 
             /*

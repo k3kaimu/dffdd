@@ -187,8 +187,8 @@ template Model(alias Constant)
 
         //writeln("Use");
         //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
-        auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
-        //auto adapter = lsAdapter(state, 100000);
+        //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
+        auto adapter = lsAdapter(state, 10000);
 
         return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
     }
@@ -224,7 +224,7 @@ template Model(alias Constant)
             writeln("orthogonalizer setting up now...");
             //.put(orthogonalizer, signal.take(1024*400));
             Complex!float[] buf = new Complex!float[1024];
-            foreach(i; 0 .. 400){
+            foreach(i; 0 .. 1024){
                 foreach(j; 0 .. 1024){
                     auto f = signal.front;
                     buf[j] = complex(f.re, f.im);
@@ -246,14 +246,19 @@ template Model(alias Constant)
         writeln("orthogonalizer is setup-ed");
 
         auto st1 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[0].dup);
-        //auto st12 = (new FIRFilter!(Complex!float, 3, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[0].dup);
+        auto st12 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[0].dup);
         auto st1c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[1].dup);
+        auto st12c = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[1].dup);
         //auto st2 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
         auto st3 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
-        //auto st32 = (new FIRFilter!(Complex!float, 3, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
+        auto st32 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
+        //auto st32 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[2].dup);
         auto st3c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[3].dup);
+        auto st32c = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[3].dup);
         auto st5 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[4].dup);
+        auto st52 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[4].dup);
         auto st5c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[5].dup);
+        auto st52c = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[5].dup);
         //auto st7 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[6].dup);
         //auto st7c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[7].dup);
         
@@ -265,6 +270,18 @@ template Model(alias Constant)
 
         return serialFilter(
                 //st12,
+                //makeRLSAdapter(st12, 1 - 1E-4, 1E-7),
+                //st12c,
+                //makeRLSAdapter(st12c, 1 - 1E-4, 1E-7),
+                //st32,
+                //makeRLSAdapter(st32, 1 - 1E-4, 1E-7),
+                //st32c,
+                //makeRLSAdapter(st32c, 1 - 1E-4, 1E-7),
+                //st52,
+                //makeRLSAdapter(st52, 1 - 1E-4, 1E-7),
+                //st52c,
+                //makeRLSAdapter(st52c, 1 - 1E-4, 1E-7),
+                //st12,
                 //makeRLSAdapter(st12, 0.98, 1E-7),
                 //st32,
                 //makeRLSAdapter(st32, 0.98, 1E-7),
@@ -275,45 +292,45 @@ template Model(alias Constant)
                 //st3c_2,
                 //makeRLSAdapter(st3c_2, 0.999, 1E-7),
                 st1,
-                lsAdapter(st1, 100000),
+                lsAdapter(st1, 10000),
                 //lmsAdapter(st1, 0.001, 1024, 0.5),
                 //makeRLSAdapter(st1, 1 - 1E-4, 1E-7),
                 st1c,
-                lsAdapter(st1c, 100000),
+                lsAdapter(st1c, 10000),
                 //lmsAdapter(st1c, 0.001, 1024, 0.5),
                 //makeRLSAdapter(st1c, 1 - 1E-4, 1E-7),
                 //st2,
-                //lsAdapter(st2, 100000),
+                //lsAdapter(st2, 10000),
                 //lmsAdapter(st2, 0.002, 1024, 0.5),
                 //makeRLSAdapter(st2, /*0.9997*/1, 1E-7),
-                //st3,
-                //lsAdapter(st3, 100000),
-                //*********lmsAdapter(st3, 0.001, 1024, 0.5),
+                st3,
+                lsAdapter(st3, 10000),
+                //lmsAdapter(st3, 0.001, 1024, 0.5),
                 //makeRLSAdapter(st3, 1 - 1E-4, 1E-7),
-                //st3c,
-                //lsAdapter(st3c, 100000),
-                //*********lmsAdapter(st3c, 0.001, 1024, 0.5),
+                st3c,
+                lsAdapter(st3c, 10000),
+                //lmsAdapter(st3c, 0.001, 1024, 0.5),
                 //makeRLSAdapter(st3c, 1 - 1E-4, 1E-7),
                 //st4,
-                //lsAdapter(st4, 100000),
+                //lsAdapter(st4, 10000),
                 //lmsAdapter(st4, 0.002, 1024, 0.5),
                 //makeRLSAdapter(st4, /*0.9997*/1, 1E-7),
                 //st4a,
                 //lmsAdapter(st4a, 0.0005, 1024, 0.5),
-                //st5,
-                //lsAdapter(st5, 100000),
-                //*********lmsAdapter(st5, 0.001, 1024, 0.5),
+                st5,
+                lsAdapter(st5, 10000),
+                //lmsAdapter(st5, 0.001, 1024, 0.5),
                 //makeRLSAdapter(st5, 1 - 1E-4, 1E-7),
-                //st5c,
-                //lsAdapter(st5c, 100000),
-                //*********lmsAdapter(st5c, 0.001, 1024, 0.5),
+                st5c,
+                lsAdapter(st5c, 10000),
+                //lmsAdapter(st5c, 0.001, 1024, 0.5),
                 //makeRLSAdapter(st5c, 1 - 1E-4, 1E-7),
                 //st7,
-                //lsAdapter(st7, 100000),
+                //lsAdapter(st7, 10000),
                 //*********lmsAdapter(st7, 0.001, 1024, 0.5),
                 //makeRLSAdapter(st7, 1 - 1E-6, 1E-7),
                 //st12,
-                //lsAdapter(st1, 100000),
+                //lsAdapter(st1, 10000),
                 //lmsAdapter(st12, 0.010, 1024, 0.5),
                 //makeRLSAdapter(st7, 0.9997, 1E-7),
                 //*********st7c,

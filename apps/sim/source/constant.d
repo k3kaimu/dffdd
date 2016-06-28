@@ -75,9 +75,9 @@ struct ConstantList
 
         struct PA 
         { static: immutable:
-            real GAIN = 30;     // 30dB
-            real IIP3 = 10;     // 10dBm
-            real TX_POWER = 30; // 20dBm
+            real GAIN = 27;     // 30dB
+            real IIP3 = 17;     // 20dBm
+            real TX_POWER = 27; // 20dBm
         }
 
         struct LNA
