@@ -1,0 +1,40 @@
+{
+	"name": "sim",
+	"authors": [
+		"Kazuki Komatsu"
+	],
+	"dependencies": {
+		"dffdd" : { "path": "../../" }
+	},
+	"description": "simulator",
+	"copyright": "Copyright © 2016, Kazuki Komatsu",
+	"license": "NYSL",
+	"buildOptions": ["ignoreDeprecations"],
+
+	"configurations": [
+		{
+			"name": "application",
+			"targetType": "executable",
+			"preGenerateCommands": [
+				"dub generate --config=preBuildCopyCommand visuald",
+				"dub generate --config=preBuildPostCopyCommand visuald"
+			],
+			"sourceFiles-osx": ["ditpp.o"],
+		},
+
+
+		{
+			"name": "preBuildCopyCommand",
+			"subConfigurations":{
+				"dffdd": "preBuildCopyCommand"
+			}
+		},
+
+		{
+			"name": "preBuildPostCopyCommand",
+			"subConfigurations":{
+				"dffdd": "preBuildPostCopyCommand"
+			}
+		},
+	],
+}
