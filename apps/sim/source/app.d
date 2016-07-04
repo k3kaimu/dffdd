@@ -262,7 +262,7 @@ void main()
     string[] dirs;
 
     // no sic
-    foreach(p; iota(0, 31).parallel()){
+    foreach(p; 0 .. 31){
         Model model;
         model.SNR = p;
         model.INR = 30;
@@ -273,7 +273,7 @@ void main()
     }
 
     // with sic
-    foreach(p; iota(0, 31).parallel()){
+    foreach(p; 0 .. 31){
         Model model;
         model.SNR = p;
         model.INR = 30;
