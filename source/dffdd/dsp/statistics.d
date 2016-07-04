@@ -3,6 +3,7 @@ module dffdd.dsp.statistics;
 import std.array;
 import std.numeric;
 import dffdd.utils.fft;
+import std.range;
 
 
 //enum 
@@ -59,7 +60,9 @@ auto movingAveragePower(R)(R r, size_t len = 1024)
 
 real[] calculatePowerSpectralDensity(R)(ref R r, real samplingFreq, size_t res, size_t avg = 32, real[] dstBuf = null)
 {
-    cfloat[] buf = new cfloat[res];
+    alias C = ElementType!R;
+
+    C[] buf = new C[res];
     real[] fftRes;
     //fftRes[] = 0;
     if(dstBuf.length >= res)

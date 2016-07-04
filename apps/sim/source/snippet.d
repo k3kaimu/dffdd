@@ -54,3 +54,38 @@ real measureBER(R1, R2)(ref R1 r1, ref R2 r2, ulong totalBits)
 
     return (cast(real)cnt)/totalBits;
 }
+
+
+auto connectToSwitch(R)(R r, bool* sw, ElementType!R zero = 0+0i)
+{
+    static struct Result 
+    {
+        auto front() @property
+        {
+            if(*_sw)
+                return _r.front;
+            else
+                return _zero;
+        }
+
+
+        void popFront()
+        {
+            if(*_sw) _r.popFront();
+        }
+
+
+        bool empty()
+        {
+            return *_sw && _r.empty;
+        }
+
+      private:
+        R _r;
+        bool* _sw;
+        ElementType!R _zero;
+    }
+
+
+    return Result(r, sw, zero);
+}

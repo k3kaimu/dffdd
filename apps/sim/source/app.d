@@ -59,56 +59,234 @@ import snippet;
 real qfunc(real x) { return 0.5 * erfc(x / SQRT2); }
 
 
-alias Constant = ConstantList.ConstExample1;
-mixin Model!Constant;
+//alias Constant = ConstantList.ConstExample1;
+//mixin Model!Constant;
 
-enum ptrdiff_t blockSize = 1024;
-enum ptrdiff_t totalBlocks = 400;
+//enum ptrdiff_t blockSize = 1024;
+//enum ptrdiff_t totalBlocks = 400;
+
+
+auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model)
+{
+    return r.tee(makeSpectrumAnalyzer!cfloat(filename, resultDir, dropSize, model)).toWrappedRange;
+}
+
+
+auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize, Model model)
+{
+    return makeInstrument!C(delegate void(FiberRange!C r){
+        r.drop(dropSize).writePSD(File(buildPath(resultDir, filename), "w"), model.samplingFreq, 1024);
+    });
+}
+
+
+void mainImpl(Model model, string resultDir)
+{
+    immutable ofdmModSignalPower = (){
+        auto _modOFDMTest = modOFDM(model);
+        return randomBits(1, model).connectToModulator(_modOFDMTest, model).measurePower(1024*1024);
+    }();
+
+    mkdirRecurse(resultDir);
+
+    bool* switchDS = new bool(false),
+          switchSI = new bool(true);
+
+    auto noise = thermalNoise(model);
+    auto received = desiredRandomBits(model)
+                    .connectToModulator(modOFDM(model), model)
+                        .psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
+                    .connectToTXIQMixer(model)
+                        .psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+                    .connectToPowerAmplifier(model)
+                        .psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
+                    .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.SNR.dB.gain^^2).sqrt.V)
+                        .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
+                    .connectToSwitch(switchDS)
+                    .add(
+                        // Self-Interference
+                        siRandomBits(model)
+                        .connectToModulator(modOFDM(model), model)
+                            .psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
+                        .connectToTXIQMixer(model)
+                            .psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+                        .connectToPowerAmplifier(model)
+                            .psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
+                        .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.INR.dB.gain^^2).sqrt.V)
+                            .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
+                        .connectToSwitch(switchSI)
+                    )
+                    .connectToAWGN(model)
+                        .psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSample, model)
+                    .connectToLNA(model)
+                        .psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSample, model)
+                    .connectToRXIQMixer(model)
+                        .psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+                    .connectToQuantizer(model)
+                    ;
+
+    auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), model);
+
+    // モデルの安定化
+    *switchDS = false;
+    *switchSI = true;
+    received.popFrontN(model.numOfModelTrainingSample);
+    txReplica.popFrontN(model.numOfModelTrainingSample);
+
+    auto recvs = new Complex!float[model.blockSize],
+         refrs = new Complex!float[model.blockSize],
+         outps = new Complex!float[model.blockSize];
+
+    auto fftObj = new Fft(model.blockSize);
+    auto filter = makeCascadeHammersteinFilter(modOFDM(model), model);
+
+    {
+        File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
+
+        foreach(blockIdx; 0 .. model.numOfFilterTrainingSample / model.blockSize)
+        {
+            foreach(i; 0 .. model.blockSize){
+                recvs[i] = (a => complex(a.re, a.im))(received.front);
+                refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
+
+                received.popFront();
+                txReplica.popFront();
+            }
+
+            filter.apply!true(refrs, recvs, outps);
+
+            if(blockIdx == 0)
+            {
+                File outFile = File(buildPath(resultDir, "errorout_start.csv"), "w");
+                foreach(i; 0 .. model.blockSize){
+                    if(i > 20000) break;
+                    auto pr = recvs[i].re^^2 + recvs[i].im^^2,
+                         po = outps[i].re^^2 + outps[i].im^^2,
+                         c = -10*log10(po / pr);
+
+                    outFile.writefln("%s,%s,%s,%s,", i, pr, po, c);
+                }
+            }
+
+            // fft
+            {
+                auto outputSpec = fftObj.fftWithSwap(outps);
+                auto recvSpec = fftObj.fftWithSwap(recvs);
+
+                real sumR = 0, sumO = 0;
+                foreach(i; 0 .. model.blockSize){
+                    immutable po = outps[i].re^^2 + outps[i].im^^2,
+                              pr = recvs[i].re^^2 + recvs[i].im^^2;
+
+                    immutable freq = i * model.samplingFreq / model.blockSize - (model.samplingFreq/2);
+                    if(abs(freq)/model.samplingFreq < (model.ofdm.numOfSubcarrier*1.0)/(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling)
+                    && abs(freq)/model.samplingFreq > 1.0/model.ofdm.numOfFFT/model.ofdm.scaleOfUpSampling){
+                        sumR += pr;
+                        sumO += po;
+                    }
+                }
+
+                powerFile.writefln("%s,%s,%s,%s,", model.blockSize*blockIdx, sumR, sumO, 10*log10(sumO / sumR));
+            }
+        }
+    }
+
+    //auto recvPSD = makeInstrument!(Complex!float, r => r.map!"a.re + a.im*1i".writePSD(File(buildPath(resultDir, "psd_beforeSIC.csv"), "w"), Constant.samplingFreq, 1024));
+    //auto sicPSD = makeInstrument!(Complex!float, r => r.map!"a.re + a.im*1i".writePSD(File(buildPath(resultDir, "psd_afterSIC.csv"), "w"), Constant.samplingFreq, 1024));
+    //auto foutPSD = makeInstrument!(Complex!float, r => r.map!"a.re + a.im*1i".writePSD(File(buildPath(resultDir, "psd_filter_output.csv"), "w"), Constant.samplingFreq, 1024));
+
+    auto recvPSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model);
+    auto sicPSD = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model);
+    auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model);
+
+    foreach(blockIdxo; 0 .. 64)
+    {
+        foreach(i; 0 .. model.blockSize){
+            recvs[i] = (a => complex(a.re, a.im))(received.front);
+            refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
+
+            received.popFront();
+            txReplica.popFront();
+        }
+
+        filter.apply!true(refrs, recvs, outps);
+
+        foreach(i; 0 .. model.blockSize)
+            refrs[i] = recvs[i] - outps[i];
+
+        .put(recvPSD, recvs);
+        .put(sicPSD, outps);
+        .put(foutPSD, refrs);
+    }
+
+
+    // BER count
+    *switchDS = true;
+    real berResult = -1;
+    auto berCounter = makeInstrument(delegate void (FiberRange!cfloat r){
+        auto bits= r
+        .connectTo!PowerControlAmplifier(ofdmModSignalPower.sqrt.V)
+        .connectToDemodulator(modOFDM(model), model);
+
+        auto refBits = desiredRandomBits(model);
+        berResult = measureBER(bits, refBits, model.berCounter.totalBits);
+    });
+
+    while(berResult == -1){
+        foreach(i; 0 .. model.blockSize){
+            recvs[i] = (a => complex(a.re, a.im))(received.front);
+            refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
+
+            received.popFront();
+            txReplica.popFront();
+        }
+
+        if(model.withSIC)
+            filter.apply!false(refrs, recvs, outps);
+        else
+            outps[] = recvs[];
+
+        foreach(e; outps){
+            berCounter.put(e.re + e.im * 1i);
+        }
+    }
+
+    File file = File(buildPath(resultDir, "ber.csv"), "w");
+    file.writeln(berResult);
+}
 
 
 void main()
 {
-    //alias Constant = ConstantList.ConstExample1;
+    // no sic
+    foreach(p; iota(0, 31).parallel()){
+        Model model;
+        model.SNR = p;
+        model.INR = 30;
+        model.withSIC = false;
+        mainImpl(model, format("no_sic_snr%s_inr%s", model.SNR, model.INR));
+    }
 
-    //auto ofdmX4 = chainedMod(dffdd.mod.qam.QAM(Contant.QAM.arity), dffdd.mod.ofdm.OFDM(Constant.OFDM.numOfFFT, OFDM.numOfCP,
-    //                            Constant.OFDM.numOfSubcarrier, Constant.OFDM.scaleOfUpSampling));
+    // with sic
+    foreach(p; iota(0, 31).parallel()){
+        Model model;
+        model.SNR = p;
+        model.INR = 30;
+        model.withSIC = true;
+        mainImpl(model, format("with_sic_snr%s_inr%s", model.SNR, model.INR));
+    }
+}
 
 
-
-    //auto signal = ThermalNoise(SamplingFrequency(Constant.samplingFreq), Constant.ThermalNoise.temperature).connectTo!FIRFilter(Constant.UpDownSampler.decimationFIRFilterTaps);
-    ////auto signal = ThermalNoise(SamplingFrequency(samplingFreq), 300);
-
-    //auto psd = signal.calculatePowerSpectralDensity(samplingFreq, 1024);
-    //foreach(i, e; psd)
-    //    writefln("%f,%f,%f", (i*1.0/1024*samplingFreq-(samplingFreq/2))/1e6, e, e == 0 ? -400 : 30+10*log10(e));
+__EOF__
 
 
-    //auto ofdmX4 = chainedMod(dffdd.mod.qam.QAM(16), dffdd.mod.ofdm.OFDM(64, 16, 48, 4));
-    //auto ofdmX32 = chainedMod(dffdd.mod.qam.QAM(16), dffdd.mod.ofdm.OFDM(64, 16, 48, 4 * Constant.UpDownSampler.scaleOfUpSampling));
-    //auto ofdmX4 = modOFDM();
-
-    //float snr0;
-    //{
-    //    auto ofdm = modOFDM(4);
-    //    //auto noise = thermalNoise();
-    //    //auto noisePower = noise.measurePower(1024*1024);
-    //    auto noisePower = Constant.ThermalNoise.power;
-
-    //    auto ofdmSignal = desiredRandomBits().connectToModulator(ofdm); //Random().map!"cast(ubyte)(a&1)".splitN(ofdmX32.symInputLength).map!array.tmap!(reverseArgs!mod, [0])(ofdmX32).joiner();
-    //    auto signalPower = ofdmSignal.measurePower(1024*1024);
-
-    //    snr0 = signalPower / noisePower;
-    //    writeln(signalPower);
-    //    writeln(snr0);
-    //    //return;
-    //}
-
-    //foreach(p; 0 .. 20)
-
+void main()
+{
     auto _modOFDMTest = modOFDM(4);
     immutable ofdmModSignalPower = randomBits(1).connectToModulator(_modOFDMTest).measurePower(1024*1024);
 
-    foreach(p; iota(20, 100, 10).array.parallel)
+    foreach(pSI; iota(20, 100, 10).array.parallel)
     //foreach(p; iota(10, 21))
     {
         auto resultDir = "snr_%s".format(p);
@@ -125,40 +303,65 @@ void main()
 
         //foreach(pIdx; iota(40).parallel())
         //{
-            auto ofdm = modOFDM(4);
-            auto ofdmX32 = modOFDM(32);
+            auto ofdmDesired = modOFDM(4);
+            auto ofdmSI = modOFDM(4);
+            //auto ofdmX32 = modOFDM(32);
             //Random r1, r2;
             //auto desiredBits = desiredRandomBits();
 
             //auto _foo_ = PowerControlAmplifier.makeBlock(thermalNoise(), 1.V);
-            real* switchSIGain = new real,
-                  switchDSGain = new real;
-            *switchSIGain = 1;
-            *switchDSGain = 1;
+            //real* switchSIGain = new real,
+                  //switchDSGain = new real;
+            //*switchSIGain = 1;
+            //*switchDSGain = 1;
+            bool* switchDS = new bool(false),
+                  switchSI = new bool(true);
 
             auto noise = thermalNoise();
-            auto received = siRandomBits()
-                            .connectToModulator(ofdm)
-                                .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterMD.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
-                            .tmap!"a * (*b)"(switchSIGain)
+            auto received = desiredRandomBits().connectToModulator(ofdmDesired)
+                                .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(model.trainingSamplesOfModel).writePSD(File(buildPath(resDir, "psd_DS_afterMD.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                            .connectToTXIQMixer()
+                                .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(model.trainingSamplesOfModel).writePSD(File(buildPath(resDir, "psd_DS_afterIQ.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                            .connectToPowerAmplifier()
+                                .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(model.trainingSamplesOfModel).writePSD(File(buildPath(resDir, "psd_DS_afterPA.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                            .connectTo!PowerControlAmplifier((Constant.ThermalNoise.power * pD.dB.gain^^2).sqrt.V)
+                                .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(model.trainingSamplesOfModel).writePSD(File(buildPath(resDir, "psd_DS_afterVGA.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                            .connectToSwitch(switchDS)
+                            .add(
+                                // Self-Interference
+                                siRandomBits().connectToModulator(ofdmSI)
+                                    .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(model.trainingSamplesOfModel).writePSD(File(buildPath(resDir, "psd_SI_afterMD.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                                .connectToTXIQMixer()
+                                    .binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(model.trainingSamplesOfModel).writePSD(File(buildPath(resDir, "psd_SI_afterMD.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                                .connectToPowerAmplifier()
+                                .connectTo!PowerControlAmplifier((Constant.ThermalNoise.power * pSI.dB.gain^^2).sqrt.V)
+                                .connectToSwitch(switchSI)
+                            )
+                            .connectToAWGN()
+                            .connectToLNA()
+                            .connectToRXIQMixer()
+                            .connectToQuantizer()
+                            //.connectToTXChain()
+                                //.binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterMD.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
+                            //.tmap!"a * (*b)"(switchSIGain)
                                 //.binaryFun!((r, idx) => idx == 0 ? (r.tee(makeInstrument!(cfloat, r => r.writePSD(File("psd_afterMD_%sdB_1.csv", "w"), Constant.samplingFreq, 1024))).toWrappedRange) : r.toWrappedRange)(pIdx)
                             //.connectToUpSampler()
                                 //.binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterUS.csv"), "w"), Constant.samplingFreq * Constant.UpDownSampler.scaleOfUpSampling, 1024 * Constant.UpDownSampler.scaleOfUpSampling))).toWrappedRange)(resultDir)
                                 //.binaryFun!((r, idx) => idx == 0 ? (r.tee(makeInstrument!(cfloat, r => r.writePSD(File("psd_afterUS_%sdB_1.csv", "w"), Constant.samplingFreq * Constant.UpDownSampler.scaleOfUpSampling, 1024 * Constant.UpDownSampler.scaleOfUpSampling))).toWrappedRange) : r.toWrappedRange)(pIdx)
-                            .connectToTXIQMixer()
-                            .connectToPowerAmplifier()
+                            //.connectToTXIQMixer()
+                            //.connectToPowerAmplifier()
                             //.connectTo!VGA((-(10*log10(snr0) - p)).dB)
                             //.connectTo!PowerControlAmplifier((Constant.ThermalNoise.power * p.dB.gain^^2).sqrt.V)
                                 //.binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterPA.csv"), "w"), Constant.samplingFreq * Constant.UpDownSampler.scaleOfUpSampling, 1024 * Constant.UpDownSampler.scaleOfUpSampling))).toWrappedRange)(resultDir)
                                 //.binaryFun!((r, idx) => idx == 0 ? (r.tee(makeInstrument!(cfloat, r => r.writePSD(File("psd_afterPA_%sdB_1.csv", "w"), Constant.samplingFreq * Constant.UpDownSampler.scaleOfUpSampling, 1024 * Constant.UpDownSampler.scaleOfUpSampling))).toWrappedRange) : r.toWrappedRange)(pIdx)
                             //.connectToFlatRayleighFadingChannel()
-                            .connectTo!PowerControlAmplifier((Constant.ThermalNoise.power * p.dB.gain^^2).sqrt.V)
-                            .connectToAWGN()
+                            //.connectTo!PowerControlAmplifier((Constant.ThermalNoise.power * p.dB.gain^^2).sqrt.V)
+                            //.connectToAWGN()
                                 //.binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterRX.csv"), "w"), Constant.samplingFreq * Constant.UpDownSampler.scaleOfUpSampling, 1024 * Constant.UpDownSampler.scaleOfUpSampling))).toWrappedRange)(resultDir)
                                 //.binaryFun!((r, idx) => idx == 0 ? (r.tee(makeInstrument!(cfloat, r => r.writePSD(File("psd_afterRX_%sdB_1.csv", "w"), Constant.samplingFreq * Constant.UpDownSampler.scaleOfUpSampling, 1024 * Constant.UpDownSampler.scaleOfUpSampling))).toWrappedRange) : r.toWrappedRange)(pIdx)
-                            .connectToLNA()
-                            .connectToRXIQMixer()
-                            .connectToQuantizer()
+                            //.connectToLNA()
+                            //.connectToRXIQMixer()
+                            //.connectToQuantizer()
                             //.connectToDownSampler()
                                 //.binaryFun!((r, resDir) => r.tee(makeInstrument!(cfloat, r => r.drop(100_000).writePSD(File(buildPath(resDir, "psd_afterDS.csv"), "w"), Constant.samplingFreq, 1024))).toWrappedRange)(resultDir)
                             //.connectTo!VGA(((10*log10(snr0) - p + 3)).dB)
@@ -167,11 +370,14 @@ void main()
                             //.connectToDemodulator(ofdm)
                             ;
 
+            // 定常状態にする
+            received.popFrontN(1000*1000);
+/+
             auto refBits = siRandomBits();
             //writeln(measureBER(received, refBits, 10_000));
-            auto reference = refBits.connectToModulator(ofdm);
+            auto reference = refBits.connectToModulator(ofdmDesired);
 
-            received.popFrontN(100*1000);
+            //received.popFrontN(100*1000);
             reference.popFrontN(100*1000);
 
             //reference.popFrontN(4);
@@ -378,7 +584,7 @@ void main()
         foreach(i, e; psd)
             file.writefln("%f,%f,%f", (i*1.0/1024*Constant.samplingFreq*8-(Constant.samplingFreq*8/2))/1e6, e, e == 0 ? -400 : 30+10*log10(e));
 */
-
+    +/
     }
 
 /*

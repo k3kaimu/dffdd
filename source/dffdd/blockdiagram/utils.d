@@ -202,8 +202,77 @@ unittest
 }
 
 
+static final class FiberRange(E)
+{
+    bool empty() const pure nothrow @safe @nogc @property { return *_emptyFlag; }
+    E front() @property { return _front; }
+
+
+    void popFront()
+    {
+        while(_ch.queue!E.empty){
+            if(*_emptyFlag) return;
+            Fiber.yield();
+        }
+
+        _front = *_ch.pop!E;
+    }
+
+
+  private:
+    shared(Channel!E.Receiver) _ch;
+    bool* _emptyFlag;
+    E _front;
+}
+
+
+static struct FiberBuffer(E)
+{
+    this(shared(Channel!E.Sender) ch, Fiber fiber, bool* emptyFlag)
+    {
+        _ch = ch;
+        _fiber = fiber;
+        _emptyFlag = emptyFlag;
+    }
+
+
+    ~this()
+    {
+        terminate();
+    }
+
+
+    void terminate()
+    {
+        *_emptyFlag = true;
+        //while(_fiber.state != Fiber.State.TERM) _fiber.call();
+    }
+
+
+    void put(E e)
+    {
+        if(_fiber.state != Fiber.State.TERM)
+        {
+            _ch.put(e);
+            _fiber.call();
+        }
+    }
+
+  private:
+    shared(Channel!E.Sender) _ch;
+    Fiber _fiber;
+    bool* _emptyFlag;
+}
+
 
 auto makeInstrument(E, alias func)()
+{
+    return .makeInstrument!E(delegate void (FiberRange!E r){ func(r); });
+}
+
+
+
+auto makeInstrument(E)(void delegate(FiberRange!E) dg)
 //if(canMakeInstrument!(E, func))
 {
     auto ch = channel!E;
@@ -212,81 +281,18 @@ auto makeInstrument(E, alias func)()
 
     void consumer()
     {
-        static final class FiberRange
-        {
-            bool empty() const pure nothrow @safe @nogc @property { return *_emptyFlag; }
-            E front() @property { return _front; }
-
-
-            void popFront()
-            {
-                while(_ch.queue!E.empty){
-                    if(*_emptyFlag) return;
-                    Fiber.yield();
-                }
-
-                _front = *_ch.pop!E;
-            }
-
-
-          private:
-            shared(Channel!E.Receiver) _ch;
-            bool* _emptyFlag;
-            E _front;
-        }
-
-
-        FiberRange r = new FiberRange;
+        FiberRange!E r = new FiberRange!E;
         r._ch = ch.receiver;
         r._emptyFlag = emptyFlag;
         r.popFront();
 
-        func(r);
-    }
-
-
-    static struct FiberBuffer
-    {
-        this(shared(Channel!E.Sender) ch, Fiber fiber, bool* emptyFlag)
-        {
-            _ch = ch;
-            _fiber = fiber;
-            _emptyFlag = emptyFlag;
-        }
-
-
-        ~this()
-        {
-            terminate();
-        }
-
-
-        void terminate()
-        {
-            *_emptyFlag = true;
-            //while(_fiber.state != Fiber.State.TERM) _fiber.call();
-        }
-
-
-        void put(E e)
-        {
-            if(_fiber.state != Fiber.State.TERM)
-            {
-                _ch.put(e);
-                _fiber.call();
-            }
-        }
-
-      private:
-        shared(Channel!E.Sender) _ch;
-        Fiber _fiber;
-        bool* _emptyFlag;
+        dg(r);
     }
 
 
     Fiber fiber = new Fiber(&consumer);
 
-    return RefCounted!FiberBuffer(ch.sender, fiber, emptyFlag);
+    return RefCounted!(FiberBuffer!E)(ch.sender, fiber, emptyFlag);
 }
 
 unittest

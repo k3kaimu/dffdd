@@ -19,24 +19,14 @@ enum size_t N_avg = 1000;
 
 enum size_t[] delay = [585, 0, 386];
 
+enum FREQ = 5.11E9;
+enum LAMBDA = 2.99792458E8 / FREQ;
+enum DIST = LAMBDA / 2;
+
 
 void main(string[] args)
 {
-    /*
-    immutable cnt = 1;
-    Fft fft = new Fft(N_avg);
-    Complex!double[][] arrs;
-    foreach(i, fn; args[1 .. $]){
-        arrs ~= fft.fft(fn.binaryFileReader!cfloat(1000*1000/10*cnt + delay[i]).take(N_avg).map!(a => complex!float(a.re, a.im)).array());
-        if(arrs[$-1].length < 1000) return;
-    }
-
-    File("ir_01.csv", "w").writefln("%(%s,%|\n%)", fft.convolutionPower(arrs[0].frequencyDomain, (arrs[1]).frequencyDomain, null).map!"a.re^^2+a.im^^2");
-    File("ir_12.csv", "w").writefln("%(%s,%|\n%)", fft.convolutionPower((arrs[1]).frequencyDomain, (arrs[2]).frequencyDomain, null).map!"a.re^^2+a.im^^2");
-    File("ir_20.csv", "w").writefln("%(%s,%|\n%)", fft.convolutionPower((arrs[2]).frequencyDomain, (arrs[0]).frequencyDomain, null).map!"a.re^^2+a.im^^2");
-    */
-
-    foreach(cnt; 0 .. 400){
+    foreach(cnt; 10 .. 11){
         Complex!float[][] arrs;
         foreach(i, fn; args[1 .. $]){
             arrs ~= fn.binaryFileReader!cfloat(1000*1000/10*cnt + delay[i]).take(N_avg).map!(a => complex!float(a.re, a.im)).array();
@@ -44,7 +34,6 @@ void main(string[] args)
         }
 
         immutable N = arrs.length;
-
 
         auto mat = new Complex!float[N*N].sliced(N, N);
         foreach(i; 0 .. mat.length) foreach(j; 0 .. mat[i].length){
@@ -55,7 +44,29 @@ void main(string[] args)
 
         float[] ev = new float[N];
         heev(N, cast(cfloat*)&(mat[0, 0]), ev.ptr);
-        writefln("%s,%(%s,%),", cnt*1000*1000/10/500/1000.0, ev.map!(a => 10*log10(a)));
-        //writeln(mat);
+        //writefln("%s,%(%s,%),", cnt*1000*1000/10/500/1000.0, ev.map!(a => 10*log10(a)));
+
+        foreach(th_idx; 0 .. 1001){
+            auto th = 2*PI / 1000 * th_idx;
+
+            Complex!float[] av = new Complex!float[N];
+            foreach(i; 0 .. N)
+                av[i] = std.complex.expi(DIST * sin(th) / LAMBDA * 2 * PI * i);
+
+            writeln(av);
+            writeln(ev);
+            writeln(mat);
+
+            float sum = 0;
+            foreach(i; 0 .. 1){
+                foreach(j; 0 .. N){
+                    auto p = mat[i, j].conj * av[j];
+                    sum += p.re^^2 + p.im^^2;
+                }
+            }
+
+            writefln("%s,%s,%e,", cnt*1000*1000/10/500/1000.0, th, 1/sum);
+        }
     }
 }
+
