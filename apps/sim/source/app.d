@@ -269,7 +269,7 @@ void main()
         model.withSIC = false;
         //mainImpl(model, format("no_sic_snr%s_inr%s", model.SNR, model.INR));
         models ~= model;
-        dirs ~= "no_sic_snr%s_inr%s";
+        dirs ~= "no_sic_snr%s_inr%s".format(model.SNR, model.INR);
     }
 
     // with sic
@@ -280,7 +280,7 @@ void main()
         model.withSIC = true;
         //mainImpl(model, format("with_sic_snr%s_inr%s", model.SNR, model.INR));
         models ~= model;
-        dirs ~= "with_sic_snr%s_inr%s";
+        dirs ~= "with_sic_snr%s_inr%s".format(model.SNR, model.INR);
     }
 
     foreach(i; iota(models.length).parallel()){
