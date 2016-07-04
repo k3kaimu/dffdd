@@ -258,13 +258,18 @@ void mainImpl(Model model, string resultDir)
 
 void main()
 {
+    Model[] models;
+    string[] dirs;
+
     // no sic
     foreach(p; iota(0, 31).parallel()){
         Model model;
         model.SNR = p;
         model.INR = 30;
         model.withSIC = false;
-        mainImpl(model, format("no_sic_snr%s_inr%s", model.SNR, model.INR));
+        //mainImpl(model, format("no_sic_snr%s_inr%s", model.SNR, model.INR));
+        models ~= model;
+        dirs ~= "no_sic_snr%s_inr%s";
     }
 
     // with sic
@@ -273,7 +278,13 @@ void main()
         model.SNR = p;
         model.INR = 30;
         model.withSIC = true;
-        mainImpl(model, format("with_sic_snr%s_inr%s", model.SNR, model.INR));
+        //mainImpl(model, format("with_sic_snr%s_inr%s", model.SNR, model.INR));
+        models ~= model;
+        dirs ~= "with_sic_snr%s_inr%s";
+    }
+
+    foreach(i; iota(models.length).parallel()){
+        mainImpl(models[i], dirs[i]);
     }
 }
 
