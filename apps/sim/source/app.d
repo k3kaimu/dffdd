@@ -139,6 +139,7 @@ void mainImpl(Model model, string resultDir)
 
     auto fftObj = new Fft(model.blockSize);
     auto filter = makeCascadeHammersteinFilter(modOFDM(model), model);
+    //auto filter = makeParallelHammersteinFilter(modOFDM(model), model);
 
     {
         File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
@@ -222,15 +223,41 @@ void mainImpl(Model model, string resultDir)
 
     // BER count
     *switchDS = true;
+    *switchSI = model.withSI;
+
+    size_t inpSize, outSize;
+    {
+        auto mod = modOFDM(model);
+        inpSize = mod.symInputLength;
+        outSize = mod.symOutputLength;
+    }
+
+    immutable numOfTrainingBits = model.numOfModelTrainingSample / outSize * inpSize;
+    immutable numOfTrainingSample2 = numOfTrainingBits / inpSize * outSize;
+
+    received.popFrontN(numOfTrainingSample2);
+    txReplica.popFrontN(numOfTrainingSample2);
+
+    received.popFrontN(model.numOfPopFront);
+    txReplica.popFrontN(model.numOfPopFront);
+
     real berResult = -1;
     auto berCounter = makeInstrument(delegate void (FiberRange!cfloat r){
-        auto bits= r
+        auto bits = r
         .connectTo!PowerControlAmplifier(ofdmModSignalPower.sqrt.V)
         .connectToDemodulator(modOFDM(model), model);
 
         auto refBits = desiredRandomBits(model);
+        refBits.popFrontN(numOfTrainingBits);
+
+        bits.popFrontN(numOfTrainingBits);
+        refBits.popFrontN(numOfTrainingBits);
+
         berResult = measureBER(bits, refBits, model.berCounter.totalBits);
     });
+
+    auto rcvAfterSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_afterSIC.csv", resultDir, 0, model);
+    auto rcvBeforeSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_beforeIC.csv", resultDir, 0, model);
 
     while(berResult == -1){
         foreach(i; 0 .. model.blockSize){
@@ -241,18 +268,23 @@ void mainImpl(Model model, string resultDir)
             txReplica.popFront();
         }
 
-        if(model.withSIC)
+        if(model.withSIC && model.withSI)
             filter.apply!false(refrs, recvs, outps);
         else
             outps[] = recvs[];
 
         foreach(e; outps){
             berCounter.put(e.re + e.im * 1i);
+            rcvAfterSICPSD.put(e);
         }
+        foreach(e; recvs)
+            rcvBeforeSICPSD.put(e);
     }
 
     File file = File(buildPath(resultDir, "ber.csv"), "w");
     file.writeln(berResult);
+
+    writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR, model.INR, berResult);
 }
 
 
@@ -279,6 +311,24 @@ void main()
         model.INR = 30;
         model.withSIC = true;
         //mainImpl(model, format("with_sic_snr%s_inr%s", model.SNR, model.INR));
+        models ~= model;
+        dirs ~= "with_sic_snr%s_inr%s".format(model.SNR, model.INR);
+    }
+
+    foreach(snr; 0 .. 31){
+        Model model;
+        model.SNR = snr;
+        model.INR = 30;
+        model.withSIC = true;
+        model.withSI = false;
+        models ~= model;
+        dirs ~= "no_sic_snr%s_noSI".format(model.SNR);
+    }
+
+    foreach(inr; iota(20, 60, 2)){
+        Model model;
+        model.SNR = 25;
+        model.INR = inr;
         models ~= model;
         dirs ~= "with_sic_snr%s_inr%s".format(model.SNR, model.INR);
     }

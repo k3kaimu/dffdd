@@ -1,5 +1,6 @@
 module dffdd.utils.linalg;
 
+import std.complex;
 
 nothrow: @trusted:
 extern(C) int LAPACKE_zheev(

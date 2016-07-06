@@ -60,19 +60,21 @@ alias BasisFunctions = AliasSeq!(x => x,
                               x => x.conj * (x.re^^2 + x.im^^2),
                               x => x * (x.re^^2 + x.im^^2)^^2,
                               x => x.conj * (x.re^^2 + x.im^^2)^^2,
-                              x => x * (x.re^^2 + x.im^^2)^^4,
-                              x => x.conj * (x.re^^2 + x.im^^2)^^4,
+                              //x => x * (x.re^^2 + x.im^^2)^^4,
+                              //x => x.conj * (x.re^^2 + x.im^^2)^^4,
                               );
 
 struct Model
 {
-    size_t numOfModelTrainingSample = 1024*1024*4;
-    size_t numOfFilterTrainingSample = 1024*1024*4;
+    size_t numOfModelTrainingSample = 1024*1024;
+    size_t numOfFilterTrainingSample = 1024*1024;
     size_t blockSize = 1024;
     real samplingFreq = 20e6 * 4;
     real SNR = 20;
     real INR = 60;
     bool withSIC = true;
+    bool withSI = true;
+    size_t numOfPopFront = 1;
 
 
     struct QAM
@@ -131,7 +133,7 @@ struct Model
 
     struct BERCounter
     {
-        ulong totalBits = 10_000;
+        ulong totalBits = 10_000_000;
     }
     BERCounter berCounter;
 
@@ -341,7 +343,7 @@ auto connectToRxChain(R)(R r)
 }
 
 
-auto makeParallelHammersteinFilter(Mod)(Mod mod)
+auto makeParallelHammersteinFilter(Mod)(Mod mod, Model model)
 {
     import dffdd.filter.diagonal;
     import dffdd.filter.lms;
@@ -351,7 +353,7 @@ auto makeParallelHammersteinFilter(Mod)(Mod mod)
     import dffdd.filter.polynomial;
     import dffdd.filter.orthogonalize;
 
-    auto state = new MemoryPolynomialState!(Complex!float, 8, 4, 0, 0, false, true)(1);
+    auto state = new MemoryPolynomialState!(Complex!float, 8, 1, 0, 0, false, false)(1);
 
     //writeln("Use");
     //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
@@ -374,9 +376,10 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
     import std.meta;
     import std.stdio;
 
-    writeln("orthogonalizer start");
+    //writeln("orthogonalizer start");
 
-    auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
+    //auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
+    auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
 
     {
         orthogonalizer.start();
@@ -427,7 +430,7 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
     //auto st5 = (new FIRFilter!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[4].dup);
     //auto st7 = (new FIRFilter!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[5].dup);
 
-    writeln("return filter");
+    //writeln("return filter");
 
     return serialFilter(
             //st12,
