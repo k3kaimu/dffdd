@@ -30,6 +30,7 @@ import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.mod.ofdm;
 import dffdd.blockdiagram.iqmixer;
 import dffdd.blockdiagram.quantizer;
+import dffdd.blockdiagram.txchain;
 //import dffdd.utils.msgpackrpc;
 
 
@@ -60,8 +61,8 @@ alias BasisFunctions = AliasSeq!(x => x,
                               x => x.conj * (x.re^^2 + x.im^^2),
                               x => x * (x.re^^2 + x.im^^2)^^2,
                               x => x.conj * (x.re^^2 + x.im^^2)^^2,
-                              //x => x * (x.re^^2 + x.im^^2)^^4,
-                              //x => x.conj * (x.re^^2 + x.im^^2)^^4,
+                              //x => x * (x.re^^2 + x.im^^2)^^3,
+                              //x => x.conj * (x.re^^2 + x.im^^2)^^3,
                               );
 
 struct Model
@@ -75,6 +76,17 @@ struct Model
     bool withSIC = true;
     bool withSI = true;
     size_t numOfPopFront = 1;
+
+
+    bool useDTXIQ = true;
+    bool useDTXPA = true;
+    bool useDTXIQ2 = false;
+    bool useSTXIQ = true;
+    bool useSTXPA = true;
+    bool useSTXIQ2 = false;
+    bool useSRXLN = true;
+    bool useSRXIQ = true;
+    bool useSRXQZ = true;
 
 
     struct QAM
@@ -133,7 +145,7 @@ struct Model
 
     struct BERCounter
     {
-        ulong totalBits = 10_000_000;
+        ulong totalBits = 10_000;
     }
     BERCounter berCounter;
 
@@ -170,7 +182,7 @@ struct Model
 
     struct Quantizer
     {
-        uint numOfBits = 14;
+        uint numOfBits = 24;
     }
     Quantizer quantizer;
 
@@ -331,9 +343,10 @@ auto connectToQuantizer(R)(R r, Model model)
 }
 
 
-auto connectToTxChain(R)(R r)
+auto connectToTxChain(R)(R r, Model model)
 {
-    return r.connectToTXIQMixer().connectToPowerAmplifier();
+    //return r.connectToTXIQMixer().connectToPowerAmplifier();
+    return TXChain.makeBlock(r, 1/model.txIQMixer.IIR.dB.gain, 0, model.pa.GAIN.dB, model.pa.IIP3.dBm).toWrappedRange();
 }
 
 
@@ -353,7 +366,7 @@ auto makeParallelHammersteinFilter(Mod)(Mod mod, Model model)
     import dffdd.filter.polynomial;
     import dffdd.filter.orthogonalize;
 
-    auto state = new MemoryPolynomialState!(Complex!float, 8, 1, 0, 0, false, false)(1);
+    auto state = new MemoryPolynomialState!(Complex!float, 8, 4, 0, 0, false, true)(1);
 
     //writeln("Use");
     //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
@@ -378,8 +391,8 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
 
     //writeln("orthogonalizer start");
 
-    //auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
-    auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
+    auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
+    //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
 
     {
         orthogonalizer.start();
@@ -456,25 +469,25 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
             //st3c_2,
             //makeRLSAdapter(st3c_2, 0.999, 1E-7),
             st1,
-            lsAdapter(st1, 10000),
+            //lsAdapter(st1, 10000),
             //lmsAdapter(st1, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st1, 1 - 1E-4, 1E-7),
+            makeRLSAdapter(st1, 1 - 1E-5, 1E-7),
             st1c,
-            lsAdapter(st1c, 10000),
+            //lsAdapter(st1c, 10000),
             //lmsAdapter(st1c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st1c, 1 - 1E-4, 1E-7),
+            makeRLSAdapter(st1c, 1 - 1E-5, 1E-7),
             //st2,
             //lsAdapter(st2, 10000),
             //lmsAdapter(st2, 0.002, 1024, 0.5),
             //makeRLSAdapter(st2, /*0.9997*/1, 1E-7),
             st3,
-            lsAdapter(st3, 10000),
+            //lsAdapter(st3, 10000),
             //lmsAdapter(st3, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st3, 1 - 1E-4, 1E-7),
+            makeRLSAdapter(st3, 1 - 1E-5, 1E-7),
             st3c,
-            lsAdapter(st3c, 10000),
+            //lsAdapter(st3c, 10000),
             //lmsAdapter(st3c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st3c, 1 - 1E-4, 1E-7),
+            makeRLSAdapter(st3c, 1 - 1E-5, 1E-7),
             //st4,
             //lsAdapter(st4, 10000),
             //lmsAdapter(st4, 0.002, 1024, 0.5),
@@ -482,13 +495,13 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
             //st4a,
             //lmsAdapter(st4a, 0.0005, 1024, 0.5),
             st5,
-            lsAdapter(st5, 10000),
+            //lsAdapter(st5, 10000),
             //lmsAdapter(st5, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st5, 1 - 1E-4, 1E-7),
+            makeRLSAdapter(st5, 1 - 1E-5, 1E-7),
             st5c,
-            lsAdapter(st5c, 10000),
+            //lsAdapter(st5c, 10000),
             //lmsAdapter(st5c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st5c, 1 - 1E-4, 1E-7),
+            makeRLSAdapter(st5c, 1 - 1E-5, 1E-7),
             //st7,
             //lsAdapter(st7, 10000),
             //*********lmsAdapter(st7, 0.001, 1024, 0.5),

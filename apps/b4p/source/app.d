@@ -19,7 +19,7 @@ enum size_t N_avg = 1000;
 
 enum size_t[] delay = [585, 0, 386];
 
-enum FREQ = 5.11E9;
+enum FREQ = 5.11E9+ 100E3;
 enum LAMBDA = 2.99792458E8 / FREQ;
 enum DIST = LAMBDA / 2;
 

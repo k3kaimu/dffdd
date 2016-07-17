@@ -93,37 +93,69 @@ void mainImpl(Model model, string resultDir)
           switchSI = new bool(true);
 
     auto noise = thermalNoise(model);
-    auto received = desiredRandomBits(model)
-                    .connectToModulator(modOFDM(model), model)
-                        .psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
-                    .connectToTXIQMixer(model)
-                        .psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-                    .connectToPowerAmplifier(model)
-                        .psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
-                    .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.SNR.dB.gain^^2).sqrt.V)
-                        .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
-                    .connectToSwitch(switchDS)
-                    .add(
-                        // Self-Interference
-                        siRandomBits(model)
-                        .connectToModulator(modOFDM(model), model)
-                            .psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
-                        .connectToTXIQMixer(model)
-                            .psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-                        .connectToPowerAmplifier(model)
-                            .psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
-                        .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.INR.dB.gain^^2).sqrt.V)
-                            .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
-                        .connectToSwitch(switchSI)
-                    )
-                    .connectToAWGN(model)
-                        .psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSample, model)
-                    .connectToLNA(model)
-                        .psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSample, model)
-                    .connectToRXIQMixer(model)
-                        .psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-                    .connectToQuantizer(model)
-                    ;
+    //auto received = desiredRandomBits(model)
+    //                .connectToModulator(modOFDM(model), model)
+    //                    .psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                //.connectToTXIQMixer(model)
+    //                    //.psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                //.connectToPowerAmplifier(model)
+    //                    //.psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                //.connectToTXIQMixer(model)
+    //                    //.psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                //.connectToTxChain(model)
+    //                .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.SNR.dB.gain^^2).sqrt.V)
+    //                    .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                .connectToSwitch(switchDS)
+    //                .add(
+    //                    // Self-Interference
+    //                    siRandomBits(model)
+    //                    .connectToModulator(modOFDM(model), model)
+    //                        .psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                    //.connectToTXIQMixer(model)
+    //                        //.psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                    .connectToPowerAmplifier(model)
+    //                        .psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                    //.connectToTXIQMixer(model)
+    //                        //.psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                    //.connectToTxChain(model)
+    //                    .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.INR.dB.gain^^2).sqrt.V)
+    //                        .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                    .connectToSwitch(switchSI)
+    //                )
+    //                .connectToAWGN(model)
+    //                    .psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                .connectToLNA(model)
+    //                    .psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                //.connectToRXIQMixer(model)
+    //                    //.psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
+    //                .connectToQuantizer(model)
+    //                ;
+
+    InputRange!creal received;
+    {
+        auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model), model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useDTXPA)  desired = desired.connectToPowerAmplifier(model).psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useDTXIQ2) desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSample, model);
+        desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.SNR.dB.gain^^2).sqrt.V)
+                         .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model);
+
+
+        auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model), model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSample, model);
+        selfInterference = selfInterference.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.INR.dB.gain^^2).sqrt.V)
+                                           .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model);
+
+        received = desired.connectToSwitch(switchDS)
+            .add(selfInterference.connectToSwitch(switchSI))
+            .connectToAWGN(model).psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSample, model);
+
+        if(model.useSRXLN) received = received.connectToLNA(model).psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useSRXIQ) received = received.connectToRXIQMixer(model).psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSample, model);
+        if(model.useSRXQZ) received = received.connectToQuantizer(model);
+    }
 
     auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), model);
 
@@ -285,6 +317,19 @@ void mainImpl(Model model, string resultDir)
     file.writeln(berResult);
 
     writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR, model.INR, berResult);
+
+    // ノイズ電力
+    auto noisePSD = makeSpectrumAnalyzer!(creal)("psd_noise_floor.csv", resultDir, 0, model);
+
+    *switchSI = false;
+    *switchDS = false;
+    received.popFrontN(1024);
+
+    foreach(blockIdxo; 0 .. 64 * 1024)
+    {
+        .put(noisePSD, received.front);
+        received.popFront();
+    }
 }
 
 
@@ -294,47 +339,118 @@ void main()
     string[] dirs;
 
     // no sic
-    foreach(p; 0 .. 31){
-        Model model;
-        model.SNR = p;
-        model.INR = 30;
-        model.withSIC = false;
-        //mainImpl(model, format("no_sic_snr%s_inr%s", model.SNR, model.INR));
-        models ~= model;
-        dirs ~= "no_sic_snr%s_inr%s".format(model.SNR, model.INR);
-    }
+    //foreach(p; 0 .. 31){
+    //    Model model;
+    //    model.SNR = p;
+    //    model.INR = 30;
+    //    model.withSIC = false;
+    //    //mainImpl(model, format("no_sic_snr%s_inr%s", model.SNR, model.INR));
+    //    models ~= model;
+    //    dirs ~= "no_sic_snr%s_inr%s".format(model.SNR, model.INR);
+    //}
 
-    // with sic
-    foreach(p; 0 .. 31){
-        Model model;
-        model.SNR = p;
-        model.INR = 30;
-        model.withSIC = true;
-        //mainImpl(model, format("with_sic_snr%s_inr%s", model.SNR, model.INR));
-        models ~= model;
-        dirs ~= "with_sic_snr%s_inr%s".format(model.SNR, model.INR);
-    }
+    //// with sic
+    //foreach(p; 0 .. 31){
+    //    Model model;
+    //    model.SNR = p;
+    //    model.INR = 30;
+    //    model.withSIC = true;
+    //    //mainImpl(model, format("with_sic_snr%s_inr%s", model.SNR, model.INR));
+    //    models ~= model;
+    //    dirs ~= "with_sic_snr%s_inr%s".format(model.SNR, model.INR);
+    //}
 
-    foreach(snr; 0 .. 31){
-        Model model;
-        model.SNR = snr;
-        model.INR = 30;
-        model.withSIC = true;
-        model.withSI = false;
-        models ~= model;
-        dirs ~= "no_sic_snr%s_noSI".format(model.SNR);
-    }
+    //foreach(snr; 0 .. 31){
+    //    Model model;
+    //    model.SNR = snr;
+    //    model.INR = 30;
+    //    model.withSIC = true;
+    //    model.withSI = false;
+    //    models ~= model;
+    //    dirs ~= "no_sic_snr%s_noSI".format(model.SNR);
+    //}
 
-    foreach(inr; iota(20, 60, 2)){
+    //// no impairments
+    //foreach(inr; iota(50, 60, 2)){
+    //    Model model;
+    //    model.SNR = 25;
+    //    model.INR = inr;
+    //    model.useDTXIQ = false;
+    //    model.useDTXPA = false;
+    //    model.useSTXIQ = false;
+    //    model.useSTXPA = false;
+    //    model.useSTXIQ2 = false;
+    //    model.useSRXLN = false;
+    //    model.useSRXIQ = false;
+    //    model.useSRXQZ = true;
+
+    //    models ~= model;
+    //    model.numOfPopFront = 0;
+    //    dirs ~= "only_ADC_snr%s_inr%s".format(model.SNR, model.INR);
+    //}
+
+
+    //// ADC&IQ
+    //foreach(inr; iota(50, 60, 2)){
+    //    Model model;
+    //    model.SNR = 25;
+    //    model.INR = inr;
+    //    model.useDTXIQ = false;
+    //    model.useDTXPA = false;
+    //    model.useSTXIQ = true;
+    //    model.useSTXPA = false;
+    //    model.useSTXIQ2 = false;
+    //    model.useSRXLN = false;
+    //    model.useSRXIQ = false;
+    //    model.useSRXQZ = true;
+
+    //    models ~= model;
+    //    model.numOfPopFront = 0;
+    //    dirs ~= "only_ADC_TXIQ_snr%s_inr%s".format(model.SNR, model.INR);
+    //}
+
+
+    //// ADC&PA
+    //foreach(inr; iota(50, 60, 2)){
+    //    Model model;
+    //    model.SNR = 25;
+    //    model.INR = inr;
+    //    model.useDTXIQ = false;
+    //    model.useDTXPA = false;
+    //    model.useSTXIQ = false;
+    //    model.useSTXPA = true;
+    //    model.useSTXIQ2 = false;
+    //    model.useSRXLN = false;
+    //    model.useSRXIQ = false;
+    //    model.useSRXQZ = true;
+
+    //    models ~= model;
+    //    model.numOfPopFront = 0;
+    //    dirs ~= "only_ADC_TXPA_snr%s_inr%s".format(model.SNR, model.INR);
+    //}
+
+
+    // ADC&IQ&PA
+    foreach(inr; iota(20, 62, 2)){
         Model model;
         model.SNR = 25;
         model.INR = inr;
+        model.useDTXIQ = true;
+        model.useDTXPA = true;
+        model.useSTXIQ = true;
+        model.useSTXPA = true;
+        model.useSTXIQ2 = false;
+        model.useSRXLN = true;
+        model.useSRXIQ = true;
+        model.useSRXQZ = true;
+
         models ~= model;
-        dirs ~= "with_sic_snr%s_inr%s".format(model.SNR, model.INR);
+        model.numOfPopFront = 0;
+        dirs ~= "with_allImpairements_snr%s_inr%s_CH_RLS".format(model.SNR, model.INR);
     }
 
     foreach(i; iota(models.length).parallel()){
-        mainImpl(models[i], dirs[i]);
+        mainImpl(models[i], buildPath("results", dirs[i]));
     }
 }
 

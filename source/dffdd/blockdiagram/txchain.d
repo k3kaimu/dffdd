@@ -1,10 +1,16 @@
 module dffdd.blockdiagram.txchain;
 
+import std.traits;
+import std.range;
+import dffdd.utils.unit;
+import std.math;
+import std.complex;
+
 
 struct TXChain
 {
     static 
-    TXChainImpl!R makeBlock(R)(R r, real alphaIQ, real phiIQ, Gain gain, Voltage iip3, Voltage iip5, Voltage iip7)
+    TXChainImpl!R makeBlock(R)(R r, real alphaIQ, real phiIQ, Gain gain, Voltage iip3, Voltage iip5 = Voltage(0), Voltage iip7 = Voltage(0))
     {
         return TXChainImpl!R(r, alphaIQ, phiIQ, gain, iip3, iip5, iip7);
     }
@@ -38,14 +44,14 @@ struct TXChain
 
 
     static
-    real coefOfABSPower(uint p, real alphaIQ)
+    real coefOfABSPower(uint p, real alpha)
     {
         p = p / 2;
 
         real sum = 0;
         foreach(k2; 0 .. p+1)
             if((p - k2)  % 2 == 0)
-                sum += mc(p, (p-k2)/2, k2, (p-k2)/2) * alpha^^(p - k2) * (1 + alphaIQ^^2)^^k2;
+                sum += mc(p, (p-k2)/2, k2, (p-k2)/2) * alpha^^(p - k2) * (1 + alpha^^2)^^k2;
 
         return sum;
     }
@@ -60,33 +66,39 @@ struct TXChain
     static
     struct TXChainImpl(R)
     {
-        alias C = Unqual!(ElementType!R);
-        alias F = typeof(C.init.re);
+        alias C_ = Unqual!(ElementType!R);
+        alias F = typeof(C_.init.re);
+        alias C = Complex!F;
 
         this(R)(R r, real alphaIQ, real phiIQ, Gain gain, Voltage iip3, Voltage iip5, Voltage iip7)
         {
             _r = r;
 
-            _gainQ = alphaIQ * ComplexMethods!C.expi(phiIQ);
+          static if(is(C : creal))
+            _gainQ = alphaIQ * std.math.expi(phiIQ);
+          else
+            _gainQ = alphaIQ * std.complex.expi(phiIQ);
 
             _gain1 = gain.gain;
 
             _gain3 = (iip3.V == 0 ? 0 : (gain.gain / iip3.V^^2)) * coefOfABSPower(3-1, alphaIQ);
-            _gain5 = (iip3.V == 0 ? 0 : (gain.gain / iip3.V^^4)) * coefOfABSPower(5-1, alphaIQ);
-            _gain7 = (iip3.V == 0 ? 0 : (gain.gain / iip3.V^^6)) * coefOfABSPower(7-1, alphaIQ);
+            _gain5 = (iip5.V == 0 ? 0 : (gain.gain / iip5.V^^4)) * coefOfABSPower(5-1, alphaIQ);
+            _gain7 = (iip7.V == 0 ? 0 : (gain.gain / iip7.V^^6)) * coefOfABSPower(7-1, alphaIQ);
         }
 
 
         auto front() @property
         {
-            auto x = _r.front;
+            auto x_ = _r.front;
+            auto x = C(x_.re, x_.im);
             auto x1p = x.re^^2 + x.im^^2,
                  x3 = x * x1p,
-                 x5 = x3 * x1p;
+                 x5 = x3 * x1p,
                  x7 = x5 * x1p;
 
             auto xr = x * _gain1 + x3 * _gain3 + x5 * _gain5 + x7 * _gain7;
-            return xr + xr.conj * _gainQ;
+            auto ret = xr + xr.conj * _gainQ;
+            return ret.re + ret.im*1i;
         }
 
 

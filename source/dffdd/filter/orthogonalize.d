@@ -7,13 +7,22 @@ import dffdd.utils.linalg;
 import std.math;
 import std.range;
 import std.complex;
+//import std.experimental.ndslice;
 
 final class DiagonalizationOBFFactory(C, basisFuncs...)
 {
     enum size_t Dim = basisFuncs.length;
     alias F = typeof(C.init.re);
 
-    this() {}
+  static if(is(F == float))
+    alias BuiltInCpx = cfloat;
+  else
+    alias BuiltInCpx = cdouble;
+
+    this()
+    {
+        _covm = (new C[Dim * Dim]).sliced(Dim, Dim);
+    }
 
 
     void start()
@@ -26,10 +35,12 @@ final class DiagonalizationOBFFactory(C, basisFuncs...)
 
     void finish()
     {
-        _covm /= _cnt;
+        import std.stdio;
+        _covm[] /= _cnt;
 
-        F[Dim] eigenvalues;
-        heev(Dim, &(_covm[0, 0]), eigenvalues.ptr);
+        F[] eigenvalues = new F[Dim];
+        heev(Dim, cast(BuiltInCpx*)&(_covm[0, 0]), eigenvalues.ptr);
+
         foreach(i; 0 .. Dim){
             eigenvalues[i] = sqrt(eigenvalues[i]);
             foreach(j; 0 .. Dim){
@@ -66,7 +77,7 @@ final class DiagonalizationOBFFactory(C, basisFuncs...)
 
 
   private:
-    SMatrix!(C, Dim, Dim) _covm;
+    Slice!(2, C*) _covm;
     size_t _cnt;
 }
 
