@@ -431,7 +431,7 @@ void main()
 
 
     // ADC&IQ&PA
-    foreach(inr; iota(20, 62, 2)){
+    foreach(inr; iota(40, 62, 2)){
         Model model;
         model.SNR = 25;
         model.INR = inr;

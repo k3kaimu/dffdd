@@ -94,7 +94,8 @@ if(StateORAdapter.length % 2 == 0)
     States states;
     Adapters adapters;
 
-    alias C = typeof(states[0].state[0][0]);
+    //alias C = typeof(states[0].state[0][0]);
+    alias C = States[0].StateElementType;
 
 
     this(StateORAdapter stateAndAdapter)

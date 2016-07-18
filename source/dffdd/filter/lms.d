@@ -2,18 +2,22 @@ module dffdd.filter.lms;
 
 import std.complex;
 import std.math;
+import std.range : lockstep;
+import std.experimental.ndslice;
 
 final class LMSAdapter(State)
 {
     import std.algorithm;
 
     enum bool usePower = true;
+    alias C = State.StateElementType;
+    alias F = typeof(C.re);
 
-    enum size_t N = typeof(State.init.state).length;
-    enum size_t P = typeof(State.init.state[0]).length;
+    //enum size_t N = typeof(State.init.state).length;
+    //enum size_t P = typeof(State.init.state[0]).length;
 
-    alias C = typeof(State.init.state[0][0]);
-    alias F = typeof(State.init.power[0]);
+    //alias C = typeof(State.init.state[0][0]);
+    //alias F = typeof(State.init.power[0]);
 
     this(State state, real mu, size_t forgetCycle = 1024, real forgetCoeff = 0.50)
     {
@@ -21,28 +25,57 @@ final class LMSAdapter(State)
         _cnt = 0;
         _cycle = forgetCycle;
         _fcoeff = forgetCoeff;
-        foreach(ref e; _subMaxPower) e = 0;
+
+      static if(state.state.shape.length > 1)
+      {
+        _maxPower = new F[state.power.elementsCount].sliced(state.power.shape);
+        _subMaxPower = new F[state.power.elementsCount].sliced(state.power.shape);
+
+        _maxPower[] = state.power[];
+        _subMaxPower[] = 0;
+      }
+      else
+      {
+        _subMaxPower = 0;
         _maxPower = state.power;
+      }
     }
 
 
-    void adapt(ref State state, C error) pure nothrow @safe @nogc
+    void adapt(ref State state, C error) /*pure nothrow @safe @nogc*/
     {
-        foreach(i; 0 .. P)
-            _subMaxPower[i] = max(state.power[i], _subMaxPower[i]);
+      static if(is(typeof(_maxPower) == F))
+        _subMaxPower = max(state.power, _subMaxPower);
+      else
+        foreach(ref a, b; lockstep(state.power.byElement, _subMaxPower.byElement))
+            b = max(a, b);
 
         ++_cnt;
         if(_cnt == _cycle){
             _cnt = 0;
 
-            _maxPower[] = _maxPower[] * _fcoeff + _subMaxPower[] * (1 - _fcoeff);
+          static if(is(typeof(_maxPower) == F))
+          {
+            _maxPower = _maxPower * _fcoeff + _subMaxPower * (1 - _fcoeff);
+            _subMaxPower = 0;
+          }
+          else
+          {
+            _maxPower[] *= _fcoeff;
+            _maxPower += _subMaxPower[] * (1 - _fcoeff);
 
-            foreach(ref e; _subMaxPower) e = 0;
+            _subMaxPower[] = 0;
+          }
         }
 
-        foreach(i; 0 .. N)
-            foreach(p; 0 .. P)
-                state.weight[i][p] += _mu * error * state.state[i][p].conj / _maxPower[p];
+
+        foreach(i; 0 .. state.numOfTaps){
+          static if(is(typeof(_maxPower) == F))
+            state.weight[i] += _mu * error * state.state[i].conj / _maxPower;
+          else
+            foreach(ref w, s, p; lockstep(state.weight[i].byElement, state.state[i].byElement, _maxPower.byElement))
+                w += _mu * error * s.conj / p;
+        }
     }
 
 
@@ -51,8 +84,17 @@ final class LMSAdapter(State)
     size_t _cnt;
     immutable size_t _cycle;
     immutable real _fcoeff;
-    F[P] _maxPower;
-    F[P] _subMaxPower;
+
+  static if(State.init.state.shape.length > 1)
+  {
+    Slice!(State.init.power.shape.length, F*) _maxPower;
+    Slice!(State.init.power.shape.length, F*) _subMaxPower;
+  }
+  else
+  {
+    F _maxPower;
+    F _subMaxPower;
+  }
 }
 
 

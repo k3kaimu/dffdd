@@ -369,9 +369,9 @@ auto makeParallelHammersteinFilter(Mod)(Mod mod, Model model)
     auto state = new MemoryPolynomialState!(Complex!float, 8, 4, 0, 0, false, true)(1);
 
     //writeln("Use");
-    //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
+    auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
     //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
-    auto adapter = lsAdapter(state, 10000);
+    //auto adapter = lsAdapter(state, 10000);
 
     return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
 }
@@ -386,6 +386,7 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
     import dffdd.filter.mempoly;
     import dffdd.filter.polynomial;
     import dffdd.filter.orthogonalize;
+    import dffdd.filter.state;
     import std.meta;
     import std.stdio;
 
@@ -422,22 +423,22 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
         orthogonalizer.getCoefs(i, e);
     }
 
-    auto st1 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[0].dup);
-    auto st12 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[0].dup);
-    auto st1c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[1].dup);
-    auto st12c = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[1].dup);
-    //auto st2 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    auto st3 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    auto st32 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    //auto st32 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    auto st3c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[3].dup);
-    auto st32c = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[3].dup);
-    auto st5 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[4].dup);
-    auto st52 = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[4].dup);
-    auto st5c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[5].dup);
-    auto st52c = (new FIRFilter!(Complex!float, 2, true)).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[5].dup);
-    //auto st7 = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[6].dup);
-    //auto st7c = (new FIRFilter!(Complex!float, 8, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[7].dup);
+    auto st1 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[0].dup);
+    auto st12 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[0].dup);
+    auto st1c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[1].dup);
+    auto st12c = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[1].dup);
+    //auto st2 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
+    auto st3 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
+    auto st32 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
+    //auto st32 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
+    auto st3c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[3].dup);
+    auto st32c = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[3].dup);
+    auto st5 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[4].dup);
+    auto st52 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[4].dup);
+    auto st5c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[5].dup);
+    auto st52c = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[5].dup);
+    //auto st7 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[6].dup);
+    //auto st7c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[7].dup);
     
 
     //auto st5 = (new FIRFilter!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[4].dup);
@@ -470,24 +471,24 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
             //makeRLSAdapter(st3c_2, 0.999, 1E-7),
             st1,
             //lsAdapter(st1, 10000),
-            //lmsAdapter(st1, 0.001, 1024, 0.5),
-            makeRLSAdapter(st1, 1 - 1E-5, 1E-7),
+            lmsAdapter(st1, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st1, 1 - 1E-5, 1E-7),
             st1c,
             //lsAdapter(st1c, 10000),
-            //lmsAdapter(st1c, 0.001, 1024, 0.5),
-            makeRLSAdapter(st1c, 1 - 1E-5, 1E-7),
+            lmsAdapter(st1c, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st1c, 1 - 1E-5, 1E-7),
             //st2,
             //lsAdapter(st2, 10000),
             //lmsAdapter(st2, 0.002, 1024, 0.5),
             //makeRLSAdapter(st2, /*0.9997*/1, 1E-7),
             st3,
             //lsAdapter(st3, 10000),
-            //lmsAdapter(st3, 0.001, 1024, 0.5),
-            makeRLSAdapter(st3, 1 - 1E-5, 1E-7),
+            lmsAdapter(st3, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st3, 1 - 1E-5, 1E-7),
             st3c,
             //lsAdapter(st3c, 10000),
-            //lmsAdapter(st3c, 0.001, 1024, 0.5),
-            makeRLSAdapter(st3c, 1 - 1E-5, 1E-7),
+            lmsAdapter(st3c, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st3c, 1 - 1E-5, 1E-7),
             //st4,
             //lsAdapter(st4, 10000),
             //lmsAdapter(st4, 0.002, 1024, 0.5),
@@ -496,12 +497,12 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
             //lmsAdapter(st4a, 0.0005, 1024, 0.5),
             st5,
             //lsAdapter(st5, 10000),
-            //lmsAdapter(st5, 0.001, 1024, 0.5),
-            makeRLSAdapter(st5, 1 - 1E-5, 1E-7),
+            lmsAdapter(st5, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st5, 1 - 1E-5, 1E-7),
             st5c,
             //lsAdapter(st5c, 10000),
-            //lmsAdapter(st5c, 0.001, 1024, 0.5),
-            makeRLSAdapter(st5c, 1 - 1E-5, 1E-7),
+            lmsAdapter(st5c, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st5c, 1 - 1E-5, 1E-7),
             //st7,
             //lsAdapter(st7, 10000),
             //*********lmsAdapter(st7, 0.001, 1024, 0.5),
