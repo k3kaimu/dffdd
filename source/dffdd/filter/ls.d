@@ -1,6 +1,7 @@
 module dffdd.filter.ls;
 
 import std.complex;
+import std.experimental.ndslice;
 import std.math;
 
 import std.stdio;
@@ -8,7 +9,7 @@ import std.stdio;
 
 LSAdapter!(State, NumOfADCBits) lsAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L)
 {
-    return new typeof(return)(L);
+    return new typeof(return)(state, L);
 }
 
 
@@ -20,13 +21,16 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
 
   private
   {
-    enum size_t N = typeof(State.init.state).length;
-    enum size_t M = typeof(State.init.state[0]).length;
+    //enum size_t N = typeof(State.init.state).length;
+    //enum size_t M = typeof(State.init.state[0]).length;
 
-    alias C = typeof(State.init.state[0][0]);
-    alias F = typeof(State.init.state[0][0].re);
+    //alias C = typeof(State.init.state[0][0]);
+    //alias F = typeof(State.init.state[0][0].re);
+    alias C = State.StateElementType;
+    alias F = typeof(C.init.re);
 
-    C[] _mx, _yv;
+    Slice!(2, C*) _mx;
+    C[] _yv;
     //immutable size_t _reComputeCycle;
     immutable size_t _L;
 
@@ -35,11 +39,11 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
   }
 
 
-    this(size_t L, /*size_t reComputeCycle*/)
+    this(State state, size_t L, /*size_t reComputeCycle*/)
     {
         _L = L;
-        _mx = new C[N * M * L];
-        _yv = new C[max(N*M, L)];
+        _mx = new C[state.state.elementsCount * L].sliced(state.state.elementsCount, L);
+        _yv = new C[max(state.state.elementsCount, L)];
         _fillCNT = 0;
         //_cycleCNT = 0;
 
@@ -52,10 +56,16 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     {
         //if(_cycleCNT == 0){
             {
-                auto p = cast(C*)state.state.ptr,
-                     q = _mx.ptr;
-                foreach(i; 0 .. M*N) q[_fillCNT + i*_L] = p[i];
+                //auto q = _mx.ptr + _fillCNT;
+                ////auto p = cast(C*)state.state.ptr,
+                ////     q = _mx.ptr;
+                ////foreach(i; 0 .. M*N) q[_fillCNT + i*_L] = p[i];
+                //foreach(ref e; state.state.byElement){
+                //    *q = e;
+                //    q += _L;
+                //}
             }
+            _mx[0 .. $, _fillCNT] = state.state[];
             _yv[_fillCNT] = error;
             ++_fillCNT;
 
@@ -75,8 +85,10 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
   private:
     bool update(ref State state)
     {
-        if(leastSquare(cast(C*)state.weight.ptr) == 0)
+        if(auto addW = leastSquare(state.state.elementsCount)){
+            state.weight[] += addW[];
             return true;
+        }
         else return false;
     }
 
@@ -87,18 +99,19 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     //C[] workSpace;
   }
 
-    int leastSquare(C* w)
+    C[] leastSquare(size_t numOfParams)
     {
         static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
 
-        adjustSize(sworkSpace, min(_L, M*N));
+        adjustSize(sworkSpace, min(_L, numOfParams));
 
         int rankN = void;
 
-        LAPACKE_cgelss(102, cast(int)_L, cast(int)M*N, 1, cast(cfloat*)_mx.ptr, cast(int)_L, cast(cfloat*)_yv.ptr, cast(int)max(_L, M*N), sworkSpace.ptr, 0.00001f, &rankN);
+        LAPACKE_cgelss(102, cast(int)_L, cast(int)numOfParams, 1, cast(cfloat*)&(_mx[0, 0]), cast(int)_L, cast(cfloat*)_yv.ptr, cast(int)max(_L, numOfParams), sworkSpace.ptr, 0.00001f, &rankN);
 
-        foreach(i; 0 .. N*M) w[i] += _yv[i];
-        return 0;
+        //foreach(i; 0 .. N*M) w[i] += _yv[i];
+        //return 0;
+        return _yv[0 .. numOfParams];
     }
 }
 
