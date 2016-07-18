@@ -11,7 +11,7 @@ final class LMSAdapter(State)
 
     enum bool usePower = true;
     alias C = State.StateElementType;
-    alias F = typeof(C.re);
+    alias F = typeof(C.init.re);
 
     //enum size_t N = typeof(State.init.state).length;
     //enum size_t P = typeof(State.init.state[0]).length;
