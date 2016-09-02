@@ -44,10 +44,14 @@ final class LMSAdapter(State)
 
     void adapt(ref State state, C error) /*pure nothrow @safe @nogc*/
     {
+        import std.stdio;
+        //writeln(_maxPower);
+        //writeln(_subMaxPower);
+
       static if(is(typeof(_maxPower) == F))
         _subMaxPower = max(state.power, _subMaxPower);
       else
-        foreach(ref a, b; lockstep(state.power.byElement, _subMaxPower.byElement))
+        foreach(ref a, ref b; lockstep(state.power.byElement, _subMaxPower.byElement))
             b = max(a, b);
 
         ++_cnt;
@@ -62,8 +66,8 @@ final class LMSAdapter(State)
           else
           {
             _maxPower[] *= _fcoeff;
-            _maxPower += _subMaxPower[] * (1 - _fcoeff);
-
+            _subMaxPower[] *= (1 - _fcoeff);
+            _maxPower[] += _subMaxPower[];
             _subMaxPower[] = 0;
           }
         }

@@ -31,6 +31,7 @@ import dffdd.blockdiagram.mod.ofdm;
 import dffdd.blockdiagram.iqmixer;
 import dffdd.blockdiagram.quantizer;
 import dffdd.blockdiagram.txchain;
+import dffdd.filter.polynomial;
 //import dffdd.utils.msgpackrpc;
 
 
@@ -76,6 +77,8 @@ struct Model
     bool withSIC = true;
     bool withSI = true;
     size_t numOfPopFront = 1;
+    size_t learningSymbols = 10;
+    size_t learningCount = 10;
 
 
     bool useDTXIQ = true;
@@ -145,7 +148,7 @@ struct Model
 
     struct BERCounter
     {
-        ulong totalBits = 10_000;
+        ulong totalBits = 10_000_000;
     }
     BERCounter berCounter;
 
@@ -356,28 +359,7 @@ auto connectToRxChain(R)(R r)
 }
 
 
-auto makeParallelHammersteinFilter(Mod)(Mod mod, Model model)
-{
-    import dffdd.filter.diagonal;
-    import dffdd.filter.lms;
-    import dffdd.filter.ls;
-    import dffdd.filter.rls;
-    import dffdd.filter.mempoly;
-    import dffdd.filter.polynomial;
-    import dffdd.filter.orthogonalize;
-
-    auto state = new MemoryPolynomialState!(Complex!float, 8, 4, 0, 0, false, true)(1);
-
-    //writeln("Use");
-    auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
-    //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
-    //auto adapter = lsAdapter(state, 10000);
-
-    return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
-}
-
-
-auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(bool isOrthogonalized, Mod)(Mod mod, Model model)
 {
     import dffdd.filter.diagonal;
     import dffdd.filter.lms;
@@ -387,10 +369,15 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
     import dffdd.filter.polynomial;
     import dffdd.filter.orthogonalize;
     import dffdd.filter.state;
-    import std.meta;
-    import std.stdio;
 
-    //writeln("orthogonalizer start");
+    //auto state = new MemoryPolynomialState!(Complex!float, 8, 4, 0, 0, false, true)(1);
+
+    //writeln("Use");
+    //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
+    //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
+    //auto adapter = lsAdapter(state, 10000);
+
+    //return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
 
     auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
     //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
@@ -414,7 +401,6 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
 
             .put(orthogonalizer, buf);
         }
-
     }
 
     Complex!float[][BasisFunctions.length] coefs;
@@ -423,30 +409,111 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
         orthogonalizer.getCoefs(i, e);
     }
 
-    auto st1 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[0].dup);
-    auto st12 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[0].dup);
-    auto st1c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[1].dup);
-    auto st12c = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[1].dup);
-    //auto st2 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    auto st3 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    auto st32 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    //auto st32 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[2].dup);
-    auto st3c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[3].dup);
-    auto st32c = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[3].dup);
-    auto st5 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[4].dup);
-    auto st52 = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[4].dup);
-    auto st5c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[5].dup);
-    auto st52c = new FIRFilter!(Complex!float, true)(2).inputTransformer!((x, h) => OBFEval!(BasisFunctions)(x, h))(coefs[5].dup);
-    //auto st7 = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[6].dup);
-    //auto st7c = new FIRFilter!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[7].dup);
+
+    Complex!float delegate(Complex!float x)[BasisFunctions.length] bflist;
+    foreach(i, BF; BasisFunctions){
+      static if(isOrthogonalized)
+        bflist[i] = delegate Complex!float (Complex!float x) { return OBFEval!BasisFunctions(x, coefs[i]); };
+      else
+        bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
+    }
+        //bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
+
+    auto state = new ParallelHammersteinState!(Complex!float, BasisFunctions.length, true)(8, bflist);
+    //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
+    //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
+    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols, model.learningCount);
+
+    return polynomialFilter(state, adapter);
+}
+
+
+auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = serialFilter, Mod)(Mod mod, Model model)
+{
+    import dffdd.filter.diagonal;
+    import dffdd.filter.lms;
+    import dffdd.filter.ls;
+    import dffdd.filter.rls;
+    import dffdd.filter.mempoly;
+    import dffdd.filter.polynomial;
+    import dffdd.filter.orthogonalize;
+    import dffdd.filter.state;
+    import std.meta;
+    import std.stdio;
+
+    //writeln("orthogonalizer start");
+
+    auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
+    //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
+
+    {
+        orthogonalizer.start();
+        scope(exit)
+            orthogonalizer.finish();
+
+        auto signal = randomBits(1, model).connectToModulator(mod, model);
+
+        //.put(orthogonalizer, signal.take(1024*400));
+        Complex!float[] buf = new Complex!float[1024];
+        foreach(i; 0 .. 1024){
+            foreach(j; 0 .. 1024){
+                auto f = signal.front;
+                buf[j] = complex(f.re, f.im);
+                signal.popFront();
+            }
+            .put(orthogonalizer, buf);
+        }
+    }
+
+
+  static if(isOrthogonalized)
+  {
+    pragma(msg, "Orthogonalized");
+    Complex!float[][BasisFunctions.length] coefs;
+    foreach(i, ref e; coefs){
+        e = new Complex!float[BasisFunctions.length];
+        orthogonalizer.getCoefs(i, e);
+    }
+
+
+    auto adaptInputTransformer(size_t i, S)(S state)
+    {
+        return state.inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[i].dup);
+    }
+  }
+  else
+  {
+    pragma(msg, "Un-Orthogonalized");
+    auto adaptInputTransformer(size_t i, S)(S state)
+    {
+        return state.inputTransformer!(x => BasisFunctions[i](x))();
+    }
+  }
+
+    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(8));
+    auto st12 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(2));
+    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(8));
+    auto st12c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(2));
+    //auto st2 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(8));
+    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(8));
+    auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
+    //auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
+    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(8));
+    auto st32c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(2));
+    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(8));
+    auto st52 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(2));
+    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(8));
+    auto st52c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(2));
+    //auto st7 = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[6].dup);
+    //auto st7c = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[7].dup);
     
 
-    //auto st5 = (new FIRFilter!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[4].dup);
-    //auto st7 = (new FIRFilter!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[5].dup);
+    //auto st5 = (new FIRState!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[4].dup);
+    //auto st7 = (new FIRState!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[5].dup);
 
     //writeln("return filter");
 
-    return serialFilter(
+    return filterBuilder(
             //st12,
             //makeRLSAdapter(st12, 1 - 1E-4, 1E-7),
             //st12c,
@@ -470,45 +537,47 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
             //st3c_2,
             //makeRLSAdapter(st3c_2, 0.999, 1E-7),
             st1,
-            //lsAdapter(st1, 10000),
-            lmsAdapter(st1, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st1, 1 - 1E-5, 1E-7),
+            lsAdapter(st1, 80*4* model.learningSymbols, model.learningCount),
+            //lmsAdapter(st1, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st1, 0.999, 1E2),
             st1c,
-            //lsAdapter(st1c, 10000),
-            lmsAdapter(st1c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st1c, 1 - 1E-5, 1E-7),
+            lsAdapter(st1c, 80*4* model.learningSymbols, model.learningCount),
+            //lmsAdapter(st1c, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st1c, 0.999, 1E2),
             //st2,
-            //lsAdapter(st2, 10000),
+            //lsAdapter(st2, 80*4* model.learningSymbols, model.learningCount),
             //lmsAdapter(st2, 0.002, 1024, 0.5),
-            //makeRLSAdapter(st2, /*0.9997*/1, 1E-7),
+            //makeRLSAdapter(st2, /*0.999*/1E2E-7),
             st3,
-            //lsAdapter(st3, 10000),
-            lmsAdapter(st3, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st3, 1 - 1E-5, 1E-7),
+            lsAdapter(st3, 80*4* model.learningSymbols, model.learningCount),
+            //lmsAdapter(st3, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st3, 0.999, 1E2),
             st3c,
-            //lsAdapter(st3c, 10000),
-            lmsAdapter(st3c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st3c, 1 - 1E-5, 1E-7),
+            lsAdapter(st3c, 80*4* model.learningSymbols, model.learningCount),
+            //lmsAdapter(st3c, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st3c, 0.999, 1E2),
             //st4,
-            //lsAdapter(st4, 10000),
+            //lsAdapter(st4, 80*4* model.learningSymbols, model.learningCount),
             //lmsAdapter(st4, 0.002, 1024, 0.5),
-            //makeRLSAdapter(st4, /*0.9997*/1, 1E-7),
+            //makeRLSAdapter(st4, /*0.999*/1E2E-7),
             //st4a,
             //lmsAdapter(st4a, 0.0005, 1024, 0.5),
             st5,
-            //lsAdapter(st5, 10000),
-            lmsAdapter(st5, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st5, 1 - 1E-5, 1E-7),
+            lsAdapter(st5, 80*4* model.learningSymbols, model.learningCount),
+            //lmsAdapter(st5, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st5, 0.999, 1E2),
             st5c,
-            //lsAdapter(st5c, 10000),
-            lmsAdapter(st5c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st5c, 1 - 1E-5, 1E-7),
+            lsAdapter(st5c, 80*4* model.learningSymbols, model.learningCount),
+            //lmsAdapter(st1, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st1, 1 - 1E-2, 1E-7),
+            //lmsAdapter(st5c, 0.001, 1024, 0.5),
+            //makeRLSAdapter(st5c, 0.999, 1E2),
             //st7,
-            //lsAdapter(st7, 10000),
+            //lsAdapter(st7, 2000),
             //*********lmsAdapter(st7, 0.001, 1024, 0.5),
             //makeRLSAdapter(st7, 1 - 1E-6, 1E-7),
             //st12,
-            //lsAdapter(st1, 10000),
+            //lsAdapter(st1, 2000),
             //lmsAdapter(st12, 0.010, 1024, 0.5),
             //makeRLSAdapter(st7, 0.9997, 1E-7),
             //*********st7c,
@@ -525,4 +594,11 @@ auto makeCascadeHammersteinFilter(Mod)(Mod mod, Model model)
             //lmsAdapter(st1, 0.01, 1024, 0.5),
             //makeRLSAdapter(st1, 1, 1E-7),
             );
+}
+
+
+auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, Mod)(Mod mod, Model model)
+{
+    import dffdd.filter.polynomial;
+    return makeCascadeHammersteinFilter!(isOrthogonalized, parallelFilter)(mod, model);
 }

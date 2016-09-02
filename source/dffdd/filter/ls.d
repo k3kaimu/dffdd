@@ -7,9 +7,9 @@ import std.math;
 import std.stdio;
 
 
-LSAdapter!(State, NumOfADCBits) lsAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L)
+LSAdapter!(State, NumOfADCBits) lsAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L, size_t cnt)
 {
-    return new typeof(return)(state, L);
+    return new typeof(return)(state, L, cnt);
 }
 
 
@@ -33,18 +33,21 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     C[] _yv;
     //immutable size_t _reComputeCycle;
     immutable size_t _L;
-
     size_t _fillCNT;
+    immutable size_t _updateLimit;
+    size_t _remainUpdateCNT;
     //size_t _cycleCNT;
   }
 
 
-    this(State state, size_t L, /*size_t reComputeCycle*/)
+    this(State state, size_t L, size_t totalUpdateCNT)
     {
         _L = L;
         _mx = new C[state.state.elementsCount * L].sliced(state.state.elementsCount, L);
         _yv = new C[max(state.state.elementsCount, L)];
         _fillCNT = 0;
+        _remainUpdateCNT = totalUpdateCNT;
+        _updateLimit = totalUpdateCNT;
         //_cycleCNT = 0;
 
         //_reComputeCycle = reComputeCycle;
@@ -52,8 +55,17 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     }
 
 
+    void reset()
+    {
+        _fillCNT = 0;
+        _remainUpdateCNT = _updateLimit;
+    }
+
+
     void adapt(ref State state, C error)
     {
+        if(_remainUpdateCNT == 0) return;
+
         //if(_cycleCNT == 0){
             {
                 //auto q = _mx.ptr + _fillCNT;
@@ -65,7 +77,8 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
                 //    q += _L;
                 //}
             }
-            _mx[0 .. $, _fillCNT] = state.state[];
+            //_mx[0 .. $, _fillCNT] = state.state[];
+            _mx[0 .. $, _fillCNT] = state.state.byElement.sliced(state.state.elementsCount);
             _yv[_fillCNT] = error;
             ++_fillCNT;
 
@@ -75,6 +88,8 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
                 //writeln(state.weight);
                 update(state);
                 _fillCNT = 0;
+                _remainUpdateCNT -= 1;
+                //_L *= 2;
                 //_cycleCNT = _reComputeCycle;
             }
         //}else
@@ -86,7 +101,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     bool update(ref State state)
     {
         if(auto addW = leastSquare(state.state.elementsCount)){
-            state.weight[] += addW[];
+            state.weight[] += addW.sliced(state.weight.shape);
             return true;
         }
         else return false;

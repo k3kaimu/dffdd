@@ -156,9 +156,9 @@ if(StateORAdapter.length % 2 == 0)
     alias Adapters = GetStride2!(1);
 
     States states;
-    Adapters adapters;
+    Adapters adaptors;
 
-    alias C = typeof(states[0].state[0][0]);
+    alias C = States[0].StateElementType;
 
 
     this(StateORAdapter stateAndAdapter)
@@ -168,7 +168,7 @@ if(StateORAdapter.length % 2 == 0)
           static if(i % 2 == 0)
             states[i/2] = stateAndAdapter[i];
           else
-            adapters[i/2] = stateAndAdapter[i];
+            adaptors[i/2] = stateAndAdapter[i];
         }
     }
 
@@ -190,7 +190,7 @@ if(StateORAdapter.length % 2 == 0)
 
           static if(bLearning)
             foreach(j, T; States)
-                adapters[j].adapt(states[j], error);
+                adaptors[j].adapt(states[j], error);
 
             outputBuf[i] = error;
         }

@@ -7,7 +7,7 @@ import carbon.math;
 
 
 
-final class FIRFilter(C, bool usePower = false)
+final class FIRState(C, bool usePower = false)
 {
     alias StateElementType = C;
     //enum bool hasMultiStateFIRFilter = true;
@@ -65,8 +65,6 @@ final class FIRFilter(C, bool usePower = false)
 }
 
 
-
-
 auto inputTransformer(alias f, State, T...)(State state, T args)
 {
     return new InputTransformer!(State, f, T)(state, args);
@@ -118,4 +116,91 @@ final class InputTransformer(S, alias f, T...)
     T args;
 
     alias sp this;
+}
+
+
+
+final class MultiFIRState(C, size_t NumOfFIRState, bool usePower = false)
+{
+    alias StateElementType = C;
+    enum size_t numOfFIRState = NumOfFIRState;
+
+    Slice!(2, C*) state, weight;
+    static if(usePower) Slice!(1, typeof(C.init.re)*) power;
+
+    this(size_t nTaps)
+    {
+        this(nTaps, new C[nTaps * NumOfFIRState].sliced(nTaps, NumOfFIRState),
+                    new C[nTaps * NumOfFIRState].sliced(nTaps, NumOfFIRState));
+    }
+
+
+    this(size_t nTaps, Slice!(2, C*) state, Slice!(2, C*) weight)
+    {
+        this.state = state;
+        this.weight = weight;
+
+        this.state[] = complexZero!C;
+        this.weight[] = complexZero!C;
+
+      static if(usePower)
+      {
+        this.power = new typeof(C.init.re)[NumOfFIRState].sliced(NumOfFIRState);
+        this.power[] = 1;
+      }
+    }
+
+
+
+    size_t numOfTaps() const @property { return state.length!0; }
+
+
+    void update(C[NumOfFIRState] x...)
+    {
+        foreach_reverse(i; 1 .. this.numOfTaps)
+            state[i][] = state[i-1][];
+
+        state[0][] = x[];
+        static if(usePower)
+            foreach(i; 0 .. NumOfFIRState)
+                power[i] = x[i].re ^^2 + x[i].im ^^ 2;
+    }
+
+
+    C error(C y)
+    {
+        foreach(i; 0 .. this.numOfTaps)
+            foreach(j; 0 .. this.numOfFIRState)
+                y -= state[i, j] * weight[i, j];
+
+        return y;
+    }
+}
+
+
+final class ParallelHammersteinState(C, size_t NumOfBasisFuncs, bool usePower = false)
+{
+    MultiFIRState!(C, NumOfBasisFuncs, usePower) multiFIRState;
+    alias multiFIRState this;
+
+
+    this(size_t nTaps, C delegate(C)[NumOfBasisFuncs] funcs...)
+    {
+        multiFIRState = new MultiFIRState!(C, NumOfBasisFuncs, true)(nTaps);
+        _funcs = funcs;
+    }
+
+
+    void update(C x)
+    {
+        C[NumOfBasisFuncs] vs;
+        foreach(i; 0 .. NumOfBasisFuncs)
+            vs[i] = _funcs[i](x);
+
+        multiFIRState.update(vs);
+    }
+
+
+  private:
+    C delegate(C)[NumOfBasisFuncs] _funcs;
 }

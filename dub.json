@@ -11,8 +11,8 @@
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
 
     "dependencies": {
-        "carbon": "~master",
-        "dranges": "~master"
+        "carbon": {"path": "../carbon"},
+        "dranges": {"path": "../dranges"},
     },
     "subConfigurations": {
         "pyd": "python27",
