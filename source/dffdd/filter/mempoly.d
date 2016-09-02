@@ -47,40 +47,40 @@ void shiftBack(T)(T[] array) @trusted
 }
 
 
-final class FIRFilter(C, size_t N, bool usePower = false)
-if(N > 0)
-{
-    C[1][N] state;
-    C[1][N] weight;
-    static if(usePower) typeof(C.re)[1] power;
+//final class FIRFilter(C, size_t N, bool usePower = false)
+//if(N > 0)
+//{
+//    C[1][N] state;
+//    C[1][N] weight;
+//    static if(usePower) typeof(C.re)[1] power;
 
 
-    this()
-    {
-        foreach(ref e; state) e = complexZero!C;
-        foreach(ref e; weight) e = complexZero!C;
-        static if(usePower) power[0] = 1;
-    }
+//    this()
+//    {
+//        foreach(ref e; state) e = complexZero!C;
+//        foreach(ref e; weight) e = complexZero!C;
+//        static if(usePower) power[0] = 1;
+//    }
 
 
-    void update(C x)
-    {
-        foreach_reverse(i; 1 .. N)
-            state[i] = state[i-1];
+//    void update(C x)
+//    {
+//        foreach_reverse(i; 1 .. N)
+//            state[i] = state[i-1];
 
-        state[0] = x;
-        static if(usePower) power[0] = x.re ^^2 + x.im ^^ 2;
-    }
+//        state[0] = x;
+//        static if(usePower) power[0] = x.re ^^2 + x.im ^^ 2;
+//    }
 
 
-    C error(C y)
-    {
-        foreach(i; 0 .. N)
-            y -= state[i][0] * weight[i][0];
+//    C error(C y)
+//    {
+//        foreach(i; 0 .. N)
+//            y -= state[i][0] * weight[i][0];
 
-        return y;
-    }
-}
+//        return y;
+//    }
+//}
 
 
 final class MemoryPolynomialState(C, size_t N, size_t P, size_t Mf, size_t Mp, bool withDCBias = true, bool withIQImbalance = true, bool usePower = true, size_t startP = 0)
@@ -512,3 +512,4 @@ final class OneTapMultiFIRFilterState(C, size_t P)
         return y;
     }
 }
+

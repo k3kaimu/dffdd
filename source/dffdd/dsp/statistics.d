@@ -4,6 +4,7 @@ import std.array;
 import std.numeric;
 import dffdd.utils.fft;
 import std.range;
+import std.math;
 
 
 //enum 
@@ -94,4 +95,53 @@ real[] calculatePowerSpectralDensity(R)(ref R r, real samplingFreq, size_t res, 
 
 
     return fftRes[0 .. res];
+}
+
+
+real calculateSIC(R)(ref R r, real samplingFreq, size_t res, size_t nFFT, size_t nSubCarrier, size_t nOversampling, size_t avg = 32)
+{
+    alias C = typeof(ElementType!R.init.tupleof[0]);
+
+    C[] buf1 = new C[res];
+    C[] buf2 = new C[res];
+
+    real[] fftRes1 = new real[res],
+           fftRes2 = new real[res];
+
+    fftRes1[] = 0;
+    fftRes2[] = 0;
+
+    Fft fft = new Fft(res);
+
+    foreach(n; 0 .. avg){
+        foreach(i; 0 .. res){
+            auto e = r.front;
+            buf1[i] = e[0];
+            buf2[i] = e[1];
+            r.popFront();
+        }
+
+        auto spc1 = fft.fftWithSwap(buf1);
+        auto spc2 = fft.fftWithSwap(buf2);
+
+        foreach(i; 0 .. res){
+            fftRes1[i] += spc1[i].re^^2 + spc1[i].im^^2;
+            fftRes2[i] += spc2[i].re^^2 + spc2[i].im^^2;
+        }
+    }
+
+    immutable boundF1 = samplingFreq / nOversampling / nFFT * nSubCarrier / 2 * 0.8;
+    immutable boundF2 = samplingFreq / nOversampling / nFFT * 2;
+
+    real sum1 = 0,
+         sum2 = 0;
+    foreach(i; 0 .. res){
+        immutable f = abs(i * samplingFreq / res - samplingFreq/2);
+        if(f < boundF1 && f > boundF2){
+            sum1 += fftRes1[i];
+            sum2 += fftRes2[i];
+        }
+    }
+
+    return sum1 / sum2;
 }
