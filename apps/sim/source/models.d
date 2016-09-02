@@ -213,7 +213,7 @@ auto modOFDM(Model model)
 {
     return chainedMod(
         dffdd.mod.qam.QAM(model.qam.arity),
-        dffdd.mod.ofdm.OFDM(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling),
+        new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling),
     );
 }
 
@@ -231,8 +231,12 @@ auto connectToModulator(R, Mod)(R r, Mod modObj, Model)
 
 auto connectToDemodulator(R, Mod)(R r, Mod modObj/*, Bits bits*/, Model)
 {
+    static
+    Complex!float makeCpx(F)(Complex!F r) { return Complex!float(r.re, r.im); } 
+
+
     return r
-    .map!"cast(cfloat)a"
+    .map!makeCpx
     .splitN(modObj.symOutputLength)
     //.connectToOFDMEqualizer(modObj, bits)
     .tmap!(reverseArgs!demod, [0])(modObj)

@@ -3,6 +3,8 @@ module dffdd.filter.primitives;
 import dffdd.mod.primitives;
 import dffdd.utils.fft;
 
+__EOF__
+
 /**
 自己干渉除去フィルタの入出力の静的及び動的情報を管理します．
 */

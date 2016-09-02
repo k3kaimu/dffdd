@@ -19,6 +19,7 @@ import std.parallelism;
 import std.path;
 import std.file : mkdirRecurse;
 import std.meta;
+import std.numeric;
 
 import dffdd.blockdiagram.utils;
 import dffdd.utils.fft;
@@ -69,7 +70,8 @@ real qfunc(real x) { return 0.5 * erfc(x / SQRT2); }
 
 auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model)
 {
-    return r.tee(makeSpectrumAnalyzer!cfloat(filename, resultDir, dropSize, model)).toWrappedRange;
+    alias E = ElementType!R;
+    return r.tee(makeSpectrumAnalyzer!E(filename, resultDir, dropSize, model)).toWrappedRange;
 }
 
 
@@ -145,7 +147,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     //                .connectToQuantizer(model)
     //                ;
 
-    InputRange!creal received;
+    InputRange!(Complex!real) received;
     {
         auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model), model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSample, model);
         if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model);
@@ -347,7 +349,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     txReplica.popFrontN(model.numOfPopFront);
 
     real berResult = -1;
-    auto berCounter = makeInstrument(delegate void (FiberRange!cfloat r){
+    auto berCounter = makeInstrument(delegate void (FiberRange!(Complex!float) r){
         auto bits = r
         .connectTo!PowerControlAmplifier(ofdmModSignalPower.sqrt.V)
         .connectToDemodulator(modOFDM(model), model);
@@ -379,7 +381,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
             outps[] = recvs[];
 
         foreach(e; outps){
-            berCounter.put(e.re + e.im * 1i);
+            berCounter.put(Complex!float(e.re, e.im));
             rcvAfterSICPSD.put(e);
         }
         foreach(e; recvs)
@@ -392,7 +394,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR, model.INR, berResult);
 
     // ノイズ電力
-    auto noisePSD = makeSpectrumAnalyzer!(creal)("psd_noise_floor.csv", resultDir, 0, model);
+    auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
 
     *switchSI = false;
     *switchDS = false;
@@ -400,7 +402,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
     foreach(blockIdxo; 0 .. 64 * 1024)
     {
-        .put(noisePSD, received.front);
+        .put(noisePSD, cast(Complex!float)received.front);
         received.popFront();
     }
 }

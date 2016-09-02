@@ -3,6 +3,7 @@ module dffdd.blockdiagram.quantizer;
 import std.math;
 import std.traits;
 import std.range;
+import std.complex;
 
 
 struct Quantizer(R)
@@ -67,7 +68,7 @@ struct Quantizer(R)
 
 struct SimpleQuantizer(R)
 {
-    alias E = Unqual!(ElementType!R);
+    alias E = typeof(Unqual!(ElementType!R).init.re);
 
     this(R r, size_t nbit)
     {
@@ -76,7 +77,7 @@ struct SimpleQuantizer(R)
     }
 
 
-    E front() @property
+    Complex!E front() @property
     {
         auto f = _r.front * (1 << (_nbit - 1));
         long ivr, ivi;
@@ -95,7 +96,7 @@ struct SimpleQuantizer(R)
         else
             ivi = cast(long)f.im;
 
-        return ((cast(typeof(E.init.re))ivr) + (cast(typeof(E.init.im))ivi)*1i) / (1 << (_nbit - 1));
+        return Complex!E(ivr, ivi) / (1 << (_nbit - 1));
     }
 
 

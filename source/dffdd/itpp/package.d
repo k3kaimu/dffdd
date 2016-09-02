@@ -6,6 +6,7 @@ import std.algorithm;
 import std.typecons;
 import std.range;
 import std.random;
+import std.complex;
 
 
 extern(C++, itpp)
@@ -52,7 +53,7 @@ auto makeQAMModulator(uint mary)
         }
 
 
-        ref cfloat[] modulate_bits(in ubyte[] bits, ref return cfloat[] outputs) const
+        ref Complex!float[] modulate_bits(in ubyte[] bits, ref return Complex!float[] outputs) const
         {
             auto size = WITPP.QAM.modulate_bits(_qam, cast(const(ubyte)*)bits.ptr, cast(uint)bits.length, null, null);
             outputs.length = size;
@@ -63,7 +64,7 @@ auto makeQAMModulator(uint mary)
         }
 
 
-        ref ubyte[] demodulate_bits(in cfloat[] inputs, ref return ubyte[] bits) const
+        ref ubyte[] demodulate_bits(in Complex!float[] inputs, ref return ubyte[] bits) const
         {
             auto size = WITPP.QAM.demodulate_bits(_qam, cast(const(float)*)inputs.ptr, cast(uint)inputs.length, null, null);
             bits.length = size;
@@ -98,7 +99,7 @@ auto makeOFDMModulator(uint inNfft, uint inNcp, uint inNupsample)
         }
 
 
-        ref cfloat[] modulate(in cfloat[] inputs, ref return cfloat[] outputs)
+        ref Complex!float[] modulate(in Complex!float[] inputs, ref return Complex!float[] outputs)
         {
             auto size = WITPP.OFDM.modulate(_ofdm, cast(const(float)*)inputs.ptr, cast(uint)inputs.length, null, null);
             outputs.length = size;
@@ -109,7 +110,7 @@ auto makeOFDMModulator(uint inNfft, uint inNcp, uint inNupsample)
         }
 
 
-        ref cfloat[] demodulate(in cfloat[] inputs, ref return cfloat[] outputs)
+        ref Complex!float[] demodulate(in Complex!float[] inputs, ref return Complex!float[] outputs)
         {
             auto size = WITPP.OFDM.demodulate(_ofdm, cast(const(float)*)inputs.ptr, cast(uint)inputs.length, null, null);
             outputs.length = size;

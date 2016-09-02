@@ -4,11 +4,13 @@ import carbon.math;
 import std.stdio;
 
 import dffdd.itpp;
+import dffdd.utils.fft;
 
 final class OFDM(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
+    alias RealType = typeof(C.init.re);
 
     this(uint nFFT, uint nCp, uint nTone, uint nUpSampling = 1)
     {
@@ -17,7 +19,7 @@ final class OFDM(C)
         _nTone = nTone;
         _nUpSampling = nUpSampling;
         _inpBuffer = new C[nFFT * nUpSampling];
-        _fftObj = new Fft(nFFT * nUpSampling);
+        _fftw = makeFFTWObject!C(nFFT * nUpSampling);
     }
 
 
@@ -29,10 +31,13 @@ final class OFDM(C)
     in{
         assert(inputs.length % this.symInputLength == 0);
         assert(outputs.length % this.symOutputLength == 0);
-        assert(inputs.length / this.symInputLength == outputs.length / this.symOutputLength);
+        //assert(inputs.length / this.symInputLength == outputs.length / this.symOutputLength);
     }
     body{
         _inpBuffer[] = complexZero!C;
+
+        if(outputs.length != inputs.length / this.symInputLength * this.symOutputLength)
+            outputs.length = inputs.length / this.symInputLength * this.symOutputLength;
 
         auto mainLobeH = _inpBuffer[0 .. _nFFT/2];
         auto mainLobeL = _inpBuffer[$ - _nFFT/2 .. $];
@@ -59,7 +64,7 @@ final class OFDM(C)
             }
 
             auto dst = outputs[i*symOutputLength .. (i+1)*symOutputLength];
-            _fftObj.ifft(_inpBuffer, dst[_nUpSampling * _nCp .. _nUpSampling * (_nCp + _nFFT)]);
+            .ifft!RealType(_fftw, _inpBuffer, dst[_nUpSampling * _nCp .. _nUpSampling * (_nCp + _nFFT)]);
             dst[0 .. _nUpSampling * _nCp] = dst[$ - _nUpSampling * _nCp .. $];
             assert(dst.ptr == outputs.ptr + i*symOutputLength);
         }
@@ -72,7 +77,7 @@ final class OFDM(C)
     in{
         assert(outputs.length % this.symInputLength == 0);
         assert(inputs.length % this.symOutputLength == 0);
-        assert(outputs.length / this.symInputLength == inputs.length / this.symOutputLength);
+        //assert(outputs.length / this.symInputLength == inputs.length / this.symOutputLength);
     }
     body{
         //outputs[] = complexZero!C;
@@ -80,10 +85,13 @@ final class OFDM(C)
         auto mainLobeH = _inpBuffer[0 .. _nFFT/2];
         auto mainLobeL = _inpBuffer[$ - _nFFT/2 .. $];
 
+        if(outputs.length != inputs.length / this.symOutputLength * this.symInputLength)
+            outputs.length = inputs.length / this.symOutputLength * this.symInputLength;
+
         foreach(i; 0 .. inputs.length / this.symOutputLength){
             auto inputSymbol = inputs[i*this.symOutputLength .. (i+1)*this.symOutputLength];
             auto outputSymbol = outputs[i*this.symInputLength .. (i+1)*this.symInputLength];
-            _fftObj.fft(inputSymbol[_nUpSampling * _nCp .. $], _inpBuffer);
+            .fft!RealType(_fftw, inputSymbol[_nUpSampling * _nCp .. $], _inpBuffer);
 
             if(_nTone == _nFFT){
                 outputSymbol[] = _inpBuffer[];
@@ -98,11 +106,13 @@ final class OFDM(C)
                 outputSymbol[(_nTone+1)/2 .. _nTone] = mainLobeH[$ - _nTone/2 .. $];
             }
         }
+
+        return outputs;
     }
 
 
   private:
-    Fft _fftObj;
+    FFTWObject!C _fftw;
     C[] _inpBuffer;
     uint _nFFT;
     uint _nCp;

@@ -5,7 +5,7 @@ import std.complex;
 import std.math;
 import std.numeric;
 import std.stdio : File;
-import std.traits : Unqual;
+import std.traits : Unqual, isArray;
 import std.range;
 import std.meta : AliasSeq;
 import std.typecons : RefCounted, Tuple, tuple;
@@ -66,6 +66,22 @@ enum bool isFFTObject(FftObj) = is(typeof((FftObj obj){
 }));
 
 
+private
+void fastCopy(F)(in Complex!F[] src, Complex!F[] dst)
+{
+    dst[] = src[];
+}
+
+
+private
+void fastCopy(R1, R2)(R1 src, R2 dst)
+if(!isArray!R1 || !isArray!R2)
+{
+    foreach(i; 0 .. src.length)
+        dst[i] = src[i];
+}
+
+
 /**
 
 */
@@ -80,9 +96,9 @@ in{
         assert(output.length == obj.outputs!F.length);
 }
 body{
-    fastPODCopy(input, obj.inputs!F);
+    fastCopy(input, obj.inputs!F);
     obj.fft!F();
-    fastPODCopy(obj.outputs!F, output);
+    fastCopy(obj.outputs!F, output);
 }
 
 
@@ -96,7 +112,7 @@ in{
         assert(input.length == obj.inputs!F.length);
 }
 body{
-    fastPODCopy(input, obj.inputs!F);
+    fastCopy(input, obj.inputs!F);
     obj.fft!F();
 }
 
@@ -112,7 +128,7 @@ in{
 }
 body{
     obj.fft!F();
-    fastPODCopy(obj.outputs!F, output);
+    fastCopy(obj.outputs!F, output);
 }
 
 
@@ -130,9 +146,9 @@ in{
         assert(output.length == obj.outputs!F.length);
 }
 body{
-    fastPODCopy(input, obj.inputs);
+    fastCopy(input, obj.inputs!F);
     obj.ifft!F();
-    fastPODCopy(obj.outputs, output);
+    fastCopy(obj.outputs!F, output);
 }
 
 
@@ -146,7 +162,7 @@ in{
         assert(input.length == obj.inputs!F.length);
 }
 body{
-    fastPODCopy(input, obj.inputs!F);
+    fastCopy(input, obj.inputs!F);
     obj.ifft!F();
 }
 
@@ -162,7 +178,7 @@ in{
 }
 body{
     obj.ifft!F();
-    fastPODCopy(obj.outputs!F, output);
+    fastCopy(obj.outputs!F, output);
 }
 
 
@@ -764,12 +780,12 @@ unittest
 
 
 deprecated
-C[] fftWithSwap(FftObj, C)(FftObj fftObj, in C[] buf)
+Complex!F[] fftWithSwap(FftObj, F)(FftObj fftObj, in Complex!F[] buf)
 in{
     assert(buf.length.isPowOf2);
 }
 body{
-    C[] spec = new C[buf.length];
+    Complex!F[] spec = new Complex!F[buf.length];
     fftObj.fft(buf, spec);
     foreach(i; 0 .. spec.length/2)
         swap(spec[i], spec[$/2+i]);

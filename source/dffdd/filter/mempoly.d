@@ -438,48 +438,48 @@ final class BiasState(C)
 }
 
 
-auto inputTransformer(alias f, State, T...)(State state, T args)
-{
-    return new InputTransformer!(State, f, T)(state, args);
-}
+//auto inputTransformer(alias f, State, T...)(State state, T args)
+//{
+//    return new InputTransformer!(State, f, T)(state, args);
+//}
 
 
-final class InputTransformer(S, alias f, T...)
-{
-    this(S state, T args)
-    {
-        sp = state;
-        this.args = args;
-    }
+//final class InputTransformer(S, alias f, T...)
+//{
+//    this(S state, T args)
+//    {
+//        sp = state;
+//        this.args = args;
+//    }
 
 
-    void update(C)(C c)
-    {
-        sp.update(f(c, args));
-    }
+//    void update(C)(C c)
+//    {
+//        sp.update(f(c, args));
+//    }
 
 
-    C error(C)(C c)
-    {
-        return sp.error(c);
-    }
+//    C error(C)(C c)
+//    {
+//        return sp.error(c);
+//    }
 
 
-    void apply(C)(in C[] tx, in C[] rx, C[] dst)
-    {
-        foreach(ic, C c; tx)
-        {
-            this.update(f(c, args));
-            dst[ic] = this.error(rx[ic]);
-        }
-    }
+//    void apply(C)(in C[] tx, in C[] rx, C[] dst)
+//    {
+//        foreach(ic, C c; tx)
+//        {
+//            this.update(f(c, args));
+//            dst[ic] = this.error(rx[ic]);
+//        }
+//    }
 
 
-    S sp;
-    T args;
+//    S sp;
+//    T args;
 
-    alias sp this;
-}
+//    alias sp this;
+//}
 
 
 final class OneTapMultiFIRFilterState(C, size_t P)

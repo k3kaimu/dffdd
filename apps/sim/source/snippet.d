@@ -8,6 +8,7 @@ import std.range;
 
 import dffdd.dsp.statistics;
 import dranges.range;
+import carbon.math;
 
 void writePSD(R)(auto ref R r, File file, real samplingFreq, size_t resolution)
 {
@@ -56,7 +57,7 @@ real measureBER(R1, R2)(ref R1 r1, ref R2 r2, ulong totalBits)
 }
 
 
-auto connectToSwitch(R)(R r, bool* sw, ElementType!R zero = 0+0i)
+auto connectToSwitch(R)(R r, bool* sw, ElementType!R zero = complexZero!(ElementType!R))
 {
     static struct Result 
     {

@@ -3,6 +3,8 @@ module dffdd.blockdiagram.noise;
 import std.math,
        std.random;
 
+import std.complex;
+
 import dffdd.utils.unit;
 
 enum real BoltzmannConst = 1.3806488e-23;
@@ -23,9 +25,9 @@ struct BoxMuller(RNG)
     }
 
 
-    creal front() const @property
+    Complex!real front() const @property
     {
-        return sqrt(-2 * log(_x)) * (cos(2*PI*_y) + 1i*sin(2*PI*_y));
+        return sqrt(-2 * log(_x)) * Complex!real(cos(2*PI*_y), sin(2*PI*_y));
     }
 
 
@@ -79,7 +81,7 @@ struct ThermalNoise
     }
 
 
-    creal front() const @property
+    Complex!real front() const @property
     {
         return _rnd.front * _gain;
     }
