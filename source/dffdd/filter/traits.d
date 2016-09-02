@@ -77,3 +77,9 @@ unittest
     static assert(isWeightAdapter!(TestAdapter1, TestState1));
 }
 
+
+enum bool isAdaptiveFilter(F, C = Complex!float) = is(typeof((F f, C[] buf){
+    f.apply!false(cast(const)buf, cast(const)buf, buf);
+    f.apply!true(cast(const)buf, cast(const)buf, buf);
+}));
+

@@ -6,13 +6,14 @@
     "targetType": "library",
 
     "__foo": "/usr/local/opt/openblas/lib",
-    "libs": ["openblas", "itpp", "stdc++"],
-    "lflags-osx": ["-L/usr/local/opt/openblas/lib", "-L-litpp", "-L-lstdc++"],
+    "libs": ["openblas", "itpp", "stdc++", "fftw3"],
+    "lflags-osx": ["-L/usr/local/opt/openblas/lib"],
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
 
     "dependencies": {
-        "carbon": "~master",
-        "dranges": "~master"
+        "carbon": {"path": "../carbon"},
+        "dranges": {"path": "../dranges"},
+        "dfftw3": "~>1.0.1"
     },
     "subConfigurations": {
         "pyd": "python27",
@@ -21,6 +22,11 @@
     "configurations":[
         {
             "name": "library"
+        },
+
+        {
+            "name": "test",
+            "sourceFiles": ["ditpp.o"],
         },
 
         {

@@ -480,3 +480,35 @@ final class InputTransformer(S, alias f, T...)
 
     alias sp this;
 }
+
+
+final class OneTapMultiFIRFilterState(C, size_t P)
+{
+    C[P][1] state;
+    C[P][1] weight;
+    typeof(C.re)[P] power;
+
+
+    this()
+    {
+        foreach(ref e; state[0]) e = complexZero!C;
+        foreach(ref e; weight[0]) e = complexZero!C;
+        foreach(ref e; power) e = 1;
+    }
+
+
+    void update(in ref C[P] x)
+    {
+        state[0] = x;
+        foreach(i, ref e; power)power[0] = x[i].sqAbs;
+    }
+
+
+    C error(C y)
+    {
+        foreach(i; 0 .. P)
+            y -= state[0][i] * weight[0][i];
+
+        return y;
+    }
+}

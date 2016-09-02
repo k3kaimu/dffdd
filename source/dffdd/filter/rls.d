@@ -25,8 +25,7 @@ final class RLSAdapter(State)
     {
         _lambdaInv = 1/lambda;
 
-        C zero;
-        zero = 0;
+        C zero = complexZero!C;
 
         _u = ones!float * zero;
         _p = identity!float * ((1/delta) + complexZero!C);

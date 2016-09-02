@@ -1,5 +1,6 @@
 module app;
 
+
 import core.thread;
 
 import std.random;
