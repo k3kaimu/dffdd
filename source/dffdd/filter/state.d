@@ -1,5 +1,6 @@
 module dffdd.filter.state;
 
+import std.complex;
 import std.experimental.ndslice;
 
 import carbon.math;
@@ -204,3 +205,42 @@ final class ParallelHammersteinState(C, size_t NumOfBasisFuncs, bool usePower = 
   private:
     C delegate(C)[NumOfBasisFuncs] _funcs;
 }
+
+
+
+final class OneTapMultiFIRFilterState(C, size_t P)
+{
+    alias StateElementType = C;
+
+    enum size_t numOfFIRState = P;
+    Slice!(2, C*) state, weight;
+    typeof(C.re)[P] power;
+
+
+    this()
+    {
+        state = new C[P].sliced(1, P);
+        weight = new C[P].sliced(1, P);
+
+        foreach(ref e; state[0]) e = complexZero!C;
+        foreach(ref e; weight[0]) e = complexZero!C;
+        foreach(ref e; power) e = 1;
+    }
+
+
+    void update(in ref C[P] x)
+    {
+        state[0][] = x[];
+        foreach(i, ref e; power)power[0] = x[i].sqAbs;
+    }
+
+
+    C error(C y)
+    {
+        foreach(i; 0 .. P)
+            y -= state[0][i] * weight[0][i];
+
+        return y;
+    }
+}
+

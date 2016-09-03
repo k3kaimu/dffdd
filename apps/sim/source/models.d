@@ -2,44 +2,49 @@ module models;
 
 import core.thread;
 
-import std.random;
 import std.algorithm;
-import std.range;
-import std.conv;
 import std.complex;
-import std.stdio;
-//import msgpackrpc;
+import std.conv;
 import std.datetime;
-import std.math;
-import std.functional;
-import std.mathspecial;
+import std.file : mkdirRecurse;
 import std.format;
+import std.functional;
+import std.math;
+import std.mathspecial;
+import std.meta;
 import std.parallelism;
 import std.path;
-import std.file : mkdirRecurse;
-import std.meta;
+import std.random;
+import std.range;
+import std.stdio;
+import std.typecons;
 
-import dffdd.blockdiagram.utils;
-import dffdd.utils.fft;
+import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.amplifier;
-import dffdd.utils.unit;
-import dffdd.blockdiagram.noise;
 import dffdd.blockdiagram.decimator;
 import dffdd.blockdiagram.filter;
-import dffdd.blockdiagram.adder;
-import dffdd.blockdiagram.mod.ofdm;
 import dffdd.blockdiagram.iqmixer;
+import dffdd.blockdiagram.mod.ofdm;
+import dffdd.blockdiagram.noise;
 import dffdd.blockdiagram.quantizer;
 import dffdd.blockdiagram.txchain;
+import dffdd.blockdiagram.utils;
+import dffdd.filter.diagonal;
+import dffdd.filter.lms;
+import dffdd.filter.ls;
+import dffdd.filter.mempoly;
+import dffdd.filter.orthfreqpolyfil;
+import dffdd.filter.orthogonalize;
 import dffdd.filter.polynomial;
+import dffdd.filter.polynomial;
+import dffdd.filter.rls;
+import dffdd.filter.state;
+import dffdd.utils.fft;
+import dffdd.utils.unit;
 //import dffdd.utils.msgpackrpc;
 
 
-import std.stdio;
-import std.algorithm;
-import std.typecons;
-import std.range;
-import std.random;
+
 
 //import carbon.range;
 import dranges.range;
@@ -68,9 +73,10 @@ alias BasisFunctions = AliasSeq!(x => x,
 
 struct Model
 {
-    size_t numOfModelTrainingSample = 1024*1024;
-    size_t numOfFilterTrainingSample = 1024*1024;
-    size_t blockSize = 1024;
+    size_t numOfModelTrainingSymbols = 1024;
+    size_t numOfFilterTrainingSymbols = 1024;
+    //size_t blockSize = 1024;
+    size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real samplingFreq = 20e6 * 4;
     real SNR = 20;
     real INR = 60;
@@ -106,6 +112,19 @@ struct Model
         uint numOfSubcarrier = 52;
         uint scaleOfUpSampling = 4;
         real PAPR = 10;                 // 10dB
+        //uint model.numOfSamplesOf1Symbol = 
+        uint numOfSamplesOf1Symbol() const @property { return scaleOfUpSampling * (numOfFFT + numOfCP); }
+        bool[] subCarrierMap() const @property
+        {
+            bool[] ret = new bool[scaleOfUpSampling * numOfFFT];
+
+            assert(numOfSubcarrier % 2 == 0);
+
+            ret[1 .. numOfSubcarrier/2 + 1] = true;
+            ret[$ - numOfSubcarrier/2 .. $] = true;
+
+            return ret;
+        }
     }
     OFDM ofdm;
 
@@ -332,6 +351,19 @@ auto connectToPowerAmplifier(R)(R r, Model model)
 }
 
 
+auto connectToMultiPathChannel(R)(R r)
+{
+    Complex!float[] coefs;
+    coefs ~= Complex!float(1, 1);
+
+    foreach(i; 1 .. 6)
+        coefs ~= Complex!float(uniform01(), uniform01()) / (10.0f^^i);
+
+    return r.connectTo!FIRFilter(coefs).toWrappedRange;
+    //return r;
+}
+
+
 auto connectToLNA(R)(R r, Model model)
 {
     return r
@@ -365,6 +397,8 @@ auto connectToRxChain(R)(R r)
 
 auto makeParallelHammersteinFilter(bool isOrthogonalized, Mod)(Mod mod, Model model)
 {
+    alias BFs = BasisFunctions[0 .. $];
+
     import dffdd.filter.diagonal;
     import dffdd.filter.lms;
     import dffdd.filter.ls;
@@ -383,8 +417,8 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, Mod)(Mod mod, Model mo
 
     //return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
 
-    auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
-    //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
+    auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BFs)();
+    //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BFs)();
 
     {
         orthogonalizer.start();
@@ -407,23 +441,23 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, Mod)(Mod mod, Model mo
         }
     }
 
-    Complex!float[][BasisFunctions.length] coefs;
+    Complex!float[][BFs.length] coefs;
     foreach(i, ref e; coefs){
-        e = new Complex!float[BasisFunctions.length];
+        e = new Complex!float[BFs.length];
         orthogonalizer.getCoefs(i, e);
     }
 
 
-    Complex!float delegate(Complex!float x)[BasisFunctions.length] bflist;
-    foreach(i, BF; BasisFunctions){
+    Complex!float delegate(Complex!float x)[BFs.length] bflist;
+    foreach(i, BF; BFs){
       static if(isOrthogonalized)
-        bflist[i] = delegate Complex!float (Complex!float x) { return OBFEval!BasisFunctions(x, coefs[i]); };
+        bflist[i] = delegate Complex!float (Complex!float x) { return OBFEval!BFs(x, coefs[i]); };
       else
         bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
     }
         //bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
 
-    auto state = new ParallelHammersteinState!(Complex!float, BasisFunctions.length, true)(8, bflist);
+    auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(8, bflist);
     //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
     //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
     auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols, model.learningCount);
@@ -605,4 +639,15 @@ auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, Mod)(Mod m
 {
     import dffdd.filter.polynomial;
     return makeCascadeHammersteinFilter!(isOrthogonalized, parallelFilter)(mod, model);
+}
+
+
+auto makeFrequencyHammersteinFilter(Model model)
+{
+    return new FrequencyHammersteinFilter!((i, s) => /*makeRLSAdapter(s, 0.95, 1E-7)*/ lsAdapter(s, model.learningSymbols, model.learningCount),
+                                            BasisFunctions)(model.ofdm.subCarrierMap,
+                                                            8,
+                                                            model.ofdm.numOfFFT,
+                                                            model.ofdm.numOfCP,
+                                                            model.ofdm.scaleOfUpSampling);
 }

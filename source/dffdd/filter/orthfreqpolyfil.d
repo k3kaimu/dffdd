@@ -1,14 +1,23 @@
 module dffdd.filter.orthfreqpolyfil;
 
+import std.algorithm;
+import std.complex;
+import std.stdio;
 
-final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
+import dffdd.utils.fft;
+import dffdd.filter.state;
+
+final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
 {
     alias C = Complex!float;
     enum size_t P = BasisFuncs.length;
 
     this(in bool[] subcarieerMap, size_t taps, size_t nFFT, size_t nCP, size_t nOS)
-    {
-        _model = model;
+    in{
+        assert(subcarieerMap.length == nFFT * nOS);
+    }
+    body{
+        //_model = model;
         _fftw = makeFFTWObject(subcarieerMap.length);
         _taps = taps;
         _nFFT = nFFT;
@@ -16,10 +25,10 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
         _nOS = nOS;
         _isLastModeLearning = false;
 
-        foreach(i, e; _scmap){
+        foreach(i, e; subcarieerMap){
             if(e){
-                _adaptor ~= genAdaptor(i);
-                _state ~= new OneTapMultiFIRState!(Complex!float, BasisFuncs.length)();
+                _state ~= new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)();
+                _adaptor ~= genAdaptor(i, _state[$-1]);
             }else{
                 _adaptor ~= null;
                 _state ~= null;
@@ -28,11 +37,11 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
 
         foreach(p; 0 .. P)
         {
-            _lastTXSigs[p] = new Complex!float[subcarieerMap.length];
+            _lastTXSigs[p] = new Complex!float[subcarieerMap.length/2];
             _coefsOfFIRs[p] = new Complex!float[subcarieerMap.length];
 
-            _lastTXSigs[] = Complex!float(0, 0);
-            _coefsOfFIRs[] = Complex!float(0, 0);
+            _lastTXSigs[p][] = Complex!float(0, 0);
+            _coefsOfFIRs[p][] = Complex!float(0, 0);
         }
 
         adjustReserved(nFFT * nOS);
@@ -46,7 +55,7 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
 
       static if(bLearning)
       {
-        assert(tx.length % (_OS * (_nFFT+_nCP)) == 0);
+        assert(tx.length % (_nOS * (_nFFT+_nCP)) == 0);
 
         // 先頭にCPがあるかチェック
         foreach(i; 0 .. _nOS * _nCP)
@@ -56,7 +65,7 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
     body{
         if(bLearning)
         {
-            immutable symLen = _nOS * (_nFFT * _nCP),
+            immutable symLen = _nOS * (_nFFT + _nCP),
                       cpLen = _nOS * _nCP;
 
             foreach(sidx; 0 .. tx.length / symLen){
@@ -73,6 +82,7 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
 
                     _fftw.fft!float();
                     ffted[p][] = _fftw.outputs!float[];
+                    //writeln(p, " : ", ffted[p]);
                 }
 
                 // 受信信号の周波数成分
@@ -81,18 +91,19 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
                 auto rxffted = _fftw.outputs!float;
 
                 // 全周波数で，適応フィルタにかける
-                foreach(freq; 0 .. nfft * ros) if(_state[freq] !is null) {
+                foreach(freq; 0 .. _nFFT * _nOS) if(_state[freq] !is null) {
                     C[P] inps;
                     foreach(p, f; BasisFuncs)
                         inps[p] = ffted[p][freq];
 
                     _state[freq].update(inps);
-                    C error = _state.error(rxffted[freq]);
+                    C error = _state[freq].error(rxffted[freq]);
                     _adaptor[freq].adapt(_state[freq], error);
                 }
             }
 
             _isLastModeLearning = true;
+            output[] = rx[];
         }
         else
         {
@@ -101,27 +112,42 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
                 foreach(p, func; BasisFuncs){
                     auto ips = _fftw.inputs!float;
 
-                    foreach(freq; 0 .. nfft * ros){
-                        if(_state[freq] !is null)
+                    Complex!float sum = Complex!float(0, 0);
+                    size_t cnt;
+                    foreach(freq; 0 .. _nFFT * _nOS){
+                        if(_state[freq] !is null){
                             ips[freq] = _state[freq].weight[0][p];
+                            sum += ips[freq];
+                            ++cnt;
+                        }
                         else
                             ips[freq] = 0;
                     }
 
+                    foreach(freq; 0 .. _nFFT * _nOS){
+                        if(_state[freq] is null)
+                            ips[freq] = sum / cnt;
+                    }
+
+                    //writeln(ips[0 .. $/8]);
+                    //writeln(ips[$-$/8 .. $]);
+                    //writeln(ips[$/8 .. $-$/8]);
+
                     _fftw.ifft!float();
                     auto ops = _fftw.outputs!float;
-                    ops[_taps .. $] = Complex!float(0, 0);
-                    assert(_taps <= ops.length / 2);
-
+                    //ops[_taps .. $] = Complex!float(0, 0);
                     _fftw.inputs!float[] = _fftw.outputs!float[];
+                    //writeln(_fftw.inputs!float);
                     _fftw.fft!float();
                     _coefsOfFIRs[p][] = _fftw.outputs!float[];
                 }
 
+                //writeln(_coefsOfFIRs);
+
                 _isLastModeLearning = false;
             }
 
-            outputs[] = rx[];
+            output[] = rx[];
 
             immutable batchLen = _fftw.inputs!float.length / 2;
 
@@ -142,7 +168,11 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
                     immutable preLen = _lastTXSigs[p].length;
 
                     ips[0 .. preLen] = _lastTXSigs[p][];
-                    ips[preLen .. preLen + thisBatchLen] = tx[startIdx .. endIdx];
+                    //import std.stdio;
+                    //writeln(preLen, " : ", thisBatchLen, " : ", ips.length);
+                    foreach(i; 0 .. thisBatchLen)
+                        ips[preLen + i] = func(tx[startIdx + i]);
+
                     ips[preLen + thisBatchLen .. $] = Complex!float(0, 0);
                     _fftw.fft!float();
                     ips[] = ops[];
@@ -157,9 +187,9 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
                     immutable copyLenFromOld = copyLenFromNew < preLen ? (preLen - copyLenFromNew) : 0;
                     foreach(i; 0 .. preLen){
                         if(i < copyLenFromOld)
-                            _lastTXSigs[i] = _lastTXSigs[$ - copyLenFromOld + i];
+                            _lastTXSigs[p][i] = _lastTXSigs[p][$ - copyLenFromOld + i];
                         else
-                            _lastTXSigs[i] = tx[endIdx - copyLenFromNew + (i - copyLenFromOld)];
+                            _lastTXSigs[p][i] = func(tx[endIdx - copyLenFromNew + (i - copyLenFromOld)]);
                     }
                 }
             }
@@ -168,24 +198,18 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
 
 
   private:
-    alias AdaptorType = typeof(genAdaptor(0));
+    alias AdaptorType = typeof(genAdaptor(0, new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)()));
 
     immutable size_t _taps, _nFFT, _nCP, _nOS;
     bool _isLastModeLearning;
-    FFTWObject!(Complex!float) _fftw;
-    OneTapMultiFIRState!(Complex!float, BasisFuncs.length)[] _state;
+    FFTWObject!(Complex) _fftw;
+    OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)[] _state;
     AdaptorType[] _adaptor;
     Complex!float[][P] _coefsOfFIRs;
     Complex!float[][P] _lastTXSigs;
 
   static:
     C[][P] _reserved;
-
-    static this()
-    {
-
-    }
-
 
     void adjustReserved(size_t size)
     {
@@ -194,9 +218,3 @@ final class HammersteinFilterFor(alias BasisFuncs, alias genAdaptor)
                 _reserved[p].length = size;
     }
 }
-
-unittest
-{
-
-}
-
