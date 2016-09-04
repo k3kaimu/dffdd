@@ -63,13 +63,6 @@ import snippet;
 real qfunc(real x) { return 0.5 * erfc(x / SQRT2); }
 
 
-//alias Constant = ConstantList.ConstExample1;
-//mixin Model!Constant;
-
-//enum ptrdiff_t blockSize = 1024;
-//enum ptrdiff_t totalBlocks = 400;
-
-
 auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model)
 {
     alias E = ElementType!R;
@@ -111,43 +104,6 @@ void mainImpl(string filterType)(Model model, string resultDir)
           switchSI = new bool(true);
 
     auto noise = thermalNoise(model);
-    //auto received = desiredRandomBits(model)
-    //                .connectToModulator(modOFDM(model), model)
-    //                    .psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                //.connectToTXIQMixer(model)
-    //                    //.psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                //.connectToPowerAmplifier(model)
-    //                    //.psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                //.connectToTXIQMixer(model)
-    //                    //.psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                //.connectToTxChain(model)
-    //                .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.SNR.dB.gain^^2).sqrt.V)
-    //                    .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                .connectToSwitch(switchDS)
-    //                .add(
-    //                    // Self-Interference
-    //                    siRandomBits(model)
-    //                    .connectToModulator(modOFDM(model), model)
-    //                        .psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                    //.connectToTXIQMixer(model)
-    //                        //.psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                    .connectToPowerAmplifier(model)
-    //                        .psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                    //.connectToTXIQMixer(model)
-    //                        //.psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                    //.connectToTxChain(model)
-    //                    .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * model.INR.dB.gain^^2).sqrt.V)
-    //                        .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                    .connectToSwitch(switchSI)
-    //                )
-    //                .connectToAWGN(model)
-    //                    .psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                .connectToLNA(model)
-    //                    .psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                //.connectToRXIQMixer(model)
-    //                    //.psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSample, model)
-    //                .connectToQuantizer(model)
-    //                ;
 
     InputRange!(Complex!real) received;
     {
@@ -155,7 +111,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXPA)  desired = desired.connectToPowerAmplifier(model).psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXIQ2) desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR + 8.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)).dB.gain^^2).sqrt.V)
+        desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR + model.lna.NF + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)).dB.gain^^2).sqrt.V)
                          .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
 
 
@@ -163,7 +119,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        selfInterference = selfInterference.connectToMultiPathChannel.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + 8.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)).dB.gain^^2).sqrt.V)
+        selfInterference = selfInterference.connectToMultiPathChannel.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)).dB.gain^^2).sqrt.V)
                                            .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
 
         received = desired.connectToSwitch(switchDS)
@@ -287,49 +243,6 @@ void mainImpl(string filterType)(Model model, string resultDir)
             .put(sicValue, recvs.zip(outps));
         }
     }
-    //{
-    //    Complex!float[][] recvsLearnings, refrsLearnings;
-    //    foreach(blockIdx; 0 .. 1024){
-    //        foreach(i; 0 .. model.blockSize){
-    //            recvs[i] = (a => complex(a.re, a.im))(received.front);
-    //            refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
-
-    //            received.popFront();
-    //            txReplica.popFront();
-    //        }
-
-    //        recvsLearnings ~= recvs.dup;
-    //        refrsLearnings ~= refrs.dup;
-    //    }
-
-    //  static if(filterType.endsWith("PHDCM"))
-    //    enum size_t iterativeCycle = 2;
-    //  else
-    //    enum size_t iterativeCycle = 1;
-
-    //    foreach(iterIndex; 0 .. iterativeCycle)
-    //    {
-    //      static if(filterType.endsWith("PHDCM"))
-    //      {
-    //        foreach(ref adaptor; filter.adaptors)
-    //            adaptor.reset();
-    //      }
-
-    //        foreach(blockIdx; 0 .. 1024){
-    //            refrs[] = refrsLearnings[blockIdx][];
-    //            recvs[] = recvsLearnings[blockIdx][];
-
-    //            filter.apply!true(refrs, recvs, outps);
-
-    //            foreach(i; 0 .. model.blockSize)
-    //                refrs[i] = recvs[i] - outps[i];
-
-    //            .put(recvPSD, recvs);
-    //            .put(sicPSD, outps);
-    //            .put(foutPSD, refrs);
-    //        }
-    //    }
-    //}
 
 
     // BER count
@@ -415,8 +328,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
 void main()
 {
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("OPH", "OCH", "FHF"))
-        foreach(learningSymbols; [/*2, 3, 5, 10, */60])
+    foreach(methodName; AliasSeq!("PH", "OPH", "OCH", "OPHDCM", "FHF"))
+        foreach(learningSymbols; [2, 3, 5, 10, 60])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
             writeln("-----------------------------------------");
@@ -431,7 +344,7 @@ void main()
             foreach(inr; iota(20, 65, 5))
             {
                 Model model;
-                model.SNR = 20;
+                model.SNR = 22;
                 model.INR = inr;
                 model.useDTXIQ = true;
                 model.useDTXPA = true;
@@ -450,7 +363,7 @@ void main()
               else
               {
                 model.learningSymbols = learningSymbols;
-                model.learningCount = 1000;
+                model.learningCount = 1;
               }
 
                 models ~= model;

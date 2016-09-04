@@ -3,6 +3,7 @@ module dffdd.mod.qam;
 import dffdd.itpp;
 import std.complex;
 
+
 struct QAM
 {
     alias InputElementType = ubyte;

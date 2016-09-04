@@ -37,6 +37,7 @@ import dffdd.filter.orthfreqpolyfil;
 import dffdd.filter.orthogonalize;
 import dffdd.filter.polynomial;
 import dffdd.filter.polynomial;
+import dffdd.filter.primitives;
 import dffdd.filter.rls;
 import dffdd.filter.state;
 import dffdd.utils.fft;
@@ -52,6 +53,8 @@ import dranges.algorithm;
 
 import dffdd.itpp;
 import dffdd.mod.primitives;
+import dffdd.mod.bpsk;
+import dffdd.mod.qpsk;
 import dffdd.mod.qam;
 import dffdd.mod.ofdm;
 
@@ -97,13 +100,13 @@ struct Model
     bool useSRXIQ = true;
     bool useSRXQZ = true;
 
-
+/*
     struct QAM
     {
         uint arity = 16;
     }
     QAM qam;
-
+*/
 
     struct OFDM
     {
@@ -231,7 +234,8 @@ auto desiredRandomBits(Model model) { return randomBits(193, model); }
 auto modOFDM(Model model)
 {
     return chainedMod(
-        dffdd.mod.qam.QAM(model.qam.arity),
+        //dffdd.mod.bpsk.BPSK.init,
+        dffdd.mod.qam.QAM(16),
         new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling),
     );
 }
@@ -460,12 +464,16 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, Mod)(Mod mod, Model mo
     auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(8, bflist);
     //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
     //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
-    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols, model.learningCount);
+    immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount);
 
     return polynomialFilter(state, adapter);
 }
 
 
+/**
+Fast Training and Cancelling method for Hammerstein Self-Interference Canceller on Full-Duplex OFDM Communication
+*/
 auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = serialFilter, Mod)(Mod mod, Model model)
 {
     import dffdd.filter.diagonal;
@@ -551,6 +559,8 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
 
     //writeln("return filter");
 
+    immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+
     return filterBuilder(
             //st12,
             //makeRLSAdapter(st12, 1 - 1E-4, 1E-7),
@@ -575,37 +585,49 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
             //st3c_2,
             //makeRLSAdapter(st3c_2, 0.999, 1E-7),
             st1,
-            lsAdapter(st1, 80*4* model.learningSymbols, model.learningCount),
+            lsAdapter(st1, samplesOfOnePeriod)
+                .trainingLimit(samplesOfOnePeriod * model.learningCount)
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 0),
             //lmsAdapter(st1, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1, 0.999, 1E2),
             st1c,
-            lsAdapter(st1c, 80*4* model.learningSymbols, model.learningCount),
+            lsAdapter(st1c, samplesOfOnePeriod)
+                .trainingLimit(samplesOfOnePeriod * model.learningCount)
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 1),
             //lmsAdapter(st1c, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1c, 0.999, 1E2),
             //st2,
-            //lsAdapter(st2, 80*4* model.learningSymbols, model.learningCount),
+            //lsAdapter(st2, samplesOfOnePeriod),
             //lmsAdapter(st2, 0.002, 1024, 0.5),
             //makeRLSAdapter(st2, /*0.999*/1E2E-7),
             st3,
-            lsAdapter(st3, 80*4* model.learningSymbols, model.learningCount),
+            lsAdapter(st3, samplesOfOnePeriod)
+                .trainingLimit(samplesOfOnePeriod * model.learningCount)
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 2),
             //lmsAdapter(st3, 0.001, 1024, 0.5),
             //makeRLSAdapter(st3, 0.999, 1E2),
             st3c,
-            lsAdapter(st3c, 80*4* model.learningSymbols, model.learningCount),
+            lsAdapter(st3c, samplesOfOnePeriod)
+                .trainingLimit(samplesOfOnePeriod * model.learningCount)
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 3),
             //lmsAdapter(st3c, 0.001, 1024, 0.5),
             //makeRLSAdapter(st3c, 0.999, 1E2),
             //st4,
-            //lsAdapter(st4, 80*4* model.learningSymbols, model.learningCount),
+            //lsAdapter(st4, samplesOfOnePeriod),
             //lmsAdapter(st4, 0.002, 1024, 0.5),
             //makeRLSAdapter(st4, /*0.999*/1E2E-7),
             //st4a,
             //lmsAdapter(st4a, 0.0005, 1024, 0.5),
             st5,
-            lsAdapter(st5, 80*4* model.learningSymbols, model.learningCount),
+            lsAdapter(st5, samplesOfOnePeriod)
+                .trainingLimit(samplesOfOnePeriod * model.learningCount)
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 4),
             //lmsAdapter(st5, 0.001, 1024, 0.5),
             //makeRLSAdapter(st5, 0.999, 1E2),
             st5c,
-            lsAdapter(st5c, 80*4* model.learningSymbols, model.learningCount),
+            lsAdapter(st5c, samplesOfOnePeriod)
+                .trainingLimit(samplesOfOnePeriod * model.learningCount)
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 5),
             //lmsAdapter(st1, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1, 1 - 1E-2, 1E-7),
             //lmsAdapter(st5c, 0.001, 1024, 0.5),
@@ -644,10 +666,11 @@ auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, Mod)(Mod m
 
 auto makeFrequencyHammersteinFilter(Model model)
 {
-    return new FrequencyHammersteinFilter!((i, s) => /*makeRLSAdapter(s, 0.95, 1E-7)*/ lsAdapter(s, model.learningSymbols, model.learningCount),
+    return new FrequencyHammersteinFilter!((i, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
                                             BasisFunctions)(model.ofdm.subCarrierMap,
                                                             8,
                                                             model.ofdm.numOfFFT,
                                                             model.ofdm.numOfCP,
                                                             model.ofdm.scaleOfUpSampling);
 }
+

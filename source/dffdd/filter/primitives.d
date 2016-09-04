@@ -3,6 +3,91 @@ module dffdd.filter.primitives;
 import dffdd.mod.primitives;
 import dffdd.utils.fft;
 
+
+final class LimitedTrainingAdaptor(Adaptor)
+{
+    enum bool usePower = Adaptor.usePower;
+    Adaptor parent;
+    alias parent this;
+
+    this(Adaptor adaptor, size_t limitSamples)
+    {
+        parent = adaptor;
+        _updateLimite = limitSamples;
+        _remain = limitSamples;
+    }
+
+
+    void adapt(State, C)(ref State state, C error)
+    {
+        if(_remain != 0) {
+            parent.adapt(state, error);
+            --_remain;
+        }
+    }
+
+
+    void resetLimit()
+    {
+        _remain = _updateLimite;
+    }
+
+
+  private:
+    immutable size_t _updateLimite;
+    size_t _remain;
+}
+
+
+LimitedTrainingAdaptor!Adaptor trainingLimit(Adaptor)(Adaptor adaptor, size_t limitSamples)
+{
+    return new typeof(return)(adaptor, limitSamples);
+}
+
+
+final class IgnoreHeadSamplesAdaptor(Adaptor)
+{
+    enum bool usePower = Adaptor.usePower;
+    Adaptor parent;
+    alias parent this;
+
+    this(Adaptor adaptor, size_t ignoreSamples)
+    {
+        parent = adaptor;
+        _ignoreSamples = ignoreSamples;
+        _remain = ignoreSamples;
+    }
+
+
+    void adapt(State, C)(ref State state, C error)
+    {
+        if(_remain != 0) {
+            --_remain;
+            return;
+        } else {
+            parent.adapt(state, error);
+        }
+    }
+
+
+    void resetIgnore()
+    {
+        _remain = _ignoreSamples;
+    }
+
+
+  private:
+    immutable size_t _ignoreSamples;
+    size_t _remain;
+}
+
+
+IgnoreHeadSamplesAdaptor!Adaptor ignoreHeadSamples(Adaptor)(Adaptor adaptor, size_t ignoreSamples)
+{
+    return new typeof(return)(adaptor, ignoreSamples);
+}
+
+
 __EOF__
 
 /**
