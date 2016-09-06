@@ -66,6 +66,10 @@ final class OFDM(C)
             auto dst = outputs[i*symOutputLength .. (i+1)*symOutputLength];
             .ifft!RealType(_fftw, _inpBuffer, dst[_nUpSampling * _nCp .. _nUpSampling * (_nCp + _nFFT)]);
             dst[0 .. _nUpSampling * _nCp] = dst[$ - _nUpSampling * _nCp .. $];
+            //dst[0] /= 4;
+            //dst[1] /= 2;
+            //dst[$-2] /= 2;
+            //dst[$-1] /= 4;
             assert(dst.ptr == outputs.ptr + i*symOutputLength);
         }
 

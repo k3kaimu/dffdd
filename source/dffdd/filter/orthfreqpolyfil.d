@@ -12,33 +12,28 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
     alias C = Complex!float;
     enum size_t P = BasisFuncs.length;
 
-    this(in bool[] subcarieerMap, size_t taps, size_t nFFT, size_t nCP, size_t nOS)
+    this(in bool[] subcarieerMap__unused, size_t taps, size_t nFFT, size_t nCP, size_t nOS)
     in{
-        assert(subcarieerMap.length == nFFT * nOS);
+        //assert(subcarieerMap.length == nFFT * nOS);
     }
     body{
         //_model = model;
-        _fftw = makeFFTWObject(subcarieerMap.length);
-        _taps = taps;
+        _fftw = makeFFTWObject(nFFT * nOS);
+        //_taps = taps;
         _nFFT = nFFT;
         _nCP = nCP;
         _nOS = nOS;
         _isLastModeLearning = false;
 
-        foreach(i, e; subcarieerMap){
-            if(e){
-                _state ~= new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)();
-                _adaptor ~= genAdaptor(i, _state[$-1]);
-            }else{
-                _adaptor ~= null;
-                _state ~= null;
-            }
+        foreach(i; 0 .. nFFT * nOS){
+            _state ~= new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)();
+            _adaptor ~= genAdaptor(i, _state[$-1]);
         }
 
         foreach(p; 0 .. P)
         {
-            _lastTXSigs[p] = new Complex!float[subcarieerMap.length/2];
-            _coefsOfFIRs[p] = new Complex!float[subcarieerMap.length];
+            _lastTXSigs[p] = new Complex!float[nFFT * nOS/2];
+            _coefsOfFIRs[p] = new Complex!float[nFFT * nOS];
 
             _lastTXSigs[p][] = Complex!float(0, 0);
             _coefsOfFIRs[p][] = Complex!float(0, 0);
@@ -91,7 +86,7 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
                 auto rxffted = _fftw.outputs!float;
 
                 // 全周波数で，適応フィルタにかける
-                foreach(freq; 0 .. _nFFT * _nOS) if(_state[freq] !is null) {
+                foreach(freq; 0 .. _nFFT * _nOS) {
                     C[P] inps;
                     foreach(p, f; BasisFuncs)
                         inps[p] = ffted[p][freq];
@@ -112,30 +107,49 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
                 foreach(p, func; BasisFuncs){
                     auto ips = _fftw.inputs!float;
 
-                    Complex!float sum = Complex!float(0, 0);
-                    size_t cnt;
+                    //Complex!float sum = Complex!float(0, 0);
+                    //size_t cnt;
                     foreach(freq; 0 .. _nFFT * _nOS){
-                        if(_state[freq] !is null){
-                            ips[freq] = _state[freq].weight[0][p];
-                            sum += ips[freq];
-                            ++cnt;
-                        }
-                        else
-                            ips[freq] = 0;
+                        ips[freq] = _state[freq].weight[0][p];
+                        //sum += ips[freq];
+                        //++cnt;
                     }
 
-                    foreach(freq; 0 .. _nFFT * _nOS){
-                        if(_state[freq] is null)
-                            ips[freq] = sum / cnt;
-                    }
+                    //foreach(freq; 0 .. _nFFT * _nOS){
+                    //    if(_state[freq] is null)
+                    //        ips[freq] = sum / cnt;
+                    //}
 
+                    /*
+                    {
+                        _fftwOne.inputs!float[0 .. $/2] = ips[0 .. $/_nOS/2];
+                        _fftwOne.inputs!float[$/2 .. $] = ips[$ - $/_nOS/2 .. $];
+
+                        writeln(p, "-------------------");
+                        writeln(_fftwOne.inputs!float[0 .. $/8]);
+                        writeln(_fftwOne.inputs!float[$-$/8 .. $]);
+                        writeln(_fftwOne.inputs!float[$/8 .. $-$/8]);
+                        writeln(p, "-------------------");
+
+                        _fftwOne.ifft!float();
+                        _fftw.inputs!float[0 .. $/_nOS/2] = _fftwOne.outputs!float[0 .. $/2];
+                        _fftw.inputs!float[$/_nOS/2 .. $] = Complex!float(0, 0);
+
+                        _fftw.fft!float();
+
+                        _coefsOfFIRs[p][] = _fftw.outputs!float[];
+                    }
+                    */
+
+                    //writeln(p, "-------------------");
                     //writeln(ips[0 .. $/8]);
                     //writeln(ips[$-$/8 .. $]);
                     //writeln(ips[$/8 .. $-$/8]);
+                    //writeln(p, "-------------------");
 
                     _fftw.ifft!float();
                     auto ops = _fftw.outputs!float;
-                    //ops[_taps .. $] = Complex!float(0, 0);
+                    //ops[_nCP*_nOS .. $] = Complex!float(0, 0);
                     _fftw.inputs!float[] = _fftw.outputs!float[];
                     //writeln(_fftw.inputs!float);
                     _fftw.fft!float();
@@ -200,7 +214,7 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
   private:
     alias AdaptorType = typeof(genAdaptor(0, new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)()));
 
-    immutable size_t _taps, _nFFT, _nCP, _nOS;
+    immutable size_t /*_taps,*/ _nFFT, _nCP, _nOS;
     bool _isLastModeLearning;
     FFTWObject!(Complex) _fftw;
     OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)[] _state;

@@ -93,9 +93,11 @@ auto makeCancellationProbe(C)(string filename, string resultDir, size_t dropSize
 
 void mainImpl(string filterType)(Model model, string resultDir)
 {
+    immutable bool* alwaysFalsePointer = new bool(false);
+
     immutable ofdmModSignalPower = (){
         auto _modOFDMTest = modOFDM(model);
-        return randomBits(1, model).connectToModulator(_modOFDMTest, model).measurePower(1024*1024);
+        return randomBits(1, model).connectToModulator(_modOFDMTest, alwaysFalsePointer, model).measurePower(1024*1024);
     }();
 
     mkdirRecurse(resultDir);
@@ -103,11 +105,13 @@ void mainImpl(string filterType)(Model model, string resultDir)
     bool* switchDS = new bool(false),
           switchSI = new bool(true);
 
+    bool* switchTraining = new bool(false);
+
     auto noise = thermalNoise(model);
 
     InputRange!(Complex!real) received;
     {
-        auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model), model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+        auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model), alwaysFalsePointer, model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXPA)  desired = desired.connectToPowerAmplifier(model).psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXIQ2) desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
@@ -115,7 +119,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
                          .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
 
 
-        auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model), model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+        auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model), switchTraining, model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
@@ -131,7 +135,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         if(model.useSRXQZ) received = received.connectToQuantizer(model);
     }
 
-    auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), model);
+    auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), switchTraining, model);
 
     // モデルの安定化
     *switchDS = false;
@@ -156,6 +160,10 @@ void mainImpl(string filterType)(Model model, string resultDir)
     auto filter = makeCascadeHammersteinFilter!isOrthogonalized(modOFDM(model), model);
   else static if(filterType.endsWith("FHF"))
     auto filter = makeFrequencyHammersteinFilter(model);
+  else static if(filterType.endsWith("WL"))
+    auto filter = makeParallelHammersteinFilter!(isOrthogonalized, 2)(modOFDM(model), model);
+  else static if(filterType.endsWith("L"))
+    auto filter = makeParallelHammersteinFilter!(isOrthogonalized, 1)(modOFDM(model), model);
   else
     static assert("Cannot identify filter model.");
     //auto filter = makeCascadeHammersteinFilter(modOFDM(model), model);
@@ -163,6 +171,13 @@ void mainImpl(string filterType)(Model model, string resultDir)
     //auto filter = makeParallelHammersteinWithDCMethodFilter(modOFDM(model), model);
 
     {
+      static if(filterType.endsWith("FHF"))
+      {
+        *switchTraining = true;
+        scope(exit) *switchTraining = false;
+      }
+
+
         auto fftObj = new Fft(model.blockSize.nextPowOf2(0));
 
         File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
@@ -222,7 +237,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model);
         auto sicValue = makeCancellationProbe!(Complex!float)("cancellation_value.csv", resultDir, 0, model);
 
-        foreach(blockIdxo; 0 .. 64)
+        foreach(blockIdxo; 0 .. 1024)
         {
             foreach(i; 0 .. model.blockSize){
                 recvs[i] = (a => complex(a.re, a.im))(received.front);
@@ -328,8 +343,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
 void main()
 {
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("PH", "OPH", "OCH", "OPHDCM", "FHF"))
-        foreach(learningSymbols; [2, 3, 5, 10, 60])
+    foreach(methodName; AliasSeq!("FHF", "PH", "OPH", "OCH", "OPHDCM"))
+        foreach(learningSymbols; [/*2, 3, 5,*/ 60, 10])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
             writeln("-----------------------------------------");
@@ -344,10 +359,10 @@ void main()
             foreach(inr; iota(20, 65, 5))
             {
                 Model model;
-                model.SNR = 22;
+                model.SNR = 20;
                 model.INR = inr;
-                model.useDTXIQ = true;
-                model.useDTXPA = true;
+                model.useDTXIQ = false;
+                model.useDTXPA = false;
                 model.useSTXIQ = true;
                 model.useSTXPA = true;
                 model.useSTXIQ2 = false;
@@ -357,8 +372,13 @@ void main()
 
               static if(methodName.endsWith("DCM"))
               {
-                model.learningSymbols = learningSymbols/6;
-                model.learningCount = 6;
+                if(learningSymbols == 10){
+                    model.learningSymbols = 5;
+                    model.learningCount = 2;
+                }else{
+                    model.learningSymbols = 10;
+                    model.learningCount = 6;
+                }
               }
               else
               {
@@ -371,7 +391,7 @@ void main()
                 dirs ~= "with_allImpairements_snr%s_inr%s_%s_LS%s".format(model.SNR, model.INR, methodName, learningSymbols);
             }
 
-            foreach(i; iota(models.length)/*.parallel()*/){
+            foreach(i; iota(models.length).parallel()){
                 mainImpl!methodName(models[i], buildPath("results", dirs[i]));
             }
         }

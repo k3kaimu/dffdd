@@ -77,7 +77,7 @@ alias BasisFunctions = AliasSeq!(x => x,
 struct Model
 {
     size_t numOfModelTrainingSymbols = 1024;
-    size_t numOfFilterTrainingSymbols = 1024;
+    size_t numOfFilterTrainingSymbols = 1024*10;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real samplingFreq = 20e6 * 4;
@@ -231,6 +231,7 @@ auto siRandomBits(Model model) { return randomBits(1, model); }
 auto desiredRandomBits(Model model) { return randomBits(193, model); }
 
 
+
 auto modOFDM(Model model)
 {
     return chainedMod(
@@ -241,11 +242,13 @@ auto modOFDM(Model model)
 }
 
 
-auto connectToModulator(R, Mod)(R r, Mod modObj, Model)
+auto connectToModulator(R, Mod)(R r, Mod modObj, const(bool)* swExchange, Model model)
 {
+    auto swModObj = modObj.makeOFDMSymbolExchanger(swExchange, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+
     return r
-    .splitN(modObj.symInputLength)
-    .tmap!(reverseArgs!mod, [0])(modObj)
+    .splitN(swModObj.symInputLength)
+    .tmap!(reverseArgs!mod, [0])(swModObj)
     .joiner()
     .toWrappedRange
     ;
@@ -355,16 +358,36 @@ auto connectToPowerAmplifier(R)(R r, Model model)
 }
 
 
-auto connectToMultiPathChannel(R)(R r)
+shared immutable(Complex!float)[] channelCoefsOfSI;
+
+shared static this()
 {
+    Random rGen;
+    rGen.seed(114514);
+
     Complex!float[] coefs;
+
     coefs ~= Complex!float(1, 1);
 
-    foreach(i; 1 .. 6)
-        coefs ~= Complex!float(uniform01(), uniform01()) / (10.0f^^i);
+    foreach(i; 1 .. 8)
+        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen));
 
-    return r.connectTo!FIRFilter(coefs).toWrappedRange;
-    //return r;
+    foreach(i; 8 .. 16)
+        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen)) / sqrt(10.0f);
+
+    foreach(i; 16 .. 32)
+        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen)) / sqrt(20.0f);
+
+    foreach(i; 32 .. 64)
+        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen)) / sqrt(30.0f);
+
+    channelCoefsOfSI = coefs.dup;
+}
+
+
+auto connectToMultiPathChannel(R)(R r)
+{
+    return r.connectTo!FIRFilter(channelCoefsOfSI).toWrappedRange;
 }
 
 
@@ -399,9 +422,9 @@ auto connectToRxChain(R)(R r)
 }
 
 
-auto makeParallelHammersteinFilter(bool isOrthogonalized, Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs = BasisFunctions.length, Mod)(Mod mod, Model model)
 {
-    alias BFs = BasisFunctions[0 .. $];
+    alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
 
     import dffdd.filter.diagonal;
     import dffdd.filter.lms;
@@ -430,7 +453,7 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, Mod)(Mod mod, Model mo
             orthogonalizer.finish();
 
 
-        auto signal = randomBits(1, model).connectToModulator(mod, model);
+        auto signal = randomBits(1, model).connectToModulator(mod, new bool(false), model);
 
         //.put(orthogonalizer, signal.take(1024*400));
         Complex!float[] buf = new Complex!float[1024];
@@ -497,7 +520,7 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
         scope(exit)
             orthogonalizer.finish();
 
-        auto signal = randomBits(1, model).connectToModulator(mod, model);
+        auto signal = randomBits(1, model).connectToModulator(mod, new bool(false), model);
 
         //.put(orthogonalizer, signal.take(1024*400));
         Complex!float[] buf = new Complex!float[1024];
@@ -668,7 +691,7 @@ auto makeFrequencyHammersteinFilter(Model model)
 {
     return new FrequencyHammersteinFilter!((i, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
                                             BasisFunctions)(model.ofdm.subCarrierMap,
-                                                            8,
+                                                            64,
                                                             model.ofdm.numOfFFT,
                                                             model.ofdm.numOfCP,
                                                             model.ofdm.scaleOfUpSampling);

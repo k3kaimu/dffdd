@@ -5,6 +5,7 @@ import std.stdio;
 import std.math;
 import std.complex;
 import std.range;
+import std.algorithm;
 
 import dffdd.dsp.statistics;
 import dranges.range;
@@ -57,7 +58,7 @@ real measureBER(R1, R2)(ref R1 r1, ref R2 r2, ulong totalBits)
 }
 
 
-auto connectToSwitch(R)(R r, bool* sw, ElementType!R zero = complexZero!(ElementType!R))
+auto connectToSwitch(R)(R r, const(bool)* sw, ElementType!R zero = complexZero!(ElementType!R))
 {
     static struct Result 
     {
@@ -83,10 +84,92 @@ auto connectToSwitch(R)(R r, bool* sw, ElementType!R zero = complexZero!(Element
 
       private:
         R _r;
-        bool* _sw;
+        const(bool)* _sw;
         ElementType!R _zero;
     }
 
 
     return Result(r, sw, zero);
+}
+
+
+final class OFDMSymbolExchanger(Mod)
+{
+    alias InputElementType = Mod.InputElementType;
+    alias OutputElementType = Mod.OutputElementType;
+
+
+    this(Mod mod, const(bool)* sw, uint nFFT, uint nCp, uint nTone, uint nUpSampling = 1)
+    {
+        _mod = mod;
+        _sw = sw;
+        _nFFT = nFFT;
+        _nCp = nCp;
+        _nTone = nTone;
+        _nUpSampling = nUpSampling;
+    }
+
+
+    size_t symInputLength() const @property { return _mod.symInputLength*2; }
+    size_t symOutputLength() const @property { return _mod.symOutputLength*2; }
+
+
+    ref OutputElementType[] modulate(in InputElementType[] input, return ref OutputElementType[] output)
+    in{
+        assert(input.length % this.symInputLength == 0);
+    }
+    body{
+        _mod.modulate(input, output);
+
+        if(*_sw){
+            foreach(i; 0 .. input.length / this.symInputLength) {
+                auto symAB = output[i * this.symOutputLength .. (i+1)*this.symOutputLength];
+
+                auto startOfA = symAB[_nCp * _nUpSampling .. $];
+                auto startOfB = symAB[$/2 + _nCp * _nUpSampling .. $];
+
+                foreach(j; 0 .. _nFFT * _nUpSampling / 2)
+                    swap(startOfA[j], startOfB[j]);
+            }
+        }
+
+        return output;
+    }
+
+
+    ref InputElementType[] demodulate(in OutputElementType[] input, return ref InputElementType[] output)
+    {
+        if(output.length != input.length / this.symOutputLength * this.symInputLength)
+            output.length = input.length / this.symOutputLength * this.symInputLength;
+
+        auto input2 = input.dup;
+
+        if(*_sw){
+            foreach(i; 0 .. input.length / this.symOutputLength) {
+                auto symAB = input2[i * this.symOutputLength .. (i+1)*this.symOutputLength];
+
+                auto startOfA = symAB[_nCp * _nUpSampling .. $];
+                auto startOfB = symAB[$/2 + _nCp * _nUpSampling .. $];
+
+                foreach(j; 0 .. _nFFT * _nUpSampling / 2)
+                    swap(startOfA[j], startOfB[j]);
+            }
+        }
+
+        _mod.demodulate(input2, output);
+
+        return output;
+    }
+
+
+  private:
+    Mod _mod;
+    const(bool)* _sw;
+    uint _nFFT, _nCp, _nTone, _nUpSampling;
+}
+
+
+OFDMSymbolExchanger!Mod makeOFDMSymbolExchanger(Mod)(Mod mod, const(bool)* sw, uint nFFT, uint nCp, uint nTone, uint nUpSampling = 1)
+{
+    return new OFDMSymbolExchanger!Mod(mod, sw, nFFT, nCp, nTone, nUpSampling);
 }
