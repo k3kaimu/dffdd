@@ -484,7 +484,7 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs
     }
         //bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
 
-    auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(8, bflist);
+    auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(64, bflist);
     //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
     //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
     immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
@@ -559,19 +559,19 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
     }
   }
 
-    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(8));
+    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(64));
     auto st12 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(2));
-    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(8));
+    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(64));
     auto st12c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(2));
-    //auto st2 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(8));
-    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(8));
+    //auto st2 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(64));
+    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(64));
     auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
     //auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
-    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(8));
+    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(64));
     auto st32c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(2));
-    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(8));
+    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(64));
     auto st52 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(2));
-    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(8));
+    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(64));
     auto st52c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(2));
     //auto st7 = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[6].dup);
     //auto st7c = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[7].dup);
