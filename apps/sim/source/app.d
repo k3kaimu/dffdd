@@ -196,6 +196,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
             }
 
             filter.apply!true(refrs, recvs, outps);
+            //filter.apply!false(refrs, recvs, outps);
 
             if(blockIdx == 0)
             {
@@ -252,13 +253,16 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
             filter.apply!false(refrs, recvs, outps);
 
-            foreach(i; 0 .. model.blockSize)
-                refrs[i] = recvs[i] - outps[i];
+            // blockIdxoが10以上になるまで，慣らし運転する
+            if(blockIdxo > 10){
+                foreach(i; 0 .. model.blockSize)
+                    refrs[i] = recvs[i] - outps[i];
 
-            .put(psdBeforePSD, recvs);
-            .put(psdAfterSIC, outps);
-            .put(foutPSD, refrs);
-            .put(sicValue, recvs.zip(outps));
+                .put(psdBeforePSD, recvs);
+                .put(psdAfterSIC, outps);
+                .put(foutPSD, refrs);
+                .put(sicValue, recvs.zip(outps));
+            }
         }
     }
 
@@ -295,6 +299,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         auto refBits = desiredRandomBits(model);
         refBits.popFrontN(numOfTrainingBits);
 
+        // 慣らし運転
         bits.popFrontN(numOfTrainingBits);
         refBits.popFrontN(numOfTrainingBits);
 
@@ -304,7 +309,10 @@ void mainImpl(string filterType)(Model model, string resultDir)
     auto rcvAfterSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_afterSIC.csv", resultDir, 0, model);
     auto rcvBeforeSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_beforeIC.csv", resultDir, 0, model);
 
+    size_t loopCount;
     while(berResult == -1){
+        ++loopCount;
+
         foreach(i; 0 .. model.blockSize){
             recvs[i] = (a => complex(a.re, a.im))(received.front);
             refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
@@ -320,10 +328,16 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
         foreach(e; outps){
             berCounter.put(Complex!float(e.re, e.im));
-            rcvAfterSICPSD.put(e);
+
+            // loopCountが10以上になるまで，慣らし運転する
+            if(loopCount > 10)
+                rcvAfterSICPSD.put(e);
         }
-        foreach(e; recvs)
-            rcvBeforeSICPSD.put(e);
+
+        // loopCountが10以上になるまで，慣らし運転する
+        if(loopCount > 10)
+            foreach(e; recvs)
+                rcvBeforeSICPSD.put(e);
     }
 
     File file = File(buildPath(resultDir, "ber.csv"), "w");
