@@ -365,21 +365,15 @@ shared static this()
     Random rGen;
     rGen.seed(114514);
 
+    BoxMuller!Random gGen = BoxMuller!Random(rGen);
+
     Complex!float[] coefs;
 
-    coefs ~= Complex!float(1, 1);
-
-    foreach(i; 1 .. 8)
-        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen));
-
-    foreach(i; 8 .. 16)
-        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen)) / sqrt(10.0f);
-
-    foreach(i; 16 .. 32)
-        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen)) / sqrt(20.0f);
-
-    foreach(i; 32 .. 64)
-        coefs ~= Complex!float(uniform01(rGen), uniform01(rGen)) / sqrt(30.0f);
+    foreach(i; 0 .. 64){
+        auto db = -40.0L * i / 64;
+        coefs ~= cast(Complex!float)(gGen.front * 10.0L^^(db/20));
+        gGen.popFront();
+    }
 
     channelCoefsOfSI = coefs.dup;
 }
