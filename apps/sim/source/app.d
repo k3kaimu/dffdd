@@ -363,7 +363,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
 void main()
 {
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF", "PH", "OPH", "OPHDCM", "OCH"))
+    foreach(methodName; AliasSeq!("FHF", "PH", "OPH", "OPHDCM", "OCH", "WL", "L"))
         foreach(learningSymbols; [/*2, 3, 5,*/ 60, 10])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
@@ -376,7 +376,7 @@ void main()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(20, 65, 5))
+            foreach(inr; iota(20, 85, 5))
             {
                 Model model;
                 model.SNR = 20;

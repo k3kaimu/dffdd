@@ -193,7 +193,7 @@ struct Model
     {
         real GAIN = 27;     // 30dB
         real IIP3 = 17;     // 20dBm
-        real TX_POWER = 27; // 20dBm
+        real TX_POWER = 15; // 20dBm
     }
     PA pa;
 
@@ -482,7 +482,7 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs
     //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
     //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
     immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
-    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount);
+    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
 
     return polynomialFilter(state, adapter);
 }
@@ -604,13 +604,13 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
             st1,
             lsAdapter(st1, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 0),
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 0 + samplesOfOnePeriod * 1),
             //lmsAdapter(st1, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1, 0.999, 1E2),
             st1c,
             lsAdapter(st1c, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 1),
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 1 + samplesOfOnePeriod * 2),
             //lmsAdapter(st1c, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1c, 0.999, 1E2),
             //st2,
@@ -620,13 +620,13 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
             st3,
             lsAdapter(st3, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 2),
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 2 + samplesOfOnePeriod * 3),
             //lmsAdapter(st3, 0.001, 1024, 0.5),
             //makeRLSAdapter(st3, 0.999, 1E2),
             st3c,
             lsAdapter(st3c, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 3),
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 3 + samplesOfOnePeriod * 4),
             //lmsAdapter(st3c, 0.001, 1024, 0.5),
             //makeRLSAdapter(st3c, 0.999, 1E2),
             //st4,
@@ -638,13 +638,13 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
             st5,
             lsAdapter(st5, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 4),
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 4 + samplesOfOnePeriod * 5),
             //lmsAdapter(st5, 0.001, 1024, 0.5),
             //makeRLSAdapter(st5, 0.999, 1E2),
             st5c,
             lsAdapter(st5c, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 5),
+                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 5 + samplesOfOnePeriod * 6),
             //lmsAdapter(st1, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1, 1 - 1E-2, 1E-7),
             //lmsAdapter(st5c, 0.001, 1024, 0.5),
