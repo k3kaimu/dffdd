@@ -80,6 +80,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     }
 }
 
+
 alias lapack_int = int;
 alias lapack_complex_float = cfloat;
 extern(C) lapack_int LAPACKE_cgelss( lapack_int matrix_order, lapack_int m, lapack_int n,

@@ -58,31 +58,25 @@ auto addPhaseNoise(R)(R r, Gain phaseNoise, real alpha = 0.5)
 
 struct PhaseNoise(R)
 {
-    this(R r, Gain phaseNoise, real alpha = 0.5)
+    this(R r, real carrFreq, real samplingFreq, real paramC)
     {
         _r = r;
-        _g1V = phaseNoise.gain;
-        _last = 0;
-        _alpha = alpha;
+        _noiseGain = 4 * PI * carrFreq * sqrt(paramC / samplingFreq);
+        _phi = 0;
         _noise = boxMullerNoise();
-        _value = _noise.front.re * _g1V;
     }
 
 
     auto front()
     {
-        return expi(_value) * _r.front;
+        return std.complex.expi(_phi) * _r.front;
     }
 
 
     void popFront()
     {
-        _last = _value;
+        _phi += _noise.front.re * _noiseGain;
         _noise.popFront();
-        _r.popFront();
-
-        auto now = _noise.front.re * _g1V;
-        _value = now - _last * _alpha;
     }
 
 
@@ -94,10 +88,8 @@ struct PhaseNoise(R)
 
   private:
     R _r;
-    real _g1V;
-    real _last;
-    real _value;
-    real _alpha;
+    real _noiseGain;
+    real _phi;
     BoxMuller!Random _noise;
 }
 

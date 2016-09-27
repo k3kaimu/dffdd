@@ -9,7 +9,7 @@ import dffdd.utils.unit;
 
 enum real BoltzmannConst = 1.3806488e-23;
 
-auto boxMullerNoise()
+BoxMuller!Random boxMullerNoise()
 {
     return BoxMuller!Random(rndGen);
 }

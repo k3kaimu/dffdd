@@ -214,13 +214,14 @@ final class OneTapMultiFIRFilterState(C, size_t P)
 
     enum size_t numOfFIRState = P;
     Slice!(2, C*) state, weight;
-    typeof(C.re)[P] power;
+    Slice!(1, typeof(C.init.re)*) power;
 
 
     this()
     {
         state = new C[P].sliced(1, P);
         weight = new C[P].sliced(1, P);
+        power = new typeof(C.init.re)[P].sliced(P);
 
         foreach(ref e; state[0]) e = complexZero!C;
         foreach(ref e; weight[0]) e = complexZero!C;
@@ -228,10 +229,13 @@ final class OneTapMultiFIRFilterState(C, size_t P)
     }
 
 
+    size_t numOfTaps() const @property { return state.length!0; }
+
+
     void update(in ref C[P] x)
     {
         state[0][] = x[];
-        foreach(i, ref e; power)power[0] = x[i].sqAbs;
+        foreach(i; 0 .. P) power[i] = x[i].sqAbs;
     }
 
 

@@ -91,6 +91,26 @@ auto makeCancellationProbe(C)(string filename, string resultDir, size_t dropSize
 }
 
 
+auto makeCancellationIterationProbe(C)(string filename, string resultDir, size_t dropSize, Model model)
+{
+    alias Tup = Tuple!(C, C);
+
+    return makeInstrument!Tup(delegate void(FiberRange!Tup r){
+        auto rd = r.drop(dropSize);
+        auto file = File(buildPath(resultDir, filename), "w");
+
+        size_t cnt;
+        while(!rd.empty){
+            auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, 1);
+            if(ratio.isNaN) return;
+
+            file.writefln("%s,%s", cnt*1024, 10*log10(ratio));
+            ++cnt;
+        }
+    });
+}
+
+
 void mainImpl(string filterType)(Model model, string resultDir)
 {
     immutable bool* alwaysFalsePointer = new bool(false);
@@ -113,6 +133,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     {
         auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model), alwaysFalsePointer, model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+        if(model.useDTXPN)  desired = desired.connectToTXIQPhaseNoise(model).psdSaveTo("psd_desired_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXPA)  desired = desired.connectToPowerAmplifier(model).psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useDTXIQ2) desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR + model.lna.NF + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)).dB.gain^^2).sqrt.V)
@@ -121,6 +142,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
         auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model), switchTraining, model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+        if(model.useSTXPN)  selfInterference = selfInterference.connectToTXIQPhaseNoise(model).psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         selfInterference = selfInterference.drop(model.ofdm.numOfSamplesOf1Symbol/2).connectToMultiPathChannel.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)).dB.gain^^2).sqrt.V)
@@ -176,17 +198,25 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
       static if(filterType.endsWith("FHF"))
       {
-        *switchTraining = true;
+        *switchTraining = false;
         scope(exit) *switchTraining = false;
       }
 
 
         auto fftObj = new Fft(model.blockSize.nextPowOf2(0));
 
-        File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
+        //File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
+        auto sicIterValue = makeCancellationIterationProbe!(Complex!float)("errorout_long.csv", resultDir, 0, model);
 
         foreach(blockIdx; 0 .. model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
+          static if(filterType.endsWith("FHF"))
+          {
+            if(blockIdx >= model.learningSymbols / 20 * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
+                *switchTraining = true;
+          }
+
+
             foreach(i; 0 .. model.blockSize){
                 recvs[i] = (a => complex(a.re, a.im))(received.front);
                 refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
@@ -211,26 +241,28 @@ void mainImpl(string filterType)(Model model, string resultDir)
                 }
             }
 
+            .put(sicIterValue, recvs.zip(outps));
+
             // fft
-            {
-                auto outputSpec = fftObj.fftWithSwap(outps[0 .. $.nextPowOf2(0)]);
-                auto recvSpec = fftObj.fftWithSwap(recvs[0 .. $.nextPowOf2(0)]);
+            //{
+            //    auto outputSpec = fftObj.fftWithSwap(outps[0 .. $.nextPowOf2(0)]);
+            //    auto recvSpec = fftObj.fftWithSwap(recvs[0 .. $.nextPowOf2(0)]);
 
-                real sumR = 0, sumO = 0;
-                foreach(i; 0 .. model.blockSize){
-                    immutable po = outps[i].re^^2 + outps[i].im^^2,
-                              pr = recvs[i].re^^2 + recvs[i].im^^2;
+            //    real sumR = 0, sumO = 0;
+            //    foreach(i; 0 .. model.blockSize){
+            //        immutable po = outps[i].re^^2 + outps[i].im^^2,
+            //                  pr = recvs[i].re^^2 + recvs[i].im^^2;
 
-                    immutable freq = i * model.samplingFreq / model.blockSize - (model.samplingFreq/2);
-                    if(abs(freq)/model.samplingFreq < (model.ofdm.numOfSubcarrier*1.0)/(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling)
-                    && abs(freq)/model.samplingFreq > 1.0/model.ofdm.numOfFFT/model.ofdm.scaleOfUpSampling){
-                        sumR += pr;
-                        sumO += po;
-                    }
-                }
+            //        immutable freq = i * model.samplingFreq / model.blockSize - (model.samplingFreq/2);
+            //        if(abs(freq)/model.samplingFreq < (model.ofdm.numOfSubcarrier*1.0)/(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling)
+            //        && abs(freq)/model.samplingFreq > 1.0/model.ofdm.numOfFFT/model.ofdm.scaleOfUpSampling){
+            //            sumR += pr;
+            //            sumO += po;
+            //        }
+            //    }
 
-                powerFile.writefln("%s,%s,%s,%s,", model.blockSize*blockIdx, sumR, sumO, 10*log10(sumO / sumR));
-            }
+            //    powerFile.writefln("%s,%s,%s,%s,", model.blockSize*blockIdx, sumR, sumO, 10*log10(sumO / sumR));
+            //}
         }
     }
 
@@ -269,6 +301,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
     received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
     txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
 
+
+    if(uniform01() < 1) return;
 
     // BER count
     *switchDS = true;
@@ -363,8 +397,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
 void main()
 {
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF", "PH", "OPH", "OPHDCM", "OCH", "WL", "L"))
-        foreach(learningSymbols; [/*2, 3, 5,*/ 60, 10])
+    foreach(methodName; AliasSeq!("FHF" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
+        foreach(learningSymbols; [60])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
             writeln("-----------------------------------------");
@@ -376,14 +410,16 @@ void main()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(20, 85, 5))
+            foreach(inr; iota(50, 55, 5))
             {
                 Model model;
                 model.SNR = 20;
                 model.INR = inr;
                 model.useDTXIQ = false;
+                model.useDTXPN = false;
                 model.useDTXPA = false;
                 model.useSTXIQ = true;
+                model.useSTXPN = false;
                 model.useSTXPA = true;
                 model.useSTXIQ2 = false;
                 model.useSRXLN = true;
@@ -393,11 +429,11 @@ void main()
               static if(methodName.endsWith("DCM"))
               {
                 if(learningSymbols == 10){
-                    model.learningSymbols = 5;
-                    model.learningCount = 2;
+                    model.learningSymbols = 4;
+                    model.learningCount = 3;
                 }else{
-                    model.learningSymbols = 10;
-                    model.learningCount = 6;
+                    model.learningSymbols = 4;
+                    model.learningCount = 15;
                 }
               }
               else
@@ -408,7 +444,7 @@ void main()
 
                 models ~= model;
                 model.numOfPopFront = 0;
-                dirs ~= "with_allImpairements_snr%s_inr%s_%s_LS%s".format(model.SNR, model.INR, methodName, learningSymbols);
+                dirs ~= "with_allImpairements_snr%s_inr%s_%s_LMS%s".format(model.SNR, model.INR, methodName, learningSymbols);
             }
 
             foreach(i; iota(models.length).parallel()){

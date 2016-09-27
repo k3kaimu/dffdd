@@ -12,7 +12,7 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
     alias C = Complex!float;
     enum size_t P = BasisFuncs.length;
 
-    this(in bool[] subcarieerMap__unused, size_t taps, size_t nFFT, size_t nCP, size_t nOS)
+    this(in bool[] subcarieerMap, size_t taps, size_t nFFT, size_t nCP, size_t nOS)
     in{
         //assert(subcarieerMap.length == nFFT * nOS);
     }
@@ -23,11 +23,10 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
         _nFFT = nFFT;
         _nCP = nCP;
         _nOS = nOS;
-        _isLastModeLearning = false;
 
         foreach(i; 0 .. nFFT * nOS){
             _state ~= new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)();
-            _adaptor ~= genAdaptor(i, _state[$-1]);
+            _adaptor ~= genAdaptor(i, subcarieerMap[i], _state[$-1]);
         }
 
         foreach(p; 0 .. P)
@@ -58,10 +57,23 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
       }
     }
     body{
+        immutable symLen = _nOS * (_nFFT + _nCP),
+                  cpLen = _nOS * _nCP;
+
+        if(tx.length / symLen != 1){
+            foreach(batchIndex; 0 .. tx.length / symLen)
+                apply!bLearning(tx[symLen * batchIndex .. symLen * (batchIndex + 1)],
+                                rx[symLen * batchIndex .. symLen * (batchIndex + 1)],
+                                output[symLen * batchIndex .. symLen * (batchIndex + 1)]);
+
+            return;
+        }
+
+
         if(bLearning)
         {
-            immutable symLen = _nOS * (_nFFT + _nCP),
-                      cpLen = _nOS * _nCP;
+            //immutable symLen = _nOS * (_nFFT + _nCP),
+            //          cpLen = _nOS * _nCP;
 
             foreach(sidx; 0 .. tx.length / symLen){
                 const isymbol = tx[sidx * symLen .. (sidx+1)*symLen][cpLen .. $];
@@ -97,70 +109,10 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
                 }
             }
 
-            _isLastModeLearning = true;
             output[] = rx[];
         }
-        else
+        //else
         {
-            if(_isLastModeLearning){
-                // calculate coefs
-                foreach(p, func; BasisFuncs){
-                    auto ips = _fftw.inputs!float;
-
-                    //Complex!float sum = Complex!float(0, 0);
-                    //size_t cnt;
-                    foreach(freq; 0 .. _nFFT * _nOS){
-                        ips[freq] = _state[freq].weight[0][p];
-                        //sum += ips[freq];
-                        //++cnt;
-                    }
-
-                    //foreach(freq; 0 .. _nFFT * _nOS){
-                    //    if(_state[freq] is null)
-                    //        ips[freq] = sum / cnt;
-                    //}
-
-                    /*
-                    {
-                        _fftwOne.inputs!float[0 .. $/2] = ips[0 .. $/_nOS/2];
-                        _fftwOne.inputs!float[$/2 .. $] = ips[$ - $/_nOS/2 .. $];
-
-                        writeln(p, "-------------------");
-                        writeln(_fftwOne.inputs!float[0 .. $/8]);
-                        writeln(_fftwOne.inputs!float[$-$/8 .. $]);
-                        writeln(_fftwOne.inputs!float[$/8 .. $-$/8]);
-                        writeln(p, "-------------------");
-
-                        _fftwOne.ifft!float();
-                        _fftw.inputs!float[0 .. $/_nOS/2] = _fftwOne.outputs!float[0 .. $/2];
-                        _fftw.inputs!float[$/_nOS/2 .. $] = Complex!float(0, 0);
-
-                        _fftw.fft!float();
-
-                        _coefsOfFIRs[p][] = _fftw.outputs!float[];
-                    }
-                    */
-
-                    //writeln(p, "-------------------");
-                    //writeln(ips[0 .. $/8]);
-                    //writeln(ips[$-$/8 .. $]);
-                    //writeln(ips[$/8 .. $-$/8]);
-                    //writeln(p, "-------------------");
-
-                    _fftw.ifft!float();
-                    auto ops = _fftw.outputs!float;
-                    //ops[_nCP*_nOS .. $] = Complex!float(0, 0);
-                    _fftw.inputs!float[] = _fftw.outputs!float[];
-                    //writeln(_fftw.inputs!float);
-                    _fftw.fft!float();
-                    _coefsOfFIRs[p][] = _fftw.outputs!float[];
-                }
-
-                //writeln(_coefsOfFIRs);
-
-                _isLastModeLearning = false;
-            }
-
             output[] = rx[];
 
             immutable batchLen = _fftw.inputs!float.length / 2;
@@ -190,9 +142,9 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
                     ips[preLen + thisBatchLen .. $] = Complex!float(0, 0);
                     _fftw.fft!float();
                     ips[] = ops[];
-                    foreach(i; 0 .. ips.length) ips[i] *= _coefsOfFIRs[p][i];
+                    foreach(i; 0 .. ips.length) ips[i] *= _state[i].weight[0][p];
                     _fftw.ifft!float();
-                    
+
                     foreach(i; 0 .. thisBatchLen)
                         output[startIdx + i] -= ops[preLen + i];
 
@@ -212,10 +164,9 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
 
 
   private:
-    alias AdaptorType = typeof(genAdaptor(0, new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)()));
+    alias AdaptorType = typeof(genAdaptor(0, true, new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)()));
 
     immutable size_t /*_taps,*/ _nFFT, _nCP, _nOS;
-    bool _isLastModeLearning;
     FFTWObject!(Complex) _fftw;
     OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)[] _state;
     AdaptorType[] _adaptor;

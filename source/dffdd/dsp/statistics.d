@@ -119,6 +119,8 @@ real calculateSIC(R)(ref R r, real samplingFreq, size_t res, size_t nFFT, size_t
             buf1[i] = e[0];
             buf2[i] = e[1];
             r.popFront();
+            if(r.empty)
+                return real.nan;
         }
 
         auto spc1 = fft.fftWithSwap(buf1);

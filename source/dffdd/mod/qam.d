@@ -2,6 +2,9 @@ module dffdd.mod.qam;
 
 import dffdd.itpp;
 import std.complex;
+import std.mathspecial;
+import std.math;
+import std.numeric;
 
 
 struct QAM
@@ -43,4 +46,16 @@ struct QAM
     typeof(makeQAMModulator(1)) _impl;
     uint _mary;
     uint _nIL;
+}
+
+
+real ber16QAMFromSNR(real snr)
+{
+    return 4.0L / 4.0L * (1.0L - 1/4.0L) / 2 * erfc(sqrt(3.0L * 4 / 2 / (16 - 1) * 10.0L^^((snr-6)/10)));
+}
+
+
+real snrFromBer16QAM(real ber)
+{
+    return findRoot(delegate(real snr){ return (ber16QAMFromSNR(snr) - ber) / ber; }, 0.0L, 25.0L);
 }

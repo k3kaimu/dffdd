@@ -35,6 +35,7 @@ import dffdd.filter.ls;
 import dffdd.filter.mempoly;
 import dffdd.filter.orthfreqpolyfil;
 import dffdd.filter.orthogonalize;
+import dffdd.filter.ph_dcm;
 import dffdd.filter.polynomial;
 import dffdd.filter.polynomial;
 import dffdd.filter.primitives;
@@ -80,6 +81,7 @@ struct Model
     size_t numOfFilterTrainingSymbols = 1024*10;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
+    real carrFreq = 2.45e9;
     real samplingFreq = 20e6 * 4;
     real SNR = 20;
     real INR = 60;
@@ -91,9 +93,11 @@ struct Model
 
 
     bool useDTXIQ = true;
+    bool useDTXPN = false;
     bool useDTXPA = true;
     bool useDTXIQ2 = false;
     bool useSTXIQ = true;
+    bool useSTXPN = false;
     bool useSTXPA = true;
     bool useSTXIQ2 = false;
     bool useSRXLN = true;
@@ -187,6 +191,13 @@ struct Model
         real IIR = 25;  // 25dB
     }
     RXIQMixer rxIQMixer;
+
+
+    struct PhaseNoise
+    {
+        real paramC = 1.65e-19;
+    }
+    PhaseNoise phaseNoise;
 
 
     struct PA 
@@ -341,6 +352,12 @@ auto connectToTXIQMixer(R)(R r, Model model)
 }
 
 
+auto connectToTXIQPhaseNoise(R)(R r, Model model)
+{
+    return r.connectTo!(dffdd.blockdiagram.iqmixer.PhaseNoise)(model.carrFreq, model.samplingFreq, model.phaseNoise.paramC);
+}
+
+
 auto connectToRXIQMixer(R)(R r, Model model)
 {
     return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.IIR.dB).toWrappedRange;
@@ -479,10 +496,10 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs
         //bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
 
     auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(64, bflist);
-    //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
+    auto adapter = new LMSAdapter!(typeof(state))(state, 0.01, 1024, 0.5);
     //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
-    immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
-    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
+    //immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    //auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
 
     return polynomialFilter(state, adapter);
 }
@@ -491,7 +508,7 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs
 /**
 Fast Training and Cancelling method for Hammerstein Self-Interference Canceller on Full-Duplex OFDM Communication
 */
-auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = serialFilter, Mod)(Mod mod, Model model)
+auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = serialFilter, bool isSerialized = true, Mod)(Mod mod, Model model)
 {
     import dffdd.filter.diagonal;
     import dffdd.filter.lms;
@@ -604,13 +621,13 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
             st1,
             lsAdapter(st1, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 0 + samplesOfOnePeriod * 1),
+                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 0 + samplesOfOnePeriod * 1 : samplesOfOnePeriod),
             //lmsAdapter(st1, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1, 0.999, 1E2),
             st1c,
             lsAdapter(st1c, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 1 + samplesOfOnePeriod * 2),
+                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 1 + samplesOfOnePeriod * 2 : samplesOfOnePeriod),
             //lmsAdapter(st1c, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1c, 0.999, 1E2),
             //st2,
@@ -620,13 +637,13 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
             st3,
             lsAdapter(st3, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 2 + samplesOfOnePeriod * 3),
+                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 2 + samplesOfOnePeriod * 3 : samplesOfOnePeriod),
             //lmsAdapter(st3, 0.001, 1024, 0.5),
             //makeRLSAdapter(st3, 0.999, 1E2),
             st3c,
             lsAdapter(st3c, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 3 + samplesOfOnePeriod * 4),
+                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 3 + samplesOfOnePeriod * 4 : samplesOfOnePeriod),
             //lmsAdapter(st3c, 0.001, 1024, 0.5),
             //makeRLSAdapter(st3c, 0.999, 1E2),
             //st4,
@@ -638,13 +655,13 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
             st5,
             lsAdapter(st5, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 4 + samplesOfOnePeriod * 5),
+                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 4 + samplesOfOnePeriod * 5 : samplesOfOnePeriod),
             //lmsAdapter(st5, 0.001, 1024, 0.5),
             //makeRLSAdapter(st5, 0.999, 1E2),
             st5c,
             lsAdapter(st5c, samplesOfOnePeriod)
                 .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(samplesOfOnePeriod * model.learningCount * 5 + samplesOfOnePeriod * 6),
+                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 5 + samplesOfOnePeriod * 6 : samplesOfOnePeriod),
             //lmsAdapter(st1, 0.001, 1024, 0.5),
             //makeRLSAdapter(st1, 1 - 1E-2, 1E-7),
             //lmsAdapter(st5c, 0.001, 1024, 0.5),
@@ -676,14 +693,72 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
 
 auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, Mod)(Mod mod, Model model)
 {
-    import dffdd.filter.polynomial;
-    return makeCascadeHammersteinFilter!(isOrthogonalized, parallelFilter)(mod, model);
+    auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
+    //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
+
+    {
+        orthogonalizer.start();
+        scope(exit)
+            orthogonalizer.finish();
+
+        auto signal = randomBits(1, model).connectToModulator(mod, new bool(false), model);
+
+        Complex!float[] buf = new Complex!float[1024];
+        foreach(i; 0 .. 1024){
+            foreach(j; 0 .. 1024){
+                auto f = signal.front;
+                buf[j] = complex(f.re, f.im);
+                signal.popFront();
+            }
+            .put(orthogonalizer, buf);
+        }
+    }
+
+
+  static if(isOrthogonalized)
+  {
+    pragma(msg, "Orthogonalized");
+    Complex!float[][BasisFunctions.length] coefs;
+    foreach(i, ref e; coefs){
+        e = new Complex!float[BasisFunctions.length];
+        orthogonalizer.getCoefs(i, e);
+    }
+
+
+    auto adaptInputTransformer(size_t i, S)(S state)
+    {
+        return state.inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[i].dup);
+    }
+  }
+  else
+  {
+    pragma(msg, "Un-Orthogonalized");
+    auto adaptInputTransformer(size_t i, S)(S state)
+    {
+        return state.inputTransformer!(x => BasisFunctions[i](x))();
+    }
+  }
+
+    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(64));
+    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(64));
+    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(64));
+    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(64));
+    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(64));
+    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(64));
+
+
+    return makeParallelHammersteinWithDCM
+            (64, model.learningSymbols * model.ofdm.numOfSamplesOf1Symbol, model.learningSymbols * model.learningCount,
+                st1, st1c, st3, st3c, st5, st5c);
 }
 
 
 auto makeFrequencyHammersteinFilter(Model model)
 {
-    return new FrequencyHammersteinFilter!((i, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
+    return new FrequencyHammersteinFilter!(
+        //(i, bIsSC, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
+        //(i, bIsSC, s) => makeRLSAdapter(s, 0.97, 1E-7),
+        (i, bIsSC, s) => lmsAdapter(s, 0.4, 1024, 0.5),
                                             BasisFunctions)(model.ofdm.subCarrierMap,
                                                             64,
                                                             model.ofdm.numOfFFT,
