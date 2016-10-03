@@ -6,7 +6,7 @@
     "targetType": "library",
 
     "__foo": "/usr/local/opt/openblas/lib",
-    "libs": ["openblas", "itpp", "stdc++", "fftw3"],
+    "libs": ["openblas", "fftw3"],
     "lflags-osx": ["-L/usr/local/opt/openblas/lib"],
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
 
@@ -18,25 +18,4 @@
     "subConfigurations": {
         "pyd": "python27",
     },
-
-    "configurations":[
-        {
-            "name": "library"
-        },
-
-        {
-            "name": "test",
-            "sourceFiles": ["ditpp.o"],
-        },
-
-        {
-            "name": "preBuildCopyCommand",
-            "copyFiles": ["cpp/ditpp.cpp"],
-        },
-
-        {
-            "name": "preBuildPostCopyCommand",
-            "preGenerateCommands": ["g++ -std=c++14 -c ditpp.cpp > gcc_out.txt"]
-        }
-    ]
 }

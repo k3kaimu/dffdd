@@ -2,8 +2,6 @@ module dffdd.mod.primitives;
 
 import std.numeric : gcd;
 
-import dffdd.itpp;
-
 
 
 enum bool isModulator(T) = is(typeof((T t){

@@ -47,7 +47,6 @@ import std.random;
 import dranges.range;
 import dranges.algorithm;
 
-import dffdd.itpp;
 import dffdd.mod.primitives;
 import dffdd.mod.qam;
 import dffdd.mod.ofdm;
@@ -309,7 +308,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
 
 
-    if(uniform01() > 1)
+    if(/*uniform01() > 1*/true)
     {
         // BER count
         *switchDS = true;
@@ -408,7 +407,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
 void main()
 {
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF_LMS"/*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
+    foreach(methodName; AliasSeq!("FHF_RLS"/*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
         foreach(learningSymbols; [60])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
@@ -424,15 +423,15 @@ void main()
             foreach(inr; /*iota(50, 55, 5)*/[50])
             {
                 Model model;
-                model.SNR = 20;
+                model.SNR = 5;
                 model.INR = inr;
                 model.useDTXIQ = false;
                 model.useDTXPN = false;
                 model.useDTXPA = false;
-                model.useSTXIQ = false;
+                model.useSTXIQ = true;
                 model.useSTXPN = false;
                 model.useSTXPA = true;
-                model.useSTXIQ2 = true;
+                model.useSTXIQ2 = false;
                 model.useSRXLN = true;
                 model.useSRXIQ = true;
                 model.useSRXQZ = true;

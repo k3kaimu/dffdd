@@ -123,13 +123,13 @@ RLSAdapter!State makeRLSAdapter(State)(State state, real lambda, real delta = 1E
 }
 
 
-unittest
-{
-    import dffdd.filter.mempoly;
+//unittest
+//{
+//    import dffdd.filter.mempoly;
 
-    auto state = new PowerState!(cfloat, 8, 1)(1);
-    auto rlsAdapter = makeRLSAdapter(state, 0.5);
-}
+//    auto state = new PowerState!(cfloat, 8, 1)(1);
+//    auto rlsAdapter = makeRLSAdapter(state, 0.5);
+//}
 
 
 

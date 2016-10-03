@@ -839,17 +839,17 @@ inout(C)[] convAuto(C)(inout(FrequencyDomain!C)[] array)
     return (cast(inout(C)*)array.ptr)[0 .. array.length];
 }
 
-unittest
-{
-    FrequencyDomain!(Complex!float)[] carr;
-    foreach(i; 0 .. 10) carr ~= complex!float(i, 0).frequencyDomain;
+//unittest
+//{
+//    FrequencyDomain!(Complex!float)[] carr;
+//    foreach(i; 0 .. 10) carr ~= complex!float(i, 0).frequencyDomain;
 
-    auto carr2 = carr.convAuto!(Complex!float);
-    foreach(i; 0 .. 10){
-        assert(approxEqual(carr[i].re, carr2[i].re));
-        assert(approxEqual(carr[i].im, carr2[i].im));
-    }
-}
+//    auto carr2 = carr.convAuto!(Complex!float);
+//    foreach(i; 0 .. 10){
+//        assert(approxEqual(carr[i].re, carr2[i].re));
+//        assert(approxEqual(carr[i].im, carr2[i].im));
+//    }
+//}
 
 
 cfloat[] rawReadComplex(File file, cfloat[] buf)

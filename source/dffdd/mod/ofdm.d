@@ -3,7 +3,6 @@ module dffdd.mod.ofdm;
 import carbon.math;
 import std.stdio;
 
-import dffdd.itpp;
 import dffdd.utils.fft;
 
 final class OFDM(C)

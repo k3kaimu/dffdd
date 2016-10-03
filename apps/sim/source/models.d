@@ -52,7 +52,6 @@ import dffdd.utils.unit;
 import dranges.range;
 import dranges.algorithm;
 
-import dffdd.itpp;
 import dffdd.mod.primitives;
 import dffdd.mod.bpsk;
 import dffdd.mod.qpsk;

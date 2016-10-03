@@ -10,32 +10,4 @@
 	"copyright": "Copyright © 2016, Kazuki Komatsu",
 	"license": "NYSL",
 	"buildOptions": ["ignoreDeprecations"],
-
-	"configurations": [
-		{
-			"name": "application",
-			"targetType": "executable",
-			"preGenerateCommands": [
-				"dub generate --config=preBuildCopyCommand visuald",
-				"dub generate --config=preBuildPostCopyCommand visuald"
-			],
-			"sourceFiles-osx": ["ditpp.o"],
-			"sourceFiles-linux": ["ditpp-linux.o"],
-		},
-
-
-		{
-			"name": "preBuildCopyCommand",
-			"subConfigurations":{
-				"dffdd": "preBuildCopyCommand"
-			}
-		},
-
-		{
-			"name": "preBuildPostCopyCommand",
-			"subConfigurations":{
-				"dffdd": "preBuildPostCopyCommand"
-			}
-		},
-	],
 }
