@@ -235,7 +235,7 @@ final class OneTapMultiFIRFilterState(C, size_t P)
     void update(in ref C[P] x)
     {
         state[0][] = x[];
-        foreach(i; 0 .. P) power[i] = x[i].sqAbs;
+        foreach(i; 0 .. P) power[i] = x[i].re^^2 + x[i].im^^2;
     }
 
 

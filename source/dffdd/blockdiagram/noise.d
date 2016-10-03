@@ -11,7 +11,10 @@ enum real BoltzmannConst = 1.3806488e-23;
 
 BoxMuller!Random boxMullerNoise()
 {
-    return BoxMuller!Random(rndGen);
+    Random rnd;
+    rnd.seed(unpredictableSeed());
+
+    return BoxMuller!Random(rnd);
 }
 
 

@@ -132,6 +132,7 @@ unittest
 }
 
 
+
 private
 void matop_M_mul_V(C)(Slice!(2, C*) mat, Slice!(1, C*) v, Slice!(1, C*) dst)
 {

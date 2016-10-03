@@ -23,6 +23,7 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
         _nFFT = nFFT;
         _nCP = nCP;
         _nOS = nOS;
+        _scMap = subcarieerMap.dup;
 
         foreach(i; 0 .. nFFT * nOS){
             _state ~= new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)();
@@ -99,7 +100,9 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
 
                 // 全周波数で，適応フィルタにかける
                 foreach(freq; 0 .. _nFFT * _nOS) {
+                    //if(!isSwapped && !_scMap[freq]) continue;
                     C[P] inps;
+
                     foreach(p, f; BasisFuncs)
                         inps[p] = ffted[p][freq];
 
@@ -167,6 +170,7 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
     alias AdaptorType = typeof(genAdaptor(0, true, new OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)()));
 
     immutable size_t /*_taps,*/ _nFFT, _nCP, _nOS;
+    immutable(bool[]) _scMap;
     FFTWObject!(Complex) _fftw;
     OneTapMultiFIRFilterState!(Complex!float, BasisFuncs.length)[] _state;
     AdaptorType[] _adaptor;

@@ -78,7 +78,7 @@ alias BasisFunctions = AliasSeq!(x => x,
 struct Model
 {
     size_t numOfModelTrainingSymbols = 1024;
-    size_t numOfFilterTrainingSymbols = 1024*10;
+    size_t numOfFilterTrainingSymbols = 100;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
@@ -90,6 +90,7 @@ struct Model
     size_t numOfPopFront = 1;
     size_t learningSymbols = 10;
     size_t learningCount = 10;
+    size_t swappedSymbols = 0;
 
 
     bool useDTXIQ = true;
@@ -141,8 +142,7 @@ struct Model
         real temperature = 300;
         real power(Model model)
         {
-            return noisePower(model.samplingFreq / (model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling) * model.ofdm.numOfSubcarrier,
-                              model.thermalNoise.temperature);
+            return noisePower(model.samplingFreq, model.thermalNoise.temperature);
         }
     }
     ThermalNoise thermalNoise;
@@ -218,7 +218,7 @@ struct Model
 
     struct Quantizer
     {
-        uint numOfBits = 24;
+        uint numOfBits = 14;
     }
     Quantizer quantizer;
 
@@ -405,7 +405,7 @@ auto connectToMultiPathChannel(R)(R r)
 auto connectToLNA(R)(R r, Model model)
 {
     return r
-    .add(thermalNoise(model).tmap!"a*b"(model.lna.NF.dB.gain - 1))
+    .add(thermalNoise(model).tmap!"a*b"(sqrt(model.lna.NF.dB.gain^^2 - 1)))
     .tmap!"a*b"(model.lna.GAIN.dB.gain)
     .toWrappedRange;
 }
@@ -414,7 +414,7 @@ auto connectToLNA(R)(R r, Model model)
 auto connectToQuantizer(R)(R r, Model model)
 {
     return r
-    .connectTo!PowerControlAmplifier((30 - model.ofdm.PAPR).dBm)
+    .connectTo!PowerControlAmplifier((30 - model.ofdm.PAPR + 4.76).dBm)
     .connectTo!SimpleQuantizer(model.quantizer.numOfBits)
     .toWrappedRange;
 }
@@ -433,7 +433,7 @@ auto connectToRxChain(R)(R r)
 }
 
 
-auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs = BasisFunctions.length, Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size_t numOfBasisFuncs = BasisFunctions.length, Mod)(Mod mod, Model model)
 {
     alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
 
@@ -496,10 +496,16 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs
         //bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
 
     auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(64, bflist);
-    auto adapter = new LMSAdapter!(typeof(state))(state, 0.01, 1024, 0.5);
-    //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
-    //immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
-    //auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
+
+  static if(optimizer == "LMS")
+    auto adapter = new LMSAdapter!(typeof(state))(state, 0.02);
+  else static if(optimizer == "RLS")
+    auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
+  else static if(optimizer == "LS")
+  {
+    immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
+  }
 
     return polynomialFilter(state, adapter);
 }
@@ -508,7 +514,7 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, size_t numOfBasisFuncs
 /**
 Fast Training and Cancelling method for Hammerstein Self-Interference Canceller on Full-Duplex OFDM Communication
 */
-auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = serialFilter, bool isSerialized = true, Mod)(Mod mod, Model model)
+auto makeCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, alias filterBuilder = serialFilter, bool isSerialized = true, Mod)(Mod mod, Model model)
 {
     import dffdd.filter.diagonal;
     import dffdd.filter.lms;
@@ -593,101 +599,35 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, alias filterBuilder = s
 
     //writeln("return filter");
 
-    immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    static
+    auto makeOptimizer(size_t p, State)(State state, const ref Model model)
+    {
+        immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+
+      static if(optimizer == "LMS")
+        return lmsAdapter(state, 0.01);
+      else static if(optimizer == "RLS")
+        return makeRLSAdapter(state, 0.999, 1E-7);
+      else static if(optimizer == "LS")
+        return lsAdapter(state, samplesOfOnePeriod)
+                .trainingLimit(samplesOfOnePeriod * model.learningCount)
+                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * (p-1) + samplesOfOnePeriod * p : samplesOfOnePeriod);
+    }
 
     return filterBuilder(
-            //st12,
-            //makeRLSAdapter(st12, 1 - 1E-4, 1E-7),
-            //st12c,
-            //makeRLSAdapter(st12c, 1 - 1E-4, 1E-7),
-            //st32,
-            //makeRLSAdapter(st32, 1 - 1E-4, 1E-7),
-            //st32c,
-            //makeRLSAdapter(st32c, 1 - 1E-4, 1E-7),
-            //st52,
-            //makeRLSAdapter(st52, 1 - 1E-4, 1E-7),
-            //st52c,
-            //makeRLSAdapter(st52c, 1 - 1E-4, 1E-7),
-            //st12,
-            //makeRLSAdapter(st12, 0.98, 1E-7),
-            //st32,
-            //makeRLSAdapter(st32, 0.98, 1E-7),
-            //st1c_2,
-            //makeRLSAdapter(st1c_2, 0.98, 1E-7),
-            //st3_2,
-            //makeRLSAdapter(st3_2, 0.92, 1E-7),
-            //st3c_2,
-            //makeRLSAdapter(st3c_2, 0.999, 1E-7),
             st1,
-            lsAdapter(st1, samplesOfOnePeriod)
-                .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 0 + samplesOfOnePeriod * 1 : samplesOfOnePeriod),
-            //lmsAdapter(st1, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st1, 0.999, 1E2),
+            makeOptimizer!1(st1, model),
             st1c,
-            lsAdapter(st1c, samplesOfOnePeriod)
-                .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 1 + samplesOfOnePeriod * 2 : samplesOfOnePeriod),
-            //lmsAdapter(st1c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st1c, 0.999, 1E2),
-            //st2,
-            //lsAdapter(st2, samplesOfOnePeriod),
-            //lmsAdapter(st2, 0.002, 1024, 0.5),
-            //makeRLSAdapter(st2, /*0.999*/1E2E-7),
+            makeOptimizer!2(st1c, model),
             st3,
-            lsAdapter(st3, samplesOfOnePeriod)
-                .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 2 + samplesOfOnePeriod * 3 : samplesOfOnePeriod),
-            //lmsAdapter(st3, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st3, 0.999, 1E2),
+            makeOptimizer!3(st3, model),
             st3c,
-            lsAdapter(st3c, samplesOfOnePeriod)
-                .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 3 + samplesOfOnePeriod * 4 : samplesOfOnePeriod),
-            //lmsAdapter(st3c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st3c, 0.999, 1E2),
-            //st4,
-            //lsAdapter(st4, samplesOfOnePeriod),
-            //lmsAdapter(st4, 0.002, 1024, 0.5),
-            //makeRLSAdapter(st4, /*0.999*/1E2E-7),
-            //st4a,
-            //lmsAdapter(st4a, 0.0005, 1024, 0.5),
+            makeOptimizer!4(st3c, model),
             st5,
-            lsAdapter(st5, samplesOfOnePeriod)
-                .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 4 + samplesOfOnePeriod * 5 : samplesOfOnePeriod),
-            //lmsAdapter(st5, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st5, 0.999, 1E2),
+            makeOptimizer!5(st5, model),
             st5c,
-            lsAdapter(st5c, samplesOfOnePeriod)
-                .trainingLimit(samplesOfOnePeriod * model.learningCount)
-                .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * 5 + samplesOfOnePeriod * 6 : samplesOfOnePeriod),
-            //lmsAdapter(st1, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st1, 1 - 1E-2, 1E-7),
-            //lmsAdapter(st5c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st5c, 0.999, 1E2),
-            //st7,
-            //lsAdapter(st7, 2000),
-            //*********lmsAdapter(st7, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st7, 1 - 1E-6, 1E-7),
-            //st12,
-            //lsAdapter(st1, 2000),
-            //lmsAdapter(st12, 0.010, 1024, 0.5),
-            //makeRLSAdapter(st7, 0.9997, 1E-7),
-            //*********st7c,
-            //lsAdapter(st7c, 1000),
-            //*********lmsAdapter(st7c, 0.001, 1024, 0.5),
-            //makeRLSAdapter(st7c, 1 - 1E-6, 1E-7),
-            //st5,
-            //lmsAdapter(st5, 0.0085, 1024, 0.5),
-            //makeRLSAdapter(st5, 1, 1E-7),
-            //st3,
-            //lmsAdapter(st3, 0.01, 1024, 0.5),
-            //makeRLSAdapter(st3, 1, 1E-7),
-            //st1,
-            //lmsAdapter(st1, 0.01, 1024, 0.5),
-            //makeRLSAdapter(st1, 1, 1E-7),
-            );
+            makeOptimizer!6(st5c, model),
+        );
 }
 
 
@@ -753,16 +693,30 @@ auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, Mod)(Mod m
 }
 
 
-auto makeFrequencyHammersteinFilter(Model model)
+auto makeFrequencyHammersteinFilter(string optimizer)(Model model)
 {
+    auto makeOptimizer(State)(State state)
+    {
+      static if(optimizer == "LMS")
+        return lmsAdapter(state, 0.30);
+      else static if(optimizer == "RLS")
+        return makeRLSAdapter(state, 0.97, 1E-7);
+      else static if(optimizer == "LS")
+        return lsAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount);
+    }
+
     return new FrequencyHammersteinFilter!(
-        //(i, bIsSC, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
-        //(i, bIsSC, s) => makeRLSAdapter(s, 0.97, 1E-7),
-        (i, bIsSC, s) => lmsAdapter(s, 0.4, 1024, 0.5),
-                                            BasisFunctions)(model.ofdm.subCarrierMap,
-                                                            64,
-                                                            model.ofdm.numOfFFT,
-                                                            model.ofdm.numOfCP,
-                                                            model.ofdm.scaleOfUpSampling);
+            //(i, bIsSC, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
+            //(i, bIsSC, s) => makeRLSAdapter(s, 0.97, 1E-7),//.trainingLimit(model.learningSymbols * model.learningCount),
+            //(i, bIsSC, s) => lmsAdapter(s, 0.4, 1024, 0.5),
+            (i, bIsSC, s) => makeOptimizer(s),
+            BasisFunctions
+        )(
+            model.ofdm.subCarrierMap,
+            64,
+            model.ofdm.numOfFFT,
+            model.ofdm.numOfCP,
+            model.ofdm.scaleOfUpSampling
+        );
 }
 

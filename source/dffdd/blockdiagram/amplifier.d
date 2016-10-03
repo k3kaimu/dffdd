@@ -160,14 +160,11 @@ struct PowerControlAmplifier
                     if(_sumPower == 0)
                         _alpha = _alpha;
                     else
-                        _alpha = _alpha * (1 - 1.0/(1 + _avgCount))
-                               + sqrt(_power / (_sumPower / _avgSize)) * (1.0/(1 + _avgCount));
+                        _alpha  = _alpha / 2 + sqrt(_power / (_sumPower / _avgSize)) / 2;
 
                     ++_avgCount;
                 }
 
-                //import std.stdio;
-                //writefln("alpha: %s, sumPower: %s", _alpha, _sumPower);
                 _sumPower = 0;
                 _cnt = 0;
             }

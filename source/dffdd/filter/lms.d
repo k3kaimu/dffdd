@@ -13,72 +13,51 @@ final class LMSAdapter(State)
     alias C = State.StateElementType;
     alias F = typeof(C.init.re);
 
-    //enum size_t N = typeof(State.init.state).length;
-    //enum size_t P = typeof(State.init.state[0]).length;
-
-    //alias C = typeof(State.init.state[0][0]);
-    //alias F = typeof(State.init.power[0]);
-
-    this(State state, real mu, size_t forgetCycle = 1024, real forgetCoeff = 0.50)
+    this(State state, real mu)
     {
         _mu = mu;
         _cnt = 0;
-        _cycle = forgetCycle;
-        _fcoeff = forgetCoeff;
 
       static if(state.state.shape.length > 1)
       {
-        _maxPower = new F[state.power.elementsCount].sliced(state.power.shape);
-        _subMaxPower = new F[state.power.elementsCount].sliced(state.power.shape);
+        _power = new F[state.power.elementsCount].sliced(state.power.shape);
 
-        _maxPower[] = state.power[];
-        _subMaxPower[] = 0;
+        _power[] = state.power[];
       }
       else
       {
-        _subMaxPower = 0;
-        _maxPower = state.power;
+        _power = state.power;
       }
     }
 
 
     void adapt(ref State state, C error) /*pure nothrow @safe @nogc*/
     {
-        import std.stdio;
-        //writeln(_maxPower);
-        //writeln(_subMaxPower);
+        static if(!is(typeof(_power) == F))
+        {
+          F[] ps = new F[state.power.elementsCount];
+          ps[]= 0;
+          foreach(j, ref p; ps)
+              foreach(i; 0 .. state.numOfTaps)
+                  ps[j] += state.state[i][j].sqAbs;
 
-      static if(is(typeof(_maxPower) == F))
-        _subMaxPower = max(state.power, _subMaxPower);
-      else
-        foreach(ref a, ref b; lockstep(state.power.byElement, _subMaxPower.byElement))
-            b = max(a, b);
-
-        ++_cnt;
-        if(_cnt == _cycle){
-            _cnt = 0;
-
-          static if(is(typeof(_maxPower) == F))
-          {
-            _maxPower = _maxPower * _fcoeff + _subMaxPower * (1 - _fcoeff);
-            _subMaxPower = 0;
-          }
-          else
-          {
-            _maxPower[] *= _fcoeff;
-            _subMaxPower[] *= (1 - _fcoeff);
-            _maxPower[] += _subMaxPower[];
-            _subMaxPower[] = 0;
-          }
+          immutable pmu = max(_mu, 0.01);
+          ps[] += 1E-20;
+          _power[] *= (1 - pmu);
+          ps[] *= pmu;
+          _power[] += ps[];
         }
 
-
         foreach(i; 0 .. state.numOfTaps){
-          static if(is(typeof(_maxPower) == F))
-            state.weight[i] += _mu * error * state.state[i].conj / _maxPower;
+          static if(is(typeof(_power) == F))
+          {
+            state.weight[i] += _mu * error * state.state[i].conj / state.state[i].sqAbs;
+          }
           else
-            foreach(ref w, s, p; lockstep(state.weight[i].byElement, state.state[i].byElement, _maxPower.byElement))
+          {
+            foreach(ref w, s, p; lockstep(state.weight[i].byElement, state.state[i].byElement, _power.byElement))
                 w += _mu * error * s.conj / p;
+          }
         }
     }
 
@@ -86,23 +65,19 @@ final class LMSAdapter(State)
   private:
     immutable real _mu;
     size_t _cnt;
-    immutable size_t _cycle;
-    immutable real _fcoeff;
 
   static if(State.init.state.shape.length > 1)
   {
-    Slice!(State.init.power.shape.length, F*) _maxPower;
-    Slice!(State.init.power.shape.length, F*) _subMaxPower;
+    Slice!(State.init.power.shape.length, F*) _power;
   }
   else
   {
-    F _maxPower;
-    F _subMaxPower;
+    F _power;
   }
 }
 
 
-auto lmsAdapter(State)(State state, real mu, size_t forgetCycle = 1024, real forgetCoeff = 0.50)
+auto lmsAdapter(State)(State state, real mu)
 {
-    return new LMSAdapter!State(state, mu, forgetCycle, forgetCoeff);
+    return new LMSAdapter!State(state, mu);
 }

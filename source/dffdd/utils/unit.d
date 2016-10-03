@@ -37,10 +37,10 @@ struct Gain
     }
 
 
-    real gainP() pure nothrow @safe @nogc
-    {
-        return _g1P;
-    }
+    //real gainP() pure nothrow @safe @nogc
+    //{
+    //    return _g1P;
+    //}
   }
 
 
