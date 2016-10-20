@@ -15,7 +15,4 @@
         "dranges": {"path": "../dranges"},
         "dfftw3": "~>1.0.1"
     },
-    "subConfigurations": {
-        "pyd": "python27",
-    },
 }

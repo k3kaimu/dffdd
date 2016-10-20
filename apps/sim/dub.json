@@ -9,5 +9,4 @@
 	"description": "simulator",
 	"copyright": "Copyright © 2016, Kazuki Komatsu",
 	"license": "NYSL",
-	"buildOptions": ["ignoreDeprecations"],
 }
