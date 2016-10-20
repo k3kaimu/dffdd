@@ -112,6 +112,32 @@ auto makeCancellationIterationProbe(C)(string filename, string resultDir, size_t
 }
 
 
+auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Model model)
+{
+    return makeInstrument!C(delegate void(FiberRange!C r){
+        File datfile = File(buildPath(resultDir, filename.stripExtension ~ ".dat"), "w");
+        File csvfile = File(buildPath(resultDir, filename.stripExtension ~ ".csv"), "w");
+        r = r.drop(dropSize);
+
+        float[2][] chunk = new float[2][](1024);
+        while(!r.empty){
+            chunk.length = 0;
+
+            foreach(i; 0 .. 1024){
+                if(r.empty) break;
+                auto frnt = r.front;
+                chunk ~= [frnt.re, frnt.im];
+                r.popFront();
+            }
+
+            datfile.rawWrite(chunk);
+            foreach(e; chunk)
+                csvfile.writefln("%s,%s,", e[0], e[1]);
+        }
+    });
+}
+
+
 void mainImpl(string filterType)(Model model, string resultDir)
 {
     immutable bool* alwaysFalsePointer = new bool(false);
@@ -146,7 +172,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         if(model.useSTXPN)  selfInterference = selfInterference.connectToTXIQPhaseNoise(model).psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        selfInterference = selfInterference.drop(model.ofdm.numOfSamplesOf1Symbol/2).connectToMultiPathChannel.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
+        selfInterference = selfInterference.drop(model.ofdm.numOfSamplesOf1Symbol/2).connectToMultiPathChannel(model).connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
                                            .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
 
         received = desired.connectToSwitch(switchDS)
@@ -194,9 +220,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     auto filter = makeParallelHammersteinFilter!(isOrthogonalized, filterOptimizer, 1)(modOFDM(model), model);
   else
     static assert("Cannot identify filter model.");
-    //auto filter = makeCascadeHammersteinFilter(modOFDM(model), model);
-    //auto filter = makeParallelHammersteinFilter(modOFDM(model), model);
-    //auto filter = makeParallelHammersteinWithDCMethodFilter(modOFDM(model), model);
+
 
     {
         received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -213,6 +237,10 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
         //File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
         auto sicIterValue = makeCancellationIterationProbe!(Complex!float)("errorout_long.csv", resultDir, 0, model);
+        auto waveTransmit = makeWaveformProbe!(Complex!float)("waveform_transmit_init.csv", resultDir, 0, model);
+        auto waveBeforeSIC = makeWaveformProbe!(Complex!float)("waveform_beforeSIC_init.csv", resultDir, 0, model);
+        auto waveAfterSIC = makeWaveformProbe!(Complex!float)("waveform_afterSIC_init.csv", resultDir, 0, model);
+        auto waveFilterOutput = makeWaveformProbe!(Complex!float)("waveform_filterOutput_init.csv", resultDir, 0, model);
 
         foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
@@ -234,6 +262,15 @@ void mainImpl(string filterType)(Model model, string resultDir)
             filter.apply!true(refrs, recvs, outps);
             //filter.apply!false(refrs, recvs, outps);
 
+            if(model.outputWaveform){
+                foreach(i; 0 .. model.blockSize){
+                    .put(waveTransmit, refrs[i]);
+                    .put(waveBeforeSIC, recvs[i]);
+                    .put(waveAfterSIC, outps[i]);
+                    .put(waveFilterOutput, recvs[i] - outps[i]);
+                }
+            }
+
             if(blockIdx == 0)
             {
                 File outFile = File(buildPath(resultDir, "errorout_start.csv"), "w");
@@ -248,27 +285,6 @@ void mainImpl(string filterType)(Model model, string resultDir)
             }
 
             .put(sicIterValue, recvs.zip(outps));
-
-            // fft
-            //{
-            //    auto outputSpec = fftObj.fftWithSwap(outps[0 .. $.nextPowOf2(0)]);
-            //    auto recvSpec = fftObj.fftWithSwap(recvs[0 .. $.nextPowOf2(0)]);
-
-            //    real sumR = 0, sumO = 0;
-            //    foreach(i; 0 .. model.blockSize){
-            //        immutable po = outps[i].re^^2 + outps[i].im^^2,
-            //                  pr = recvs[i].re^^2 + recvs[i].im^^2;
-
-            //        immutable freq = i * model.samplingFreq / model.blockSize - (model.samplingFreq/2);
-            //        if(abs(freq)/model.samplingFreq < (model.ofdm.numOfSubcarrier*1.0)/(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling)
-            //        && abs(freq)/model.samplingFreq > 1.0/model.ofdm.numOfFFT/model.ofdm.scaleOfUpSampling){
-            //            sumR += pr;
-            //            sumO += po;
-            //        }
-            //    }
-
-            //    powerFile.writefln("%s,%s,%s,%s,", model.blockSize*blockIdx, sumR, sumO, 10*log10(sumO / sumR));
-            //}
         }
     }
 
@@ -308,7 +324,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
 
 
-    if(/*uniform01() > 1*/true)
+    if(model.outputBER)
     {
         // BER count
         *switchDS = true;
@@ -326,9 +342,6 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
         received.popFrontN(numOfTrainingSample2);
         txReplica.popFrontN(numOfTrainingSample2);
-
-        received.popFrontN(model.numOfPopFront);
-        txReplica.popFrontN(model.numOfPopFront);
 
         real berResult = -1;
         auto berCounter = makeInstrument(delegate void (FiberRange!(Complex!float) r){
@@ -407,7 +420,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
 void main()
 {
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF_RLS"/*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
+    foreach(methodName; AliasSeq!("FHF_LS",/* "OPH_LMS",*/ /*"FHF_RLS"*/))
         foreach(learningSymbols; [60])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
@@ -420,11 +433,13 @@ void main()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; /*iota(50, 55, 5)*/[50])
+            foreach(inr; [/*10, 30, */50])
             {
                 Model model;
-                model.SNR = 5;
+                model.SNR = 20;
                 model.INR = inr;
+
+                // 再現する非線形性の選択
                 model.useDTXIQ = false;
                 model.useDTXPN = false;
                 model.useDTXPA = false;
@@ -435,6 +450,14 @@ void main()
                 model.useSRXLN = true;
                 model.useSRXIQ = true;
                 model.useSRXQZ = true;
+
+                // ベースバンド信号波形の出力
+                model.outputWaveform = false;
+
+                model.channel.taps = 64;
+                model.firFilter.taps = 64;
+
+                model.outputBER = true;
 
               static if(methodName.endsWith("DCM"))
               {
@@ -454,12 +477,17 @@ void main()
 
 
               static if(methodName.startsWith("FHF"))
+              {
                 model.swappedSymbols = 100000;
+                model.numOfFilterTrainingSymbols = 100;
+              }
               else
+              {
                 model.swappedSymbols = 0;
+                model.numOfFilterTrainingSymbols = 1000;
+              }
 
                 models ~= model;
-                model.numOfPopFront = 0;        // ここ必要？
 
               static if(methodName.startsWith("FHF"))
                 dirs ~= "with_allImpairements_snr%s_inr%s_%s%s_Nswp%s".format(model.SNR, model.INR, methodName, learningSymbols, model.swappedSymbols);

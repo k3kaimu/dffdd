@@ -86,10 +86,11 @@ struct Model
     real INR = 60;
     bool withSIC = true;
     bool withSI = true;
-    size_t numOfPopFront = 1;
     size_t learningSymbols = 10;
     size_t learningCount = 10;
     size_t swappedSymbols = 0;
+    bool outputWaveform = false;
+    bool outputBER = true;
 
 
     bool useDTXIQ = true;
@@ -227,6 +228,21 @@ struct Model
         real SNR = 24;      // 24dB
     }
     AWGN awgn;
+
+
+    struct SIChannel
+    {
+        size_t taps = 64;
+    }
+    SIChannel channel;
+
+
+    struct FIRFilter
+    {
+        size_t taps = 64;
+    }
+
+    FIRFilter firFilter;
 }
 
 
@@ -395,9 +411,9 @@ shared static this()
 }
 
 
-auto connectToMultiPathChannel(R)(R r)
+auto connectToMultiPathChannel(R)(R r, Model model)
 {
-    return r.connectTo!FIRFilter(channelCoefsOfSI).toWrappedRange;
+    return r.connectTo!FIRFilter(channelCoefsOfSI[0 .. model.channel.taps]).toWrappedRange;
 }
 
 
@@ -445,28 +461,17 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size
     import dffdd.filter.orthogonalize;
     import dffdd.filter.state;
 
-    //auto state = new MemoryPolynomialState!(Complex!float, 8, 4, 0, 0, false, true)(1);
-
-    //writeln("Use");
-    //auto adapter = new LMSAdapter!(typeof(state))(state, 0.001, 1024, 0.5);
-    //auto adapter = makeRLSAdapter(state, 1 - 1E-4, 1E-7);
-    //auto adapter = lsAdapter(state, 10000);
-
-    //return new PolynomialFilter!(typeof(state), typeof(adapter))(state, adapter);
 
     auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BFs)();
-    //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BFs)();
 
     {
         orthogonalizer.start();
         scope(exit)
             orthogonalizer.finish();
 
-
         auto signal = randomBits(1, model).connectToModulator(mod, new bool(false), model);
-
-        //.put(orthogonalizer, signal.take(1024*400));
         Complex!float[] buf = new Complex!float[1024];
+
         foreach(i; 0 .. 1024){
             foreach(j; 0 .. 1024){
                 auto f = signal.front;
@@ -492,9 +497,8 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size
       else
         bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
     }
-        //bflist[i] = delegate Complex!float (Complex!float x) { return BF(x); };
 
-    auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(64, bflist);
+    auto state = new ParallelHammersteinState!(Complex!float, BFs.length, true)(model.firFilter.taps, bflist);
 
   static if(optimizer == "LMS")
     auto adapter = new LMSAdapter!(typeof(state))(state, 0.02);
@@ -575,19 +579,19 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, alias
     }
   }
 
-    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(64));
+    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(model.firFilter.taps));
     auto st12 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(2));
-    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(64));
+    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(model.firFilter.taps));
     auto st12c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(2));
-    //auto st2 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(64));
-    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(64));
+    //auto st2 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(model.firFilter.taps));
+    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(model.firFilter.taps));
     auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
     //auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
-    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(64));
+    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(model.firFilter.taps));
     auto st32c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(2));
-    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(64));
+    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(model.firFilter.taps));
     auto st52 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(2));
-    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(64));
+    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(model.firFilter.taps));
     auto st52c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(2));
     //auto st7 = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[6].dup);
     //auto st7c = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[7].dup);
@@ -678,16 +682,16 @@ auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, Mod)(Mod m
     }
   }
 
-    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(64));
-    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(64));
-    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(64));
-    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(64));
-    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(64));
-    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(64));
+    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(model.firFilter.taps));
+    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(model.firFilter.taps));
+    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(model.firFilter.taps));
+    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(model.firFilter.taps));
+    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(model.firFilter.taps));
+    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(model.firFilter.taps));
 
 
     return makeParallelHammersteinWithDCM
-            (64, model.learningSymbols * model.ofdm.numOfSamplesOf1Symbol, model.learningSymbols * model.learningCount,
+            (model.firFilter.taps, model.learningSymbols * model.ofdm.numOfSamplesOf1Symbol, model.learningSymbols * model.learningCount,
                 st1, st1c, st3, st3c, st5, st5c);
 }
 
@@ -712,7 +716,7 @@ auto makeFrequencyHammersteinFilter(string optimizer)(Model model)
             BasisFunctions
         )(
             model.ofdm.subCarrierMap,
-            64,
+            model.firFilter.taps,
             model.ofdm.numOfFFT,
             model.ofdm.numOfCP,
             model.ofdm.scaleOfUpSampling
