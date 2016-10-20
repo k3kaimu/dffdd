@@ -1,6 +1,10 @@
 module dffdd.mod.bpsk;
 
 import std.complex;
+import std.mathspecial;
+import std.math;
+import std.numeric;
+
 
 struct BPSK
 {
@@ -35,4 +39,12 @@ struct BPSK
 
         return outputs;
     }
+}
+
+
+real berBPSKFromSNR(real snr)
+{
+    import dffdd.mod.qam;
+
+    return berQAMFromSNR(snr + 10*log10(2.0), 4);
 }
