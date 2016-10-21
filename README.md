@@ -20,7 +20,7 @@ $ brew install homebrew/science/openblas
 In addition, you should clone this library from gitlab, `dranges` and `carbon` from github.
 
 ~~~~~
-$ mkdir workdir
+$ mkdir workdir && workdir
 $ git clone https://whale0.comm.ee.tut.ac.jp/gitlab/komatsu/dffdd.git
 $ git clone https://github.com/k3kaimu/carbon.git
 $ git clone https://github.com/k3kaimu/dranges.git
