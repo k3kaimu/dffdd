@@ -212,6 +212,10 @@ void mainImpl(string filterType)(Model model, string resultDir)
     auto filter = makeParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("CWLH"))
+    auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("CWL1H"))
+    auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("FHF"))
     auto filter = makeFrequencyHammersteinFilter!filterOptimizer(model);
   else static if(filterStructure.endsWith("WL"))
@@ -420,7 +424,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
 void main()
 {
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF_LS",/* "OPH_LMS",*/ /*"FHF_RLS"*/))
+    foreach(methodName; AliasSeq!("OCH_LS", "OCWLH_LS", "OCWL1H_LS" /* "OPH_LMS",*/ /*"FHF_RLS"*/))
         foreach(learningSymbols; [60])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
@@ -433,11 +437,12 @@ void main()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; [/*10, 30, */50])
+            foreach(inr; /*iota(20, 85, 5)*/ [60]) foreach(txp; iota(10, 31, 3))
             {
                 Model model;
                 model.SNR = 20;
                 model.INR = inr;
+                model.pa.TX_POWER = txp;
 
                 // 再現する非線形性の選択
                 model.useDTXIQ = false;
@@ -457,9 +462,9 @@ void main()
                 model.channel.taps = 64;
                 model.firFilter.taps = 64;
 
-                model.outputBER = true;
+                model.outputBER = false;
 
-              static if(methodName.endsWith("DCM"))
+              static if(methodName.split("_")[0].endsWith("DCM"))
               {
                 if(learningSymbols == 10){
                     model.learningSymbols = 4;
@@ -490,13 +495,13 @@ void main()
                 models ~= model;
 
               static if(methodName.startsWith("FHF"))
-                dirs ~= "with_allImpairements_snr%s_inr%s_%s%s_Nswp%s".format(model.SNR, model.INR, methodName, learningSymbols, model.swappedSymbols);
+                dirs ~= "TXP%s_snr%s_inr%s_%s%s_Nswp%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols, model.swappedSymbols);
               else
-                dirs ~= "with_allImpairements_snr%s_inr%s_%s%s".format(model.SNR, model.INR, methodName, learningSymbols);
+                dirs ~= "TXP%s_snr%s_inr%s_%s%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols);
             }
 
             foreach(i; iota(models.length).parallel()){
-                mainImpl!methodName(models[i], buildPath("results", dirs[i]));
+                mainImpl!methodName(models[i], buildPath("results_20161024", dirs[i]));
             }
         }
 }

@@ -517,7 +517,13 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size
 /**
 Fast Training and Cancelling method for Hammerstein Self-Interference Canceller on Full-Duplex OFDM Communication
 */
-auto makeCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, alias filterBuilder = serialFilter, bool isSerialized = true, Mod)(Mod mod, Model model)
+auto makeCascadeHammersteinFilterImpl(bool isOrthogonalized,
+                                  string optimizer,
+                                  alias filterBuilder = serialFilter,
+                                  bool isSerialized = true,
+                                  alias makeStructure = (n) => iota(n).map!"[a]",
+                                  Mod)
+                                (Mod mod, Model model)
 {
     import dffdd.filter.diagonal;
     import dffdd.filter.lms;
@@ -563,44 +569,44 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, alias
         e = new Complex!float[BasisFunctions.length];
         orthogonalizer.getCoefs(i, e);
     }
-
-
-    auto adaptInputTransformer(size_t i, S)(S state)
-    {
-        return state.inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[i].dup);
-    }
   }
   else
   {
     pragma(msg, "Un-Orthogonalized");
-    auto adaptInputTransformer(size_t i, S)(S state)
-    {
-        return state.inputTransformer!(x => BasisFunctions[i](x))();
-    }
   }
 
-    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st12 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(2));
-    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st12c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(2));
-    //auto st2 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
-    //auto st32 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(2));
-    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st32c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(2));
-    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st52 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(2));
-    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st52c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(2));
-    //auto st7 = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[6].dup);
-    //auto st7c = new FIRState!(Complex!float, true)(8).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[7].dup);
-    
+    static
+    string makeDefFilter()
+    {
+        auto app = appender!string();
+        auto braches = makeStructure(BasisFunctions.length).map!"a.array()".array();
 
-    //auto st5 = (new FIRState!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[4].dup);
-    //auto st7 = (new FIRState!(Complex!float, 16, true)).inputTransformer!((x, h) => OBFEval!(Model.BasisFunctions)(x, h))(coefs[5].dup);
+        // 各ブランチの基底関数の宣言
+        foreach(i, blist; braches){
+            app.formattedWrite("Complex!float delegate(Complex!float x)[%2$s] bflist%1$s;", i, blist.length);
+            foreach(j, e; blist){
+                if(isOrthogonalized)
+                    app.formattedWrite("bflist%1$s[%2$s] = delegate Complex!float (Complex!float x) { return OBFEval!(BasisFunctions[%3$s])(x, coefs[%3$s]); };\n", i, j, e);
+                else
+                    app.formattedWrite("bflist%1$s[%2$s] = delegate Complex!float (Complex!float x) { return BasisFunctions[%3$s](x); };\n", i, j, e);
+            }
+        }
 
-    //writeln("return filter");
+        // 各ブランチの状態の宣言
+        foreach(i, blist; braches){
+            if(blist.length != 1)
+                app.formattedWrite("auto st%1$s = new ParallelHammersteinState!(Complex!float, %2$s, true)(model.firFilter.taps, bflist%1$s);\n", i, blist.length);
+            else
+                app.formattedWrite("auto st%1$s = new FIRState!(Complex!float, true)(model.firFilter.taps).inputTransformer!((x, f) => f(x))(bflist%1$s[0]);\n", i);
+        }
+
+        // 全部ランチ結合
+        app.formattedWrite("auto result = filterBuilder(");
+        foreach(i, blist; braches)
+            app.formattedWrite("st%1$s, makeOptimizer!(%1$s + 1)(st%1$s, model), ", i);
+        app.formattedWrite(");");
+        return app.data;
+    }
 
     static
     auto makeOptimizer(size_t p, State)(State state, const ref Model model)
@@ -617,82 +623,91 @@ auto makeCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, alias
                 .ignoreHeadSamples(isSerialized ? samplesOfOnePeriod * model.learningCount * (p-1) + samplesOfOnePeriod * p : samplesOfOnePeriod);
     }
 
-    return filterBuilder(
-            st1,
-            makeOptimizer!1(st1, model),
-            st1c,
-            makeOptimizer!2(st1c, model),
-            st3,
-            makeOptimizer!3(st3, model),
-            st3c,
-            makeOptimizer!4(st3c, model),
-            st5,
-            makeOptimizer!5(st5, model),
-            st5c,
-            makeOptimizer!6(st5c, model),
-        );
+    mixin(makeDefFilter());
+    return result;
 }
 
 
-auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, Mod)(Mod mod, Model model)
+auto makeCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, alias filterBuilder = serialFilter, bool isSerialized = true, Mod)(Mod mod, Model model)
 {
-    auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
-    //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
-
-    {
-        orthogonalizer.start();
-        scope(exit)
-            orthogonalizer.finish();
-
-        auto signal = randomBits(1, model).connectToModulator(mod, new bool(false), model);
-
-        Complex!float[] buf = new Complex!float[1024];
-        foreach(i; 0 .. 1024){
-            foreach(j; 0 .. 1024){
-                auto f = signal.front;
-                buf[j] = complex(f.re, f.im);
-                signal.popFront();
-            }
-            .put(orthogonalizer, buf);
-        }
-    }
+    return makeCascadeHammersteinFilterImpl!(isOrthogonalized, optimizer, filterBuilder, isSerialized, (n) => iota(n).map!"[a]")(mod, model);
+}
 
 
-  static if(isOrthogonalized)
-  {
-    pragma(msg, "Orthogonalized");
-    Complex!float[][BasisFunctions.length] coefs;
-    foreach(i, ref e; coefs){
-        e = new Complex!float[BasisFunctions.length];
-        orthogonalizer.getCoefs(i, e);
-    }
+auto makeCascadeWLHammersteinFilter(bool isOrthogonalized, string optimizer, Mod)(Mod mod, Model model)
+{
+    return makeCascadeHammersteinFilterImpl!(isOrthogonalized, optimizer, serialFilter, true, (n) => iota(n).chunks(2))(mod, model);
+}
 
 
-    auto adaptInputTransformer(size_t i, S)(S state)
-    {
-        return state.inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[i].dup);
-    }
-  }
-  else
-  {
-    pragma(msg, "Un-Orthogonalized");
-    auto adaptInputTransformer(size_t i, S)(S state)
-    {
-        return state.inputTransformer!(x => BasisFunctions[i](x))();
-    }
-  }
-
-    auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(model.firFilter.taps));
-    auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(model.firFilter.taps));
+auto makeCascadeWL1HammersteinFilter(bool isOrthogonalized, string optimizer, Mod)(Mod mod, Model model)
+{
+    return makeCascadeHammersteinFilterImpl!(isOrthogonalized, optimizer, serialFilter, true, (n) => [0, 1] ~ iota(2, n).map!"[a]".array())(mod, model);
+}
 
 
-    return makeParallelHammersteinWithDCM
-            (model.firFilter.taps, model.learningSymbols * model.ofdm.numOfSamplesOf1Symbol, model.learningSymbols * model.learningCount,
-                st1, st1c, st3, st3c, st5, st5c);
+auto makeParallelHammersteinWithDCMethodFilter(bool isOrthogonalized, string optimizer = "LS", Mod)(Mod mod, Model model)
+{
+    return makeCascadeHammersteinFilter!(isOrthogonalized, optimizer, parallelFilter, false)(mod, model);
+
+
+  //  auto orthogonalizer = new GramSchmidtOBFFactory!(Complex!float, BasisFunctions)();
+  //  //auto orthogonalizer = new DiagonalizationOBFFactory!(Complex!float, BasisFunctions)();
+
+  //  {
+  //      orthogonalizer.start();
+  //      scope(exit)
+  //          orthogonalizer.finish();
+
+  //      auto signal = randomBits(1, model).connectToModulator(mod, new bool(false), model);
+
+  //      Complex!float[] buf = new Complex!float[1024];
+  //      foreach(i; 0 .. 1024){
+  //          foreach(j; 0 .. 1024){
+  //              auto f = signal.front;
+  //              buf[j] = complex(f.re, f.im);
+  //              signal.popFront();
+  //          }
+  //          .put(orthogonalizer, buf);
+  //      }
+  //  }
+
+
+  //static if(isOrthogonalized)
+  //{
+  //  pragma(msg, "Orthogonalized");
+  //  Complex!float[][BasisFunctions.length] coefs;
+  //  foreach(i, ref e; coefs){
+  //      e = new Complex!float[BasisFunctions.length];
+  //      orthogonalizer.getCoefs(i, e);
+  //  }
+
+
+  //  auto adaptInputTransformer(size_t i, S)(S state)
+  //  {
+  //      return state.inputTransformer!((x, h) => OBFEval!BasisFunctions(x, h))(coefs[i].dup);
+  //  }
+  //}
+  //else
+  //{
+  //  pragma(msg, "Un-Orthogonalized");
+  //  auto adaptInputTransformer(size_t i, S)(S state)
+  //  {
+  //      return state.inputTransformer!(x => BasisFunctions[i](x))();
+  //  }
+  //}
+
+  //  auto st1 = adaptInputTransformer!0(new FIRState!(Complex!float, true)(model.firFilter.taps));
+  //  auto st1c = adaptInputTransformer!1(new FIRState!(Complex!float, true)(model.firFilter.taps));
+  //  auto st3 = adaptInputTransformer!2(new FIRState!(Complex!float, true)(model.firFilter.taps));
+  //  auto st3c = adaptInputTransformer!3(new FIRState!(Complex!float, true)(model.firFilter.taps));
+  //  auto st5 = adaptInputTransformer!4(new FIRState!(Complex!float, true)(model.firFilter.taps));
+  //  auto st5c = adaptInputTransformer!5(new FIRState!(Complex!float, true)(model.firFilter.taps));
+
+
+  //  return makeParallelHammersteinWithDCM
+  //          (model.firFilter.taps, model.learningSymbols * model.ofdm.numOfSamplesOf1Symbol, model.learningSymbols * model.learningCount,
+  //              st1, st1c, st3, st3c, st5, st5c);
 }
 
 
