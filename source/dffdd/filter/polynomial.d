@@ -213,7 +213,7 @@ genAdapter: function(MultiFIRState) -> Adapter
 */
 final class GeneralParallelHammersteinFilter(C, alias func, size_t numOfFIRState, alias genAdapter)
 {
-    bool isFuncType = !is(typeof(func(null)) : C[numOfFIRState][]);
+    bool isFuncType = !is(typeof(func(null).front) : C[numOfFIRState]);
 
   static if(isFuncType)
   {
@@ -247,12 +247,14 @@ final class GeneralParallelHammersteinFilter(C, alias func, size_t numOfFIRState
 
         foreach(i; 0 .. tx.length)
         {
-            _state.update(distorted[i]);
+            _state.update(distorted.front);
             C error = _state.error(rx[i]);
             outputBuf[i] = error;
 
           static if(bLearning)
             _adapter.adapt(_state, error);
+
+            distorted.popFront();
         }
     }
 
