@@ -203,3 +203,64 @@ if(StateORAdapter.length % 2 == 0)
 {
     return new ParallelFilter!StateORAdapter(stateAndAdapter);
 }
+
+
+/**
+C: Complex Type
+func: function(C[]) -> C[numOfFIRState][], distortion function
+numOfFIRState: the number of FIR filters
+genAdapter: function(MultiFIRState) -> Adapter
+*/
+final class GeneralParallelHammersteinFilter(C, alias func, size_t numOfFIRState, alias genAdapter)
+{
+    bool isFuncType = !is(typeof(func(null)) : C[numOfFIRState][]);
+
+  static if(isFuncType)
+  {
+    this(func f, size_t numOfTaps)
+    {
+        _f = f;
+        _state = new MultiFIRState!(C, numOfFIRState, true)(numOfTaps);
+        _adapter = genAdapter(_state);
+    }
+  }
+  else
+  {
+    this(size_t numOfTaps)
+    {
+        _state = new MultiFIRState!(C, numOfFIRState, true)(numOfTaps);
+        _adapter = genAdapter(_state);
+    }
+  }
+
+
+    void apply(bool bLearning = true, C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
+    in{
+        assert(tx.length == rx.length
+            && tx.length == outputBuf.length);
+    }
+    body{
+      static if(isFuncType)
+        auto distorted = _f(tx);
+      else
+        auto distorted = func(tx);
+
+        foreach(i; 0 .. tx.length)
+        {
+            _state.update(distorted[i]);
+            C error = _state.error(rx[i]);
+            outputBuf[i] = error;
+
+          static if(bLearning)
+            _adapter.adapt(_state, error);
+        }
+    }
+
+
+  private:
+    MultiFIRState!(C, numOfFIRState, true) _state;
+    typeof(genAdapter(state)) _adapter;
+
+  static if(isFuncType)
+    func _f;
+}
