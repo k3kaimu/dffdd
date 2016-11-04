@@ -74,7 +74,7 @@ alias BasisFunctions = AliasSeq!(x => x,
 struct Model
 {
     size_t numOfModelTrainingSymbols = 1024;
-    size_t numOfFilterTrainingSymbols = 100;
+    size_t numOfFilterTrainingSymbols = 1000;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
@@ -449,11 +449,9 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size
 {
     alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
 
-    import dffdd.filter.diagonal;
     import dffdd.filter.lms;
     import dffdd.filter.ls;
     import dffdd.filter.rls;
-    import dffdd.filter.mempoly;
     import dffdd.filter.polynomial;
     import dffdd.filter.orthogonalize;
     import dffdd.filter.state;

@@ -1,12 +1,26 @@
 {
-	"name": "sim",
-	"authors": [
-		"Kazuki Komatsu"
-	],
-	"dependencies": {
-		"dffdd" : { "path": "../../" }
-	},
-	"description": "simulator",
-	"copyright": "Copyright © 2016, Kazuki Komatsu",
-	"license": "NYSL",
+    "name": "sim",
+    "authors": [
+        "Kazuki Komatsu"
+    ],
+    "dependencies": {
+        "dffdd" : { "path": "../../" },
+        "tuthpc": { "path": "../../../TUT-HPCLib4D" }
+    },
+    "description": "simulator",
+    "copyright": "Copyright © 2016, Kazuki Komatsu",
+    "license": "NYSL",
+    "buildOptions": ["ignoreDeprecations"],
+    "targetType": "executable",
+    "configurations": [
+        {
+            "name": "default"
+        },
+        {
+            "name": "mpi",
+            "subConfigurations": {
+                "tuthpc": "mpi"
+            }
+        }
+    ]
 }

@@ -421,10 +421,15 @@ void mainImpl(string filterType)(Model model, string resultDir)
 }
 
 
-void main()
+void mainJob()
 {
+    //import tuthpc.mpi;
+    import tuthpc.taskqueue;
+
+    auto taskList = new MultiTaskList();
+
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("OCH_LS", "OCWLH_LS", "OCWL1H_LS" /* "OPH_LMS",*/ /*"FHF_RLS"*/))
+    foreach(methodName; AliasSeq!("FHF_LS", "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
         foreach(learningSymbols; [60])
         {
             writeln("START: ", methodName, " : ", learningSymbols);
@@ -494,14 +499,31 @@ void main()
 
                 models ~= model;
 
+
+              static if(methodName.endsWith("LMS") || methodName.endsWith("RLS"))
+                model.numOfFilterTrainingSymbols = 100;
+
               static if(methodName.startsWith("FHF"))
                 dirs ~= "TXP%s_snr%s_inr%s_%s%s_Nswp%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols, model.swappedSymbols);
               else
                 dirs ~= "TXP%s_snr%s_inr%s_%s%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols);
             }
 
-            foreach(i; iota(models.length).parallel()){
-                mainImpl!methodName(models[i], buildPath("results_20161024", dirs[i]));
-            }
+            foreach(i; 0 .. models.length)
+                taskList.append((Model m, string dir){ mainImpl!methodName(m, dir); }, models[i], buildPath("results", dirs[i]));
         }
+
+    //auto scheduler = new MPITaskScheduler();
+    jobRun(taskList);
+}
+
+
+void main()
+{
+    //import tuthpc.mpi;
+    import tuthpc.taskqueue;
+
+    //jobRun(1, 0, {
+        mainJob();
+    //});
 }
