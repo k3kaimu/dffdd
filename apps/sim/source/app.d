@@ -432,13 +432,6 @@ void mainJob()
     foreach(methodName; AliasSeq!("FHF_LS", "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
         foreach(learningSymbols; [60])
         {
-            writeln("START: ", methodName, " : ", learningSymbols);
-            writeln("-----------------------------------------");
-            scope(exit){
-                writeln("-----------------------------------------");
-                writeln("END: ", methodName, " : ", learningSymbols);
-            }
-
             Model[] models;
             string[] dirs;
 
