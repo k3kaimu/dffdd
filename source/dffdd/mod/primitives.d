@@ -103,3 +103,40 @@ auto chainedMod(Mod1, Mod2)(Mod1 mod1, Mod2 mod2)
 {
     return ChainedMod!(Mod1, Mod2)(mod1, mod2);
 }
+
+
+///
+unittest
+{
+    import std.complex;
+    import dffdd.mod.ofdm;
+    import dffdd.mod.qpsk;
+
+    // 1次変調: QPSK
+    // FFTサイズ: 8
+    // サイクリックプレフィックス: 3
+    // 使用サブキャリア数: 4
+    // アップサンプリング率: 2
+    auto mod = chainedMod(new QPSK(), new OFDM!(Complex!float)(8, 3, 4, 2));
+
+    assert(mod.symInputLength == 2 * 4);
+    assert(mod.symOutputLength == (8 + 3) * 2);
+
+    ubyte[] inps = [1, 1, 0, 0, 1, 0, 0, 1];
+    Complex!float[] res;
+
+    // 変調
+    mod.modulate(inps, res);
+
+    // CPのチェック
+    foreach(i; 0 .. 3 * 2)
+        assert(res[i] == res[$ - 3*2 + i]);
+
+    ubyte[] decoded;
+
+    // 復調
+    mod.demodulate(res, decoded);
+
+    // 復調結果のチェック
+    assert(decoded == inps);
+}
