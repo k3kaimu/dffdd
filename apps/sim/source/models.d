@@ -29,10 +29,8 @@ import dffdd.blockdiagram.noise;
 import dffdd.blockdiagram.quantizer;
 import dffdd.blockdiagram.txchain;
 import dffdd.blockdiagram.utils;
-import dffdd.filter.diagonal;
 import dffdd.filter.lms;
 import dffdd.filter.ls;
-import dffdd.filter.mempoly;
 import dffdd.filter.orthfreqpolyfil;
 import dffdd.filter.orthogonalize;
 import dffdd.filter.ph_dcm;
@@ -525,11 +523,9 @@ auto makeCascadeHammersteinFilterImpl(bool isOrthogonalized,
                                   Mod)
                                 (Mod mod, Model model)
 {
-    import dffdd.filter.diagonal;
     import dffdd.filter.lms;
     import dffdd.filter.ls;
     import dffdd.filter.rls;
-    import dffdd.filter.mempoly;
     import dffdd.filter.polynomial;
     import dffdd.filter.orthogonalize;
     import dffdd.filter.state;
