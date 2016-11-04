@@ -125,9 +125,9 @@ unittest
     import std.complex, std.math;
 
     // FFTサイズ: 8
-    // サイクリックプレフィックス: 2
-    // 使用サブキャリア数: 3
-    // アップサンプリング率: 1
+    // サイクリックプレフィックス: 3
+    // 使用サブキャリア数: 4
+    // アップサンプリング率: 2
     auto ofdmMod = new OFDM!(Complex!float)(8, 3, 4, 2);
 
     Complex!float[] inps = [Complex!float(1, 1), Complex!float(-1, -1), Complex!float(1, 0), Complex!float(0, 1)];
