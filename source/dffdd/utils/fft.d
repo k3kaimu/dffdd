@@ -67,7 +67,7 @@ enum bool isFFTObject(FftObj) = is(typeof((FftObj obj){
 
 
 private
-void fastCopy(F)(in Complex!F[] src, Complex!F[] dst)
+void fastCopy(E)(in E[] src, E[] dst)
 {
     dst[] = src[];
 }
@@ -101,6 +101,25 @@ body{
     fastCopy(obj.outputs!F, output);
 }
 
+///
+unittest
+{
+    auto fftObj = makePhobosFFTObject!Complex(2);
+
+    foreach(F; AliasSeq!(float, double, real))
+    {
+        Complex!F[] inps = new Complex!F[2],
+                    outs = new Complex!F[2];
+
+        .fft!F(fftObj, [complex!F(1, 1), complex!F(1, 1)], outs);
+
+        assert(approxEqual(outs[0].re, 2));
+        assert(approxEqual(outs[0].im, 2));
+        assert(approxEqual(outs[1].re, 0));
+        assert(approxEqual(outs[1].re, 0));
+    }
+}
+
 
 /**
 
@@ -116,6 +135,24 @@ body{
     obj.fft!F();
 }
 
+///
+unittest
+{
+    auto fftObj = makePhobosFFTObject!Complex(2);
+
+    foreach(F; AliasSeq!(float, double, real))
+    {
+        Complex!F[] inps = new Complex!F[2];
+
+        .fftFrom!F(fftObj, [complex!F(1, 1), complex!F(1, 1)]);
+
+        assert(approxEqual(fftObj.outputs!F[0].re, 2));
+        assert(approxEqual(fftObj.outputs!F[0].im, 2));
+        assert(approxEqual(fftObj.outputs!F[1].re, 0));
+        assert(approxEqual(fftObj.outputs!F[1].re, 0));
+    }
+}
+
 
 /**
 
@@ -129,6 +166,26 @@ in{
 body{
     obj.fft!F();
     fastCopy(obj.outputs!F, output);
+}
+
+///
+unittest
+{
+    auto fftObj = makePhobosFFTObject!Complex(2);
+
+    foreach(F; AliasSeq!(float, double, real))
+    {
+        fftObj.inputs!F[] = [complex!F(1, 1), complex!F(1, 1)];
+
+        Complex!F[] outs = new Complex!F[2];
+
+        .fftTo!F(fftObj, outs);
+
+        assert(approxEqual(outs[0].re, 2));
+        assert(approxEqual(outs[0].im, 2));
+        assert(approxEqual(outs[1].re, 0));
+        assert(approxEqual(outs[1].re, 0));
+    }
 }
 
 
@@ -151,6 +208,26 @@ body{
     fastCopy(obj.outputs!F, output);
 }
 
+///
+unittest
+{
+    auto fftObj = makePhobosFFTObject!Complex(2);
+
+    foreach(F; AliasSeq!(float, double, real))
+    {
+        Complex!F[] inps = new Complex!F[2],
+                    outs = new Complex!F[2];
+
+        .ifft!F(fftObj, [complex!F(2, 2), complex!F(0, 0)], outs);
+
+        assert(approxEqual(outs[0].re, 1));
+        assert(approxEqual(outs[0].im, 1));
+        assert(approxEqual(outs[1].re, 1));
+        assert(approxEqual(outs[1].re, 1));
+    }
+}
+
+
 
 /**
 
@@ -166,6 +243,24 @@ body{
     obj.ifft!F();
 }
 
+///
+unittest
+{
+    auto fftObj = makePhobosFFTObject!Complex(2);
+
+    foreach(F; AliasSeq!(float, double, real))
+    {
+        Complex!F[] inps = new Complex!F[2];
+
+        .ifftFrom!F(fftObj, [complex!F(2, 2), complex!F(0, 0)]);
+
+        assert(approxEqual(fftObj.outputs!F[0].re, 1));
+        assert(approxEqual(fftObj.outputs!F[0].im, 1));
+        assert(approxEqual(fftObj.outputs!F[1].re, 1));
+        assert(approxEqual(fftObj.outputs!F[1].re, 1));
+    }
+}
+
 
 /**
 
@@ -179,6 +274,26 @@ in{
 body{
     obj.ifft!F();
     fastCopy(obj.outputs!F, output);
+}
+
+///
+unittest
+{
+    auto fftObj = makePhobosFFTObject!Complex(2);
+
+    foreach(F; AliasSeq!(float, double, real))
+    {
+        fftObj.inputs!F[] = [complex!F(2, 2), complex!F(0, 0)];
+
+        Complex!F[] outs = new Complex!F[2];
+
+        .ifftTo!F(fftObj, outs);
+
+        assert(approxEqual(outs[0].re, 1));
+        assert(approxEqual(outs[0].im, 1));
+        assert(approxEqual(outs[1].re, 1));
+        assert(approxEqual(outs[1].re, 1));
+    }
 }
 
 
@@ -439,6 +554,15 @@ FFTWを利用したFFTObject
 */
 alias FFTWObject(alias Cpx) = RefCounted!(FFTWObjectImpl!Cpx);
 
+///
+unittest
+{
+    static assert(isFFTObject!(FFTWObject!(Complex)));
+    static assert(isFFTObject!(FFTWObject!(std_complex_t)));
+    static assert(isFFTObject!(FFTWObject!(complex_t)));
+}
+
+
 
 /**
 標準ライブラリのstd.numeric.Fftを利用したFFTObject
@@ -553,6 +677,14 @@ final class PhobosFFTObject(alias Cpx)
     Cpx!real[] _real_out;
 }
 
+///
+unittest
+{
+    static assert(isFFTObject!(PhobosFFTObject!(Complex)));
+    static assert(isFFTObject!(PhobosFFTObject!(std_complex_t)));
+    static assert(isFFTObject!(PhobosFFTObject!(complex_t)));
+}
+
 
 /**
 高速フーリエ変換を計算するオブジェクトを作ります．
@@ -586,47 +718,48 @@ auto makeFFTWObject(alias Cpx = Complex)(size_t size)
 
 unittest
 {
-    foreach(F; AliasSeq!(float, double, real))
-    {
-        auto fft = makePhobosFFTObject!Complex(64);
-        Complex!F[] inps = fft.inputs!F;
-        foreach(i; 0 .. 64)
-            inps[i] = Complex!F(i, i);
+    foreach(makeObjFunc; AliasSeq!(makePhobosFFTObject, makeFFTWObject))
+        foreach(F; AliasSeq!(float, double, real))
+        {
+            auto fft = makeObjFunc!Complex(64);
+            Complex!F[] inps = fft.inputs!F;
+            foreach(i; 0 .. 64)
+                inps[i] = Complex!F(i, i);
 
-        auto phobosResult = std.numeric.fft(inps);
+            auto phobosResult = std.numeric.fft(inps);
 
-        fft.fft!F();
-        auto libResult = fft.outputs!F;
-        import std.stdio, std.algorithm;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult[i].im));
+            fft.fft!F();
+            auto libResult = fft.outputs!F;
+            import std.stdio, std.algorithm;
+            foreach(i; 0 .. 64){
+                assert(approxEqual(phobosResult[i].re, libResult[i].re));
+                assert(approxEqual(phobosResult[i].im, libResult[i].im));
+            }
+
+            auto fft2 = makeObjFunc!std_complex_t(64);
+            std_complex_t!F[] inps2 = fft2.inputs!F;
+            foreach(x; 0 .. 64)
+                inps2[x] = x + x*1i;
+
+            fft2.fft!F();
+            auto libResult2 = fft2.outputs!F;
+            foreach(i; 0 .. 64){
+                assert(approxEqual(phobosResult[i].re, libResult2[i].re));
+                assert(approxEqual(phobosResult[i].im, libResult2[i].im));
+            }
+
+            auto fft3 = makeObjFunc!complex_t(64);
+            complex_t!F[] inps3 = fft3.inputs!F;
+            foreach(x; 0 .. 64)
+                inps3[x] = x + x*1i;
+
+            fft3.fft!F();
+            auto libResult3 = fft2.outputs!F;
+            foreach(i; 0 .. 64){
+                assert(approxEqual(phobosResult[i].re, libResult3[i].re));
+                assert(approxEqual(phobosResult[i].im, libResult3[i].im));
+            }
         }
-
-        auto fft2 = makePhobosFFTObject!std_complex_t(64);
-        std_complex_t!F[] inps2 = fft2.inputs!F;
-        foreach(x; 0 .. 64)
-            inps2[x] = x + x*1i;
-
-        fft2.fft!F();
-        auto libResult2 = fft2.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult2[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult2[i].im));
-        }
-
-        auto fft3 = makePhobosFFTObject!complex_t(64);
-        complex_t!F[] inps3 = fft3.inputs!F;
-        foreach(x; 0 .. 64)
-            inps3[x] = x + x*1i;
-
-        fft3.fft!F();
-        auto libResult3 = fft2.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult3[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult3[i].im));
-        }
-    }
 }
 
 unittest
@@ -639,98 +772,47 @@ unittest
         assert(buf[x] == x + x*1i);
     }
 
-    foreach(F; AliasSeq!(float, double, real))
-    {
-        auto fft = makeFFTWObject!Complex(64);
-        Complex!F[] inps = fft.inputs!F;
-        foreach(i; 0 .. 64)
-            inps[i] = Complex!F(i, i);
+    foreach(makeObjFunc; AliasSeq!(makePhobosFFTObject, makeFFTWObject))
+        foreach(F; AliasSeq!(float, double, real))
+        {
+            auto fft = makeObjFunc!Complex(64);
+            Complex!F[] inps = fft.inputs!F;
+            foreach(i; 0 .. 64)
+                inps[i] = Complex!F(i, i);
 
-        auto phobosResult = std.numeric.fft(inps);
+            auto phobosResult = std.numeric.inverseFft(inps);
 
-        fft.fft!F();
-        auto libResult = fft.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult[i].im));
+            fft.ifft!F();
+            auto libResult = fft.outputs!F;
+            foreach(i; 0 .. 64){
+                assert(approxEqual(phobosResult[i].re, libResult[i].re));
+                assert(approxEqual(phobosResult[i].im, libResult[i].im));
+            }
+
+            auto fft2 = makeObjFunc!std_complex_t(64);
+            std_complex_t!F[] inps2 = fft2.inputs!F;
+            foreach(x; 0 .. 64)
+                inps2[x] = x + x*1i;
+
+            fft2.ifft!F();
+            auto libResult2 = fft2.outputs!F;
+            foreach(i; 0 .. 64){
+                assert(approxEqual(phobosResult[i].re, libResult2[i].re));
+                assert(approxEqual(phobosResult[i].im, libResult2[i].im));
+            }
+
+            auto fft3 = makeObjFunc!complex_t(64);
+            complex_t!F[] inps3 = fft3.inputs!F;
+            foreach(x; 0 .. 64)
+                inps3[x] = cpx!float(x, x);
+
+            fft3.ifft!F();
+            auto libResult3 = fft3.outputs!F;
+            foreach(i; 0 .. 64){
+                assert(approxEqual(phobosResult[i].re, libResult3[i].re));
+                assert(approxEqual(phobosResult[i].im, libResult3[i].im));
+            }
         }
-
-        auto fft2 = makeFFTWObject!std_complex_t(64);
-        std_complex_t!F[] inps2 = fft2.inputs!F;
-        foreach(x; 0 .. 64)
-            inps2[x] = x + x*1i;
-
-        fft2.fft!F();
-        auto libResult2 = fft2.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult2[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult2[i].im));
-        }
-
-        auto fft3 = makeFFTWObject!complex_t(64);
-        complex_t!F[] inps3 = fft3.inputs!F;
-        foreach(x; 0 .. 64)
-            inps3[x] = cpx!float(x, x);
-
-        fft3.fft!F();
-        auto libResult3 = fft3.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult3[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult3[i].im));
-        }
-    }
-}
-
-unittest
-{
-    import std.stdio;
-
-    cfloat[] buf = new cfloat[64];
-    foreach(x; 0 .. 64){
-        buf[x] = x + x*1i;
-        assert(buf[x] == x + x*1i);
-    }
-
-    foreach(F; AliasSeq!(float, double, real))
-    {
-        auto fft = makeFFTWObject!Complex(64);
-        Complex!F[] inps = fft.inputs!F;
-        foreach(i; 0 .. 64)
-            inps[i] = Complex!F(i, i);
-
-        auto phobosResult = std.numeric.inverseFft(inps);
-
-        fft.ifft!F();
-        auto libResult = fft.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult[i].im));
-        }
-
-        auto fft2 = makeFFTWObject!std_complex_t(64);
-        std_complex_t!F[] inps2 = fft2.inputs!F;
-        foreach(x; 0 .. 64)
-            inps2[x] = x + x*1i;
-
-        fft2.ifft!F();
-        auto libResult2 = fft2.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult2[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult2[i].im));
-        }
-
-        auto fft3 = makeFFTWObject!complex_t(64);
-        complex_t!F[] inps3 = fft3.inputs!F;
-        foreach(x; 0 .. 64)
-            inps3[x] = cpx!float(x, x);
-
-        fft3.ifft!F();
-        auto libResult3 = fft3.outputs!F;
-        foreach(i; 0 .. 64){
-            assert(approxEqual(phobosResult[i].re, libResult3[i].re));
-            assert(approxEqual(phobosResult[i].im, libResult3[i].im));
-        }
-    }
 }
 
 unittest
@@ -852,12 +934,14 @@ inout(C)[] convAuto(C)(inout(FrequencyDomain!C)[] array)
 //}
 
 
+deprecated
 cfloat[] rawReadComplex(File file, cfloat[] buf)
 {
     return file.rawRead(buf);
 }
 
 
+deprecated
 Complex!float[] rawReadComplex(File file, cfloat[] buf, Complex!float[] output)
 {
     auto res = file.rawReadComplex(buf);
@@ -866,5 +950,3 @@ Complex!float[] rawReadComplex(File file, cfloat[] buf, Complex!float[] output)
 
     return output[0 .. res.length];
 }
-
-
