@@ -29,8 +29,6 @@ final class OFDM(C)
     ref OutputElementType[] modulate(in InputElementType[] inputs, return ref OutputElementType[] outputs)
     in{
         assert(inputs.length % this.symInputLength == 0);
-        assert(outputs.length % this.symOutputLength == 0);
-        //assert(inputs.length / this.symInputLength == outputs.length / this.symOutputLength);
     }
     body{
         _inpBuffer[] = complexZero!C;
@@ -78,9 +76,7 @@ final class OFDM(C)
 
     ref InputElementType[] demodulate(in OutputElementType[] inputs, return ref InputElementType[] outputs)
     in{
-        assert(outputs.length % this.symInputLength == 0);
         assert(inputs.length % this.symOutputLength == 0);
-        //assert(outputs.length / this.symInputLength == inputs.length / this.symOutputLength);
     }
     body{
         //outputs[] = complexZero!C;
@@ -121,4 +117,37 @@ final class OFDM(C)
     uint _nCp;
     uint _nTone;
     uint _nUpSampling;
+}
+
+//
+unittest
+{
+    import std.complex, std.math;
+
+    // FFTサイズ: 8
+    // サイクリックプレフィックス: 2
+    // 使用サブキャリア数: 3
+    // アップサンプリング率: 1
+    auto ofdmMod = new OFDM!(Complex!float)(8, 3, 4, 2);
+
+    Complex!float[] inps = [Complex!float(1, 1), Complex!float(-1, -1), Complex!float(1, 0), Complex!float(0, 1)];
+    Complex!float[] res;
+
+    // 変調
+    ofdmMod.modulate(inps, res);
+
+    assert(res.length == (8 + 3) * 2);
+
+    // CPのチェック
+    foreach(i; 0 .. 3 * 2)
+        assert(res[i] == res[$ - 3*2 + i]);
+
+    ofdmMod.demodulate(res.dup, res);
+
+    assert(res.length == inps.length);
+
+    foreach(i; 0 .. inps.length){
+        assert(approxEqual(inps[i].re, res[i].re));
+        assert(approxEqual(inps[i].im, res[i].im));
+    }
 }
