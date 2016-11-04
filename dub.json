@@ -9,10 +9,12 @@
     "libs": ["openblas", "fftw3"],
     "lflags-osx": ["-L/usr/local/opt/openblas/lib"],
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
+    "dflags-ldc":["-oq"],
 
     "dependencies": {
         "carbon": {"path": "../carbon"},
         "dranges": {"path": "../dranges"},
-        "dfftw3": "~>1.0.1"
+        "dfftw3": "~>1.0.1",
+        "cblas": "~>1.0.0"
     },
 }

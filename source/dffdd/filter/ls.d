@@ -6,6 +6,8 @@ import std.math;
 
 import std.stdio;
 
+import dffdd.utils.linalg;
+
 
 LSAdapter!(State, NumOfADCBits) lsAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L)
 {
@@ -74,18 +76,8 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
         static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
 
         adjustSize(sworkSpace, min(_L, numOfParams));
-        LAPACKE_cgelss(102, cast(int)_L, cast(int)numOfParams, 1, cast(cfloat*)&(_mx[0, 0]), cast(int)_L, cast(cfloat*)_yv.ptr, cast(int)max(_L, numOfParams), sworkSpace.ptr, 0.00001f, &rankN);
+        LAPACKE_cgelss(102, cast(int)_L, cast(int)numOfParams, 1, cast(float[2]*)&(_mx[0, 0]), cast(int)_L, cast(float[2]*)_yv.ptr, cast(int)max(_L, numOfParams), sworkSpace.ptr, 0.00001f, &rankN);
 
         return _yv[0 .. numOfParams];
     }
 }
-
-
-alias lapack_int = int;
-alias lapack_complex_float = cfloat;
-extern(C) lapack_int LAPACKE_cgelss( lapack_int matrix_order, lapack_int m, lapack_int n,
-                    lapack_int nrhs, lapack_complex_float* a,
-                    lapack_int lda, lapack_complex_float* b,
-                    lapack_int ldb, float* s, float rcond,
-                    lapack_int* rank );
-
