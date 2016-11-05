@@ -7,7 +7,7 @@ import dffdd.utils.linalg;
 import std.math;
 import std.range;
 import std.complex;
-//import std.experimental.ndslice;
+import std.experimental.ndslice;
 
 final class DiagonalizationOBFFactory(C, basisFuncs...)
 {
@@ -87,7 +87,10 @@ final class GramSchmidtOBFFactory(C, basisFuncs...)
     enum size_t Dim = basisFuncs.length;
     alias F = typeof(C.init.re);
 
-    this() {}
+    this()
+    {
+        _m = new C[Dim * Dim].sliced(Dim, Dim);
+    }
 
 
     void start()
@@ -184,7 +187,7 @@ final class GramSchmidtOBFFactory(C, basisFuncs...)
 
 
   private:
-    SMatrix!(C, Dim, Dim) _m;
+    Slice!(2, C*) _m;
     C[Dim][] _xs;
 }
 
