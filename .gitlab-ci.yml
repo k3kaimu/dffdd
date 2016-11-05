@@ -1,9 +1,0 @@
-image: dlanguage/dmd
-
-stages:
-  - test
-
-job1:
-  stage: test
-  script:
-    - dub test
