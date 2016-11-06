@@ -25,52 +25,6 @@ void cancelling(F, C)(ref F filter, in C[] tx, in C[] rx, C[] outputBuf)
 }
 
 
-final class PolynomialFilter(State, Adapter)
-{
-    alias C = typeof(State.init.state[0][0]);
-    size_t cnt;
-
-    this(State state, Adapter adapter)
-    {
-        _state = state;
-        _adapter = adapter;
-    }
-
-
-    void apply(bool bLearning = true, C1 : C)(in C1[] tx, in C1[] rx, C1[] outputBuf)
-    in{
-        assert(tx.length == rx.length
-            && tx.length == outputBuf.length);
-    }
-    body{
-        foreach(i; 0 .. tx.length){
-            _state.update(tx[i]);
-
-            C error = _state.error(rx[i]);
-            outputBuf[i] = error;
-
-          static if(bLearning)
-            _adapter.adapt(_state, error);
-        }
-        cnt += tx.length;
-    }
-
-
-    State state() @property { return _state; }
-
-
-  private:
-    State _state;
-    Adapter _adapter;
-}
-
-
-auto polynomialFilter(State, Adapter)(State state, Adapter adapter)
-{
-    return new PolynomialFilter!(State, Adapter)(state, adapter);
-}
-
-
 /**
 複数のフィルタが、直列に連結された状態のフィルタを構築します。
 */
@@ -198,10 +152,40 @@ if(StateORAdapter.length % 2 == 0)
 }
 
 
+/**
+複数のフィルタが並列に接続されたフィルタを構築します
+*/
 auto parallelFilter(StateORAdapter...)(StateORAdapter stateAndAdapter)
 if(StateORAdapter.length % 2 == 0)
 {
     return new ParallelFilter!StateORAdapter(stateAndAdapter);
+}
+
+///
+unittest
+{
+    import dffdd.filter.state;
+    import dffdd.filter.lms;
+
+    // FIRフィルタ
+    auto state1 = new FIRState!(Complex!float, true)(1),
+         state2 = new FIRState!(Complex!float, true)(1);
+
+    // FIRフィルタとLMSアルゴリズムでフィルタを構成
+    auto filter = parallelFilter(
+        state1, lmsAdapter(state1, 0.1),
+        state2, lmsAdapter(state2, 0.1)
+    );
+}
+
+
+/**
+単一の状態と単一の適応アルゴリズムで構成されるフィルタを構築します．
+parallelFilterの特殊版です．
+*/
+auto oneStateFilter(State, Adapter)(State state, Adapter adapter)
+{
+    return new ParallelFilter!(State, Adapter)(state, adapter);
 }
 
 
