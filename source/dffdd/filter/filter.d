@@ -4,12 +4,15 @@ import std.algorithm;
 import std.complex;
 import std.math;
 import std.typetuple;
+import std.range;
+import std.traits;
 
 import std.stdio;
 
 import carbon.stream;
 import carbon.traits;
 
+import dffdd.filter.state;
 import dffdd.filter.traits;
 
 
@@ -191,21 +194,22 @@ auto oneStateFilter(State, Adapter)(State state, Adapter adapter)
 
 /**
 C: Complex Type
-func: function(C[]) -> C[numOfFIRState][], distortion function
 numOfFIRState: the number of FIR filters
-genAdapter: function(MultiFIRState) -> Adapter
+func[0]: function(C[]) -> C[numOfFIRState][], distortion function
+func[1]: function(MultiFIRState) -> Adapter
 */
-final class GeneralParallelHammersteinFilter(C, alias func, size_t numOfFIRState, alias genAdapter)
+final class GeneralParallelHammersteinFilter(C, size_t numOfFIRState, func...)
+if(func.length == 2)
 {
-    bool isFuncType = !is(typeof(func(null).front) : C[numOfFIRState]);
+    enum bool isFunc0Type = isType!(func[0]);
 
-  static if(isFuncType)
+  static if(isFunc0Type)
   {
-    this(func f, size_t numOfTaps)
+    this(func[0] distorter, size_t numOfTaps)
     {
-        _f = f;
+        _f = distorter;
         _state = new MultiFIRState!(C, numOfFIRState, true)(numOfTaps);
-        _adapter = genAdapter(_state);
+        _adapter = func[1](_state);
     }
   }
   else
@@ -213,7 +217,7 @@ final class GeneralParallelHammersteinFilter(C, alias func, size_t numOfFIRState
     this(size_t numOfTaps)
     {
         _state = new MultiFIRState!(C, numOfFIRState, true)(numOfTaps);
-        _adapter = genAdapter(_state);
+        _adapter = func[1](_state);
     }
   }
 
@@ -224,7 +228,7 @@ final class GeneralParallelHammersteinFilter(C, alias func, size_t numOfFIRState
             && tx.length == outputBuf.length);
     }
     body{
-      static if(isFuncType)
+      static if(isFunc0Type)
         auto distorted = _f(tx);
       else
         auto distorted = func(tx);
@@ -245,8 +249,52 @@ final class GeneralParallelHammersteinFilter(C, alias func, size_t numOfFIRState
 
   private:
     MultiFIRState!(C, numOfFIRState, true) _state;
-    typeof(genAdapter(state)) _adapter;
+    typeof(func[1](_state)) _adapter;
 
-  static if(isFuncType)
-    func _f;
+  static if(isFunc0Type)
+    func[0] _f;
+}
+
+
+/// ditto
+auto generalParallelHammersteinFilter(C, size_t numOfFIRState, alias distorter, alias genAdapter)(size_t nTaps)
+{
+    return new GeneralParallelHammersteinFilter!(C, numOfFIRState, distorter, genAdapter)(nTaps);
+}
+
+
+/// ditto
+auto generalParallelHammersteinFilter(C, size_t numOfFIRState, alias genAdapter, Func)(Func distorter, size_t nTaps)
+{
+    return new GeneralParallelHammersteinFilter!(C, numOfFIRState, Func, genAdapter)(distorter, nTaps);
+}
+
+
+///
+unittest
+{
+    import dffdd.filter.state;
+    import dffdd.filter.lms;
+    import std.algorithm;
+    import std.range;
+
+    alias Cpx = Complex!float;
+    enum size_t N = 2;  // 並列FIRフィルタの数
+
+    // 入力を歪ませる関数
+    static
+    auto distortionFunc(Cpx[] tx)
+    {
+        return tx.map!(a => cast(Cpx[N])[a, a*(a.abs^^2)]);
+    }
+
+    // フィルタの生成
+    auto filter = generalParallelHammersteinFilter!(Cpx, N, distortionFunc, s => lmsAdapter(s, 0.1))(10);
+
+    // こんな感じでも生成できる
+    auto filter2 = generalParallelHammersteinFilter!(Cpx, N, s => lmsAdapter(s, 0.1))
+                    (
+                        delegate (Cpx[] tx) => tx.map!(a => cast(Cpx[N])[a, a*(a.abs^^2)]),
+                        10
+                    );
 }
