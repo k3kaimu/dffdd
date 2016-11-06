@@ -201,7 +201,7 @@ func[1]: function(MultiFIRState) -> Adapter
 final class GeneralParallelHammersteinFilter(C, size_t numOfFIRState, func...)
 if(func.length == 2)
 {
-    enum bool isFunc0Type = isType!(func[0]);
+    enum bool isFunc0Type = is(func[0]);    // isType!(func[0]) と等価
 
   static if(isFunc0Type)
   {
@@ -231,7 +231,7 @@ if(func.length == 2)
       static if(isFunc0Type)
         auto distorted = _f(tx);
       else
-        auto distorted = func(tx);
+        auto distorted = func[0](tx);
 
         foreach(i; 0 .. tx.length)
         {

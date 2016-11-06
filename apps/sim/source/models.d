@@ -506,6 +506,41 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size
   }
 
     return oneStateFilter(state, adapter);
+
+
+    /+  GeneralParallelHammersteinFilterを使う場合はこんな感じになる(コメントアウト最後まで)
+    Complex!float[BFs.length][] distortionFunc(in Complex!float[] tx)
+    {
+        Complex!float[BFs.length][] dst;
+
+        foreach(e; tx){
+            Complex!float[BFs.length] ds;
+
+            foreach(i, BF; BFs){
+              static if(isOrthogonalized)
+                ds[i] = OBFEval!BFs(e, coefs[i]);
+              else
+                ds[i] = BF(x);
+            }
+
+            dst ~= ds;
+        }
+
+        return dst;
+    }
+
+  static if(optimizer == "LMS")
+    auto makeAdapter(State)(State state){ return lmsAdapter(state, 0.02); }
+  else static if(optimizer == "RLS")
+    auto makeAdapter(State)(State state){ return makeRLSAdapter(state, 1 - 1E-4, 1E-7); }
+  else static if(optimizer == "LS")
+  {
+    immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    auto makeAdapter(State)(State state){ return lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod); }
+  }
+
+    return generalParallelHammersteinFilter!(Complex!float, BFs.length, distortionFunc, makeAdapter)(model.firFilter.taps);
+    +/
 }
 
 
