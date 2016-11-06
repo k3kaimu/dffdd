@@ -505,7 +505,7 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size
     auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
   }
 
-    return polynomialFilter(state, adapter);
+    return oneStateFilter(state, adapter);
 }
 
 
