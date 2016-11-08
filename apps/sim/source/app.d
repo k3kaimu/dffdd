@@ -172,7 +172,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         if(model.useSTXPN)  selfInterference = selfInterference.connectToTXIQPhaseNoise(model).psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        selfInterference = selfInterference.drop(model.ofdm.numOfSamplesOf1Symbol/2).connectToMultiPathChannel(model).connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
+        selfInterference = selfInterference/*.drop(model.ofdm.numOfSamplesOf1Symbol/2)*/.connectToMultiPathChannel(model).connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
                                            .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
 
         received = desired.connectToSwitch(switchDS)
@@ -186,7 +186,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         if(model.useSRXQZ) received = received.connectToQuantizer(model);
     }
 
-    auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model).drop(model.ofdm.numOfSamplesOf1Symbol/2);
+    auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model)/*.drop(model.ofdm.numOfSamplesOf1Symbol/2)*/;
 
     // モデルの安定化
     *switchDS = false;
@@ -208,6 +208,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
   static if(filterStructure.endsWith("PHDCM"))
     auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
+  else static if(filterStructure.endsWith("ARPH"))
+    auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("PH"))
     auto filter = makeParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
@@ -227,8 +229,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
 
     {
-        received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
-        txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
+        //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
+        //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
 
       static if(filterStructure.endsWith("FHF"))
       {
@@ -324,8 +326,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
         }
     }
 
-    received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
-    txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
+    //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
+    //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
 
 
     if(model.outputBER)

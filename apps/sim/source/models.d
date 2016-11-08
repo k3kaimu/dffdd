@@ -766,3 +766,30 @@ auto makeFrequencyHammersteinFilter(string optimizer)(Model model)
         );
 }
 
+
+auto makeAliasRemovableParallelHammersteinFilter(bool isOrthogonalized, string optimizer = "LS", Mod)(Mod mod, Model model)
+{
+    static assert(!isOrthogonalized, "Orthogonalization of ARPH have not implemented yet.");
+
+    immutable numOfFFT = model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling;
+    immutable numOfCP = model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling;
+
+    auto distortionFunc(in Complex!float[] tx)
+    {
+        return generateOFDMAliasSignal!(1, BasisFunctions)(tx, numOfFFT, numOfCP);
+    }
+
+    enum size_t numOfFIRFilters = typeof(distortionFunc(null)[0]).init.length;
+
+  static if(optimizer == "LMS")
+    auto makeAdapter(State)(State state){ return lmsAdapter(state, 0.02); }
+  else static if(optimizer == "RLS")
+    auto makeAdapter(State)(State state){ return makeRLSAdapter(state, 1 - 1E-4, 1E-7); }
+  else static if(optimizer == "LS")
+  {
+    immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    auto makeAdapter(State)(State state){ return lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod); }
+  }
+
+    return generalParallelHammersteinFilter!(Complex!float, numOfFIRFilters, distortionFunc, makeAdapter)(model.firFilter.taps);
+}
