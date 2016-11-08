@@ -869,6 +869,13 @@ final class FFTObjectBank(alias makeFFTObj)
     }
 
 
+    /**
+    グローバルなインスタンスを返します
+    */
+    static
+    typeof(this) instance() @property { return _instance; }
+
+
   private:
     void free(FFTObj obj)
     {
@@ -941,6 +948,13 @@ final class FFTObjectBank(alias makeFFTObj)
     }
 
     Entry[size_t] _bank;
+
+    static FFTObjectBank _instance;
+
+    static this()
+    {
+        _instance = new FFTObjectBank();
+    }
 }
 
 ///
@@ -951,7 +965,7 @@ unittest
     foreach(gen; AliasSeq!(makePhobosFFTObject, makeFFTWObject))
     {
         // バンクの作成
-        auto bank = new FFTObjectBank!(gen!Complex);
+        auto bank = FFTObjectBank!(gen!Complex).instance;
 
         {
             // バンクからサイズ4のFFTオブジェクトを取得
@@ -987,6 +1001,22 @@ unittest
         // 最初に生成したものと同じ
         assert(obj._obj is o);
     }
+}
+
+
+/**
+
+*/
+auto globalBankOf(alias makeFFTObj)() @property
+{
+    return FFTObjectBank!makeFFTObj.instance;
+}
+
+
+///
+unittest
+{
+    assert(globalBankOf!(makePhobosFFTObject!Complex) is FFTObjectBank!(makePhobosFFTObject!Complex).instance);
 }
 
 
