@@ -1,7 +1,6 @@
 module dffdd.mod.ofdm;
 
 import carbon.math;
-import std.stdio;
 
 import dffdd.utils.fft;
 
@@ -150,4 +149,216 @@ unittest
         assert(approxEqual(inps[i].re, res[i].re));
         assert(approxEqual(inps[i].im, res[i].im));
     }
+}
+
+
+/**
+OFDM信号をオーバーサンプリングすることで折り返し雑音を再現します．
+
+Q: オーバーサンプリング率
+BasisFuncs: 基底関数のリスト
+tx: 送信レプリカ信号, N個のシンボルを一度に変換したい場合，tx.length == N * (numOfFFT + numOfCp)
+numOfFFT: OFDM信号の実効FFTサイズ
+numOfCp : OFDM信号の実効CPサイズ
+*/
+template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
+{
+    import std.algorithm;
+    import std.math;
+
+    import carbon.complex;
+    import dffdd.utils.fft;
+
+    enum size_t QX = Q % 2 == 0 ? Q+1 : Q;
+
+    C[BasisFuncs.length * QX][] generateOFDMAliasSignal(C)(in C[] tx, size_t numOfFFT, size_t numOfCp)
+    if(isComplex!C)
+    in{
+        assert(tx.length % (numOfFFT + numOfCp) == 0);
+    }
+    body{
+        alias Cpx = complexTypeTemplate!C;
+        alias F = typeof(C.init.re);
+
+        auto fftBank = globalBankOf!(makeFFTWObject!Cpx);
+        auto fftObjDn = fftBank[numOfFFT];
+        auto fftObjUp = fftBank[numOfFFT * Q];
+        auto dnIn = fftObjDn.inputs!F[];
+        auto dnOut = fftObjDn.outputs!F[];
+        auto upIn = fftObjUp.inputs!F[];
+        auto upOut = fftObjUp.outputs!F[];
+        auto res = new Cpx!F[BasisFuncs.length * QX][](tx.length);
+
+        foreach(r; 0 .. tx.length / (numOfFFT + numOfCp)) {
+            auto sym = tx[r * (numOfFFT + numOfCp) .. $][numOfCp .. numOfCp + numOfFFT];
+
+            dnIn[] = sym[];
+            fftObjDn.fft!F();
+            upIn[] = cpx!(Cpx, F)(0, 0);
+            upIn[0 .. numOfFFT / 2] = dnOut[0 .. numOfFFT/2];
+            upIn[$ - numOfFFT / 2 .. $] = dnOut[$ - numOfFFT / 2 .. $];
+            fftObjUp.ifft!F();
+
+            auto upSampled = fftObjUp.outputs!F.dup;
+
+            foreach(i, BF; BasisFuncs) {
+                foreach(j, e; upSampled)
+                    upIn[j] = BF(e);
+
+                // fft + swap
+                fftObjUp.fft!F();
+                swapHalf(fftObjUp.outputs!float);
+
+                foreach(long j; 0 .. QX) {
+                    immutable long bandIdx = (j % 2 == 0) ? j/2 : -(j+1)/2;
+
+                    if((QX == Q+1 && j < Q-1) || QX == Q)
+                        dnIn[] = upOut[$/2 + numOfFFT * bandIdx - numOfFFT/2 .. $/2 + numOfFFT * bandIdx + numOfFFT/2];
+                    else if(j == Q-1){
+                        dnIn[] = cpx!(Cpx, F)(0, 0);
+                        dnIn[$/2 .. $] = upOut[0 .. numOfFFT/2];
+                    }else{  // if j == Q
+                        dnIn[] = cpx!(Cpx, F)(0, 0);
+                        dnIn[0 .. $/2] = upOut[$ - numOfFFT/2 .. $];
+                    }
+
+                    // swap + ifft
+                    swapHalf(dnIn);
+                    fftObjDn.ifft!F();
+
+                    auto dst = res[r * (numOfFFT + numOfCp) .. (r+1) * (numOfFFT + numOfCp)];
+
+                    foreach(k; 0 .. numOfFFT)
+                        dst[k + numOfCp][i*Q + j] = dnOut[k];
+
+                    foreach(k; 0 .. numOfCp)
+                        dst[k][i * Q + j] = dnOut[$ - numOfCp + k];
+                }
+            }
+        }
+
+        return res;
+    }
+}
+
+
+unittest    // OS == 4
+{
+    import std.algorithm;
+    import std.complex;
+    import std.math;
+    import std.range;
+    import std.stdio;
+    import dffdd.mod.ofdm;
+    import dffdd.mod.primitives;
+    import dffdd.utils.fft;
+
+
+    enum int X = -100;   // そのindex, もしくはfreqに値が無いことを示す
+
+    enum size_t numOfFFT = 8;
+
+    /*
+    |---|---|---|---|---|---|---|---|
+    0   4   8   12  16  20  24  28 31 : index
+
+    |---|---|---|---|---|---|---|---|
+   16  20  24  28 31/0  4   8   12 15 : index
+   -16 -12 -8  -4 -1/0  4   8   12 15 : freq
+
+                  B   A 
+      A   B   A   B   A   B   A   B 
+     -2  -1  -1   0   0   1   1   2
+      3     1       0        2    4
+    
+    */
+    // 折り返しにより，indexがどこに移るか
+    int[numOfFFT][5] spIdxMap4 =
+        [/*         A                      B       */
+            [ 0,  1,  2,  3,        28, 29, 30, 31,],
+            [24, 25, 26, 27,        20, 21, 22, 23,],
+            [ 8,  9, 10, 11,         4,  5,  6,  7,],
+            [16, 17, 18, 19,         X,  X,  X,  X,],
+            [ X,  X,  X,  X,        12, 13, 14, 15,],
+        ];
+
+    /*
+    |---|---|---|---|---|---|
+    0   4   8   12  16  20  24 : index
+
+    |---|---|---|---|---|---|
+   12  16  20 23/0  4   8  11 : index
+   -12 -8  -4 -1/0  4   8  11 : freq
+
+              B   A 
+      B   A   B   A   B   A 
+     -1  -1   0   0   1   1
+        1       0        2
+    
+    */
+    // 折り返しにより，indexがどこに移るか
+    int[numOfFFT][3] spIdxMap3 =
+        [/*         A                      B       */
+            [ 0,  1,  2,  3,        20, 21, 22, 23,],
+            [16, 17, 18, 19,        12, 13, 14, 15,],
+            [ 8,  9, 10, 11,         4,  5,  6,  7,],
+        ];
+
+    static
+    void tester(size_t numOfFFT, size_t numOfOS, size_t QX)(int[numOfFFT][QX] spIdxMap)
+    {
+        // 折り返しにより，freqがどこに移るか
+        int[numOfFFT][numOfOS+1] spFrqMap;
+        foreach(i; 0 .. QX) foreach(j; 0 .. numOfFFT)
+            spFrqMap[i][j] = spIdxMap[i][j] >= (numOfFFT*numOfOS)/2 ? (spIdxMap[i][j] - cast(int)(numOfFFT*numOfOS)) : spIdxMap[i][j];
+
+
+        auto fftObj = globalBankOf!(makeFFTWObject!(Complex))[numOfFFT];
+        auto fftObjUp = globalBankOf!(makeFFTWObject!(Complex))[numOfFFT * numOfOS];
+
+        auto inps = fftObj.inputs!float();
+
+        foreach(A; [Complex!float(1, 0), Complex!float(SQRT1_2, SQRT1_2), Complex!float(0, 1), Complex!float(-SQRT1_2, SQRT1_2), Complex!float(-1, 0)])
+            foreach(int idx; -cast(int)numOfFFT/2 .. cast(int)numOfFFT/2)
+            {
+                inps[] = Complex!float(0, 0);
+                inps[idx < 0 ? idx + numOfFFT : idx] = A;
+
+                fftObj.ifft!float();
+                auto inpTime = fftObj.outputs!float.dup;
+
+                // 3乗のシミュレーション結果
+                fftObjUp.inputs!float[] = Complex!float(0, 0);
+                fftObjUp.inputs!float[0 .. numOfFFT/2] = inps[0 .. numOfFFT/2];
+                fftObjUp.inputs!float[$ - numOfFFT/2 .. $] = inps[numOfFFT/2 .. $];
+                fftObjUp.ifft!float();
+                fftObj.fftFrom!float(fftObjUp.outputs!float.map!(x => x*x*x).stride(numOfOS));
+                auto simsig = fftObj.outputs!float.dup.map!(a => a * (numOfFFT*numOfOS)^^2 * numOfOS);
+
+                // 3乗で試してみる
+                auto alsigs = generateOFDMAliasSignal!(numOfOS, x => x*x*x)(inpTime, numOfFFT, 0);
+                foreach(i; 0 .. QX){
+                    fftObj.fftFrom!float(alsigs.map!(a => a[i]));
+
+                    auto ops = fftObj.outputs!float.map!(a => a * (numOfFFT*numOfOS)^^2);
+                    foreach(j; 0 .. numOfFFT)
+                        if(spFrqMap[i][j] == idx*3){
+                            auto B = (A^^3);
+                            assert(approxEqual(ops[j].re, B.re));
+                            assert(approxEqual(ops[j].im, B.im));
+
+                            // 実際にシミュレーション結果と合致しているか確認
+                            foreach(k; 0 .. numOfFFT){
+                                assert(approxEqual(ops[k].re, simsig[k].re));
+                                assert(approxEqual(ops[k].im, simsig[k].im));
+                            }
+                        }
+                        else
+                            assert(approxEqual(ops[j].abs(), 0));
+                }
+            }
+    }
+
+    tester!(numOfFFT, 4)(spIdxMap4);
+    tester!(numOfFFT, 3)(spIdxMap3);
 }
