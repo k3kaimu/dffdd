@@ -154,14 +154,18 @@ unittest
 
 /**
 OFDM信号をオーバーサンプリングすることで折り返し雑音を再現します．
+結果は周波数領域です．
 
 Q: オーバーサンプリング率
 BasisFuncs: 基底関数のリスト
 tx: 送信レプリカ信号, N個のシンボルを一度に変換したい場合，tx.length == N * (numOfFFT + numOfCp)
 numOfFFT: OFDM信号の実効FFTサイズ
 numOfCp : OFDM信号の実効CPサイズ
+
+Return: is(typeof(result[t][p][f]) == typeof(tx[0]))であり，
+        result[t][p][f]は，tシンボル目のpバンド目の周波数f成分となる
 */
-template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
+template generateOFDMAliasSignalAtFrequency(size_t Q, BasisFuncs...)
 {
     import std.algorithm;
     import std.math;
@@ -171,7 +175,7 @@ template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
 
     enum size_t QX = Q % 2 == 0 ? Q+1 : Q;
 
-    C[BasisFuncs.length * QX][] generateOFDMAliasSignal(C)(in C[] tx, size_t numOfFFT, size_t numOfCp)
+    C[][BasisFuncs.length * QX][] generateOFDMAliasSignalAtFrequency(C)(in C[] tx, size_t numOfFFT, size_t numOfCp)
     if(isComplex!C)
     in{
         assert(tx.length % (numOfFFT + numOfCp) == 0);
@@ -187,7 +191,7 @@ template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
         auto dnOut = fftObjDn.outputs!F[];
         auto upIn = fftObjUp.inputs!F[];
         auto upOut = fftObjUp.outputs!F[];
-        auto res = new Cpx!F[BasisFuncs.length * QX][](tx.length);
+        auto res = new Cpx!F[][BasisFuncs.length * QX][](tx.length / (numOfFFT + numOfCp));
 
         foreach(r; 0 .. tx.length / (numOfFFT + numOfCp)) {
             auto sym = tx[r * (numOfFFT + numOfCp) .. $][numOfCp .. numOfCp + numOfFFT];
@@ -212,27 +216,21 @@ template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
                 foreach(long j; 0 .. QX) {
                     immutable long bandIdx = (j % 2 == 0) ? j/2 : -(j+1)/2;
 
+                    auto dst = new Cpx!F[numOfFFT];
+
                     if((QX == Q+1 && j < Q-1) || QX == Q)
-                        dnIn[] = upOut[$/2 + numOfFFT * bandIdx - numOfFFT/2 .. $/2 + numOfFFT * bandIdx + numOfFFT/2];
+                        dst[] = upOut[$/2 + numOfFFT * bandIdx - numOfFFT/2 .. $/2 + numOfFFT * bandIdx + numOfFFT/2];
                     else if(j == Q-1){
-                        dnIn[] = cpx!(Cpx, F)(0, 0);
-                        dnIn[$/2 .. $] = upOut[0 .. numOfFFT/2];
+                        dst[] = cpx!(Cpx, F)(0, 0);
+                        dst[$/2 .. $] = upOut[0 .. numOfFFT/2];
                     }else{  // if j == Q
-                        dnIn[] = cpx!(Cpx, F)(0, 0);
-                        dnIn[0 .. $/2] = upOut[$ - numOfFFT/2 .. $];
+                        dst[] = cpx!(Cpx, F)(0, 0);
+                        dst[0 .. $/2] = upOut[$ - numOfFFT/2 .. $];
                     }
 
                     // swap + ifft
-                    swapHalf(dnIn);
-                    fftObjDn.ifft!F();
-
-                    auto dst = res[r * (numOfFFT + numOfCp) .. (r+1) * (numOfFFT + numOfCp)];
-
-                    foreach(k; 0 .. numOfFFT)
-                        dst[k + numOfCp][i*Q + j] = dnOut[k];
-
-                    foreach(k; 0 .. numOfCp)
-                        dst[k][i * Q + j] = dnOut[$ - numOfCp + k];
+                    swapHalf(dst);
+                    res[r][i*Q + j] = dst;
                 }
             }
         }
@@ -242,7 +240,65 @@ template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
 }
 
 
-unittest    // OS == 4
+/**
+OFDM信号をオーバーサンプリングすることで折り返し雑音を再現します．
+結果は時間領域です．
+
+Q: オーバーサンプリング率
+BasisFuncs: 基底関数のリスト
+tx: 送信レプリカ信号, N個のシンボルを一度に変換したい場合，tx.length == N * (numOfFFT + numOfCp)
+numOfFFT: OFDM信号の実効FFTサイズ
+numOfCp : OFDM信号の実効CPサイズ
+
+Return: is(typeof(result[p][i]) == typeof(tx[0]))であり，
+        result[p][i]は，pバンド目の信号のi番目の時間サンプルである
+*/
+template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
+{
+    import std.algorithm;
+    import std.math;
+
+    import carbon.complex;
+    import dffdd.utils.fft;
+
+    enum size_t QX = Q % 2 == 0 ? Q+1 : Q;
+
+    C[BasisFuncs.length * QX][] generateOFDMAliasSignal(C)(in C[] tx, size_t numOfFFT, size_t numOfCp)
+    if(isComplex!C)
+    in{
+        assert(tx.length % (numOfFFT + numOfCp) == 0);
+    }
+    body{
+        alias Cpx = complexTypeTemplate!C;
+        alias F = typeof(C.init.re);
+
+        auto fftObj = globalBankOf!(makeFFTWObject!Cpx)[numOfFFT];
+
+        auto freq = generateOFDMAliasSignalAtFrequency!(Q, BasisFuncs)(tx, numOfFFT, numOfCp);
+        auto res = new C[BasisFuncs.length * QX][](tx.length);
+
+        foreach(r; 0 .. tx.length / (numOfFFT + numOfCp))
+        {
+            auto dst = res[r * (numOfFFT + numOfCp) .. (r+1) * (numOfFFT + numOfCp)];
+
+            foreach(p; 0 .. BasisFuncs.length * QX){
+                fftObj.ifftFrom!F(freq[r][p]);
+                auto ops = fftObj.outputs!F;
+
+                foreach(i; 0 .. numOfFFT)
+                    dst[i + numOfCp][p] = ops[i];
+
+                foreach(i; 0 .. numOfCp)
+                    dst[i] = ops[$ - numOfCp + i];
+            }
+        }
+
+        return res;
+    }
+}
+
+
+unittest
 {
     import std.algorithm;
     import std.complex;
@@ -336,25 +392,35 @@ unittest    // OS == 4
                 auto simsig = fftObj.outputs!float.dup.map!(a => a * (numOfFFT*numOfOS)^^2 * numOfOS);
 
                 // 3乗で試してみる
-                auto alsigs = generateOFDMAliasSignal!(numOfOS, x => x*x*x)(inpTime, numOfFFT, 0);
-                foreach(i; 0 .. QX){
-                    fftObj.fftFrom!float(alsigs.map!(a => a[i]));
+                auto aliasFreq = generateOFDMAliasSignalAtFrequency!(numOfOS, x => x*x*x)(inpTime, numOfFFT, 0);
+                auto aliasTime = generateOFDMAliasSignal!(numOfOS, x => x*x*x)(inpTime, numOfFFT, 0);
 
-                    auto ops = fftObj.outputs!float.map!(a => a * (numOfFFT*numOfOS)^^2);
+                foreach(i; 0 .. QX){
+                    fftObj.fftFrom!float(aliasTime.map!(a => a[i]));
+
+                    auto ops1 = aliasFreq[0][i].map!(a => a * (numOfFFT*numOfOS)^^2);
+                    auto ops2 = fftObj.outputs!float.dup.map!(a => a * (numOfFFT*numOfOS)^^2);
                     foreach(j; 0 .. numOfFFT)
                         if(spFrqMap[i][j] == idx*3){
                             auto B = (A^^3);
-                            assert(approxEqual(ops[j].re, B.re));
-                            assert(approxEqual(ops[j].im, B.im));
+                            assert(approxEqual(ops1[j].re, B.re));
+                            assert(approxEqual(ops1[j].im, B.im));
+                            assert(approxEqual(ops2[j].re, B.re));
+                            assert(approxEqual(ops2[j].im, B.im));
+
 
                             // 実際にシミュレーション結果と合致しているか確認
                             foreach(k; 0 .. numOfFFT){
-                                assert(approxEqual(ops[k].re, simsig[k].re));
-                                assert(approxEqual(ops[k].im, simsig[k].im));
+                                assert(approxEqual(ops1[k].re, simsig[k].re));
+                                assert(approxEqual(ops1[k].im, simsig[k].im));
+                                assert(approxEqual(ops2[k].re, simsig[k].re));
+                                assert(approxEqual(ops2[k].im, simsig[k].im));
                             }
                         }
-                        else
-                            assert(approxEqual(ops[j].abs(), 0));
+                        else{
+                            assert(approxEqual(ops1[j].abs(), 0));
+                            assert(approxEqual(ops2[j].abs(), 0));
+                        }
                 }
             }
     }
