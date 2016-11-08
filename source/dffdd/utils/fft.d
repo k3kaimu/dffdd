@@ -974,6 +974,8 @@ unittest
 
         // サイズ2のFFTオブジェクトの生成
         auto obj = bank[2];
+
+        // 参照カウントで管理されている実際のFFTオブジェクト
         auto o = obj._obj;
 
         // objの破棄
