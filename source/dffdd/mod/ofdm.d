@@ -230,7 +230,7 @@ template generateOFDMAliasSignalAtFrequency(size_t Q, BasisFuncs...)
 
                     // swap + ifft
                     swapHalf(dst);
-                    res[r][i*Q + j] = dst;
+                    res[r][i*QX + j] = dst;
                 }
             }
         }
@@ -275,13 +275,13 @@ template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
         auto fftObj = globalBankOf!(makeFFTWObject!Cpx)[numOfFFT];
 
         auto freq = generateOFDMAliasSignalAtFrequency!(Q, BasisFuncs)(tx, numOfFFT, numOfCp);
-        auto res = new C[BasisFuncs.length * QX][](tx.length);
+        auto res = new C[typeof(freq[0]).init.length][](tx.length);
 
         foreach(r; 0 .. tx.length / (numOfFFT + numOfCp))
         {
             auto dst = res[r * (numOfFFT + numOfCp) .. (r+1) * (numOfFFT + numOfCp)];
 
-            foreach(p; 0 .. BasisFuncs.length * QX){
+            foreach(p; 0 .. freq[0].length){
                 fftObj.ifftFrom!F(freq[r][p]);
                 auto ops = fftObj.outputs!F;
 
@@ -289,7 +289,7 @@ template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
                     dst[i + numOfCp][p] = ops[i];
 
                 foreach(i; 0 .. numOfCp)
-                    dst[i] = ops[$ - numOfCp + i];
+                    dst[i][p] = ops[$ - numOfCp + i];
             }
         }
 
