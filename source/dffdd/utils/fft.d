@@ -857,6 +857,12 @@ final class FFTObjectBank(alias makeFFTObj)
     }
 
 
+    void free(ref RefCounted!RefCountedPayload obj)
+    {
+        obj = typeof(obj).init;
+    }
+
+
     auto opIndex(size_t n)
     {
         return get(n);
@@ -971,7 +977,7 @@ unittest
         auto o = obj._obj;
 
         // objの破棄
-        obj = typeof(obj).init;
+        bank.free(obj);
 
         // 再度取得，キャッシュにより最初に生成したサイズ2のFFTオブジェクトが返される
         obj = bank[2];
