@@ -126,7 +126,7 @@ unittest
     import std.complex, std.algorithm, std.array, std.range;
     import std.stdio, std.file;
 
-    Complex!float[] data = [1+1i, 0, 1, 1i, 2+1i].map!(a => Complex!float(a.re, a.im)).array;
+    Complex!float[] data = [1+1i, 0, 1, 1i, 2+1i].map!(a => Complex!float(a.re, a.im)).repeat(1024*1024).joiner.array;
 
     {
         File file = File("deleteme.dat", "w");
