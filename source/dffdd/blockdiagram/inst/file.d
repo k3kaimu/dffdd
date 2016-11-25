@@ -78,6 +78,8 @@ auto formattedFileSink(string filename, string format)
 }
 
 
+/**
+*/
 auto binaryFileReader(C)(string filename, size_t offset = 0)
 {
     static struct Result
@@ -117,3 +119,28 @@ auto binaryFileReader(C)(string filename, size_t offset = 0)
     res.rebuffering();
     return res;
 }
+
+///
+unittest
+{
+    import std.complex, std.algorithm, std.array, std.range;
+    import std.stdio, std.file;
+
+    Complex!float[] data = [1+1i, 0, 1, 1i, 2+1i].map!(a => Complex!float(a.re, a.im)).array;
+
+    {
+        File file = File("deleteme.dat", "w");
+        file.rawWrite(data);
+    }
+    scope(exit) std.file.remove("deleteme.dat");
+
+    // deleteme.datをComplex!floatのバイナリ列として読み込む
+    auto cs0 = binaryFileReader!(Complex!float)("deleteme.dat");
+    assert(equal(cs0, data));
+
+    // deleteme.datをComplex!floatのバイナリ列として読み込む．
+    // ただし，先頭2要素((Complex!float).sizeof * 2バイト)は捨てる
+    auto cs2 = binaryFileReader!(Complex!float)("deleteme.dat", 2);
+    assert(equal(cs2, data.drop(2)));
+}
+
