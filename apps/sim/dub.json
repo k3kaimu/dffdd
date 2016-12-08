@@ -12,6 +12,7 @@
     "license": "NYSL",
     "buildOptions": ["ignoreDeprecations"],
     "targetType": "executable",
+    "__versions": ["DFFDD_OFDM_SIDELOBE_SUPPRESS"],
     "configurations": [
         {
             "name": "default"

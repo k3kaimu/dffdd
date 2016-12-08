@@ -46,7 +46,7 @@ real[] calculatePowerSpectralDensity(R)(ref R r, real samplingFreq, size_t res, 
 }
 
 
-real calculateSIC(R)(ref R r, real samplingFreq, size_t res, size_t nFFT, size_t nSubCarrier, size_t nOversampling, size_t avg = 32)
+real calculateSIC(R)(ref R r, size_t res, size_t avg = 32)
 {
     real sum1 = 0,
          sum2 = 0;

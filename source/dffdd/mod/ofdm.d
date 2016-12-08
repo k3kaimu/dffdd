@@ -62,10 +62,18 @@ final class OFDM(C)
             auto dst = outputs[i*symOutputLength .. (i+1)*symOutputLength];
             .ifft!RealType(_fftw, _inpBuffer, dst[_nUpSampling * _nCp .. _nUpSampling * (_nCp + _nFFT)]);
             dst[0 .. _nUpSampling * _nCp] = dst[$ - _nUpSampling * _nCp .. $];
-            //dst[0] /= 4;
+
+          version(DFFDD_OFDM_SIDELOBE_SUPPRESS)
+          {
+            foreach(j, ref e; dst[$-_nUpSampling .. $])
+                e /= (j+2);
+            foreach(j, ref e; dst[0 .. _nUpSampling])
+                e /= (_nUpSampling+1 - j);
+          }
+            //dst[0] /= 2;
             //dst[1] /= 2;
             //dst[$-2] /= 2;
-            //dst[$-1] /= 4;
+            //dst[$-1] /= 2;
             assert(dst.ptr == outputs.ptr + i*symOutputLength);
         }
 
@@ -290,6 +298,14 @@ template generateOFDMAliasSignal(size_t Q, BasisFuncs...)
 
                 foreach(i; 0 .. numOfCp)
                     dst[i][p] = ops[$ - numOfCp + i];
+
+              version(DFFDD_OFDM_SIDELOBE_SUPPRESS)
+              {
+                foreach(j, ref e; dst[$-1 .. $])
+                    e[p] /= (j+2);
+                foreach(j, ref e; dst[0 .. 1])
+                    e[p] /= (1+1 - j);
+              }
             }
         }
 

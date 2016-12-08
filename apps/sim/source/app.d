@@ -62,17 +62,17 @@ import snippet;
 real qfunc(real x) { return 0.5 * erfc(x / SQRT2); }
 
 
-auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model)
+auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model, Flag!"withRFUpSampling" withRFUpSampling = No.withRFUpSampling)
 {
     alias E = ElementType!R;
-    return r.tee(makeSpectrumAnalyzer!E(filename, resultDir, dropSize, model)).toWrappedRange;
+    return r.tee(makeSpectrumAnalyzer!E(filename, resultDir, dropSize, model, withRFUpSampling)).toWrappedRange;
 }
 
 
-auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize, Model model)
+auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize, Model model, Flag!"withRFUpSampling" withRFUpSampling = No.withRFUpSampling)
 {
     return makeInstrument!C(delegate void(FiberRange!C r){
-        r.drop(dropSize).writePSD(File(buildPath(resultDir, filename), "w"), model.samplingFreq, 1024);
+        r.drop(dropSize).writePSD(File(buildPath(resultDir, filename), "w"), model.samplingFreq * (withRFUpSampling ? model.scaleOfRFUpSampling : 1), 1024 * (withRFUpSampling ? model.scaleOfRFUpSampling : 1));
     });
 }
 
@@ -83,7 +83,7 @@ auto makeCancellationProbe(C)(string filename, string resultDir, size_t dropSize
 
     return makeInstrument!Tup(delegate void(FiberRange!Tup r){
         auto rd = r.drop(dropSize);
-        auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+        auto ratio = rd.calculateSIC(1024, model.ofdm.scaleOfUpSampling);
         auto file = File(buildPath(resultDir, filename), "w");
         file.writefln("%s", 10*log10(ratio));
     });
@@ -100,7 +100,7 @@ auto makeCancellationIterationProbe(C)(string filename, string resultDir, size_t
 
         size_t cnt;
         while(!rd.empty){
-            auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, 1);
+            auto ratio = rd.calculateSIC(1024, 1);
             //if(ratio.isNaN && rd.empty) return;
             if(ratio.isNaN) ratio = 0;
 
@@ -156,34 +156,37 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
     auto noise = thermalNoise(model);
 
+    immutable numOfModelTrainingSamples = model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol * model.scaleOfRFUpSampling;
+
     InputRange!(Complex!real) received;
     {
-        auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model), alwaysFalsePointer, model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useDTXPN)  desired = desired.connectToTXIQPhaseNoise(model).psdSaveTo("psd_desired_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useDTXPA)  desired = desired.connectToPowerAmplifier(model).psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useDTXIQ2) desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+        auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model, Yes.withRFUpSampling), alwaysFalsePointer, model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useDTXPN)  desired = desired.connectToTXIQPhaseNoise(model).psdSaveTo("psd_desired_afterTXIQPhaseNoise.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useDTXPA)  desired = desired.connectToPowerAmplifier(model).psdSaveTo("psd_desired_afterPA.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useDTXIQ2) desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ2.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
         desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
-                         .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+                         .psdSaveTo("psd_desired_afterVGA.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
 
 
-        auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSTXPN)  selfInterference = selfInterference.connectToTXIQPhaseNoise(model).psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        selfInterference = selfInterference/*.drop(model.ofdm.numOfSamplesOf1Symbol/2)*/.connectToMultiPathChannel(model).connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
-                                           .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+        auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model, Yes.withRFUpSampling), switchSwapping, model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useSTXPN)  selfInterference = selfInterference.connectToTXIQPhaseNoise(model).psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        selfInterference = selfInterference/*.drop(model.ofdm.numOfSamplesOf1Symbol * model.scaleOfRFUpSampling/2)*/.connectToMultiPathChannel(model).connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
+                                           .psdSaveTo("psd_SI_afterVGA.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
 
         received = desired.connectToSwitch(switchDS)
             .add(selfInterference.connectToSwitch(switchSI))
             /*.connectToAWGN(model)*/
-            .add(thermalNoise(model).psdSaveTo("psd_thermal_noise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model))
-            .psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+            .add(thermalNoise(model).psdSaveTo("psd_thermal_noise.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling))
+            .psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
 
-        if(model.useSRXLN) received = received.connectToLNA(model).psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSRXIQ) received = received.connectToRXIQMixer(model).psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+        if(model.useSRXLN) received = received.connectToLNA(model).psdSaveTo("psd_rcv_afterLNA.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
+        if(model.useSRXIQ) received = received.connectToRXIQMixer(model).psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, numOfModelTrainingSamples, model, Yes.withRFUpSampling);
         if(model.useSRXQZ) received = received.connectToQuantizer(model);
+        received = received.stride(model.scaleOfRFUpSampling).toWrappedRange();
     }
 
     auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model)/*.drop(model.ofdm.numOfSamplesOf1Symbol/2)*/;
@@ -201,10 +204,10 @@ void mainImpl(string filterType)(Model model, string resultDir)
          refrs = new Complex!float[model.blockSize],
          outps = new Complex!float[model.blockSize];
 
-  enum string filterStructure = filterType.split("_")[0];
-  enum string filterOptimizer = filterType.split("_")[1];
+    enum string filterStructure = filterType.split("_")[0];
+    enum string filterOptimizer = filterType.split("_")[1];
 
-  enum bool isOrthogonalized = filterStructure[0] == 'O';
+    enum bool isOrthogonalized = filterStructure[0] == 'O';
 
   static if(filterStructure.endsWith("PHDCM"))
     auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
@@ -431,13 +434,13 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF_LS", "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
+    foreach(methodName; AliasSeq!("OCH_LS"))
         foreach(learningSymbols; [60])
         {
             Model[] models;
             string[] dirs;
 
-            foreach(inr; /*iota(20, 85, 5)*/ [60]) foreach(txp; iota(10, 31, 3))
+            foreach(inr; /*iota(20, 85, 5)*/ [40]) foreach(txp; /+iota(10, 31, 3)+/[20])
             {
                 Model model;
                 model.SNR = 20;
@@ -448,9 +451,9 @@ void mainJob()
                 model.useDTXIQ = false;
                 model.useDTXPN = false;
                 model.useDTXPA = false;
-                model.useSTXIQ = true;
+                model.useSTXIQ = false;
                 model.useSTXPN = false;
-                model.useSTXPA = true;
+                model.useSTXPA = false;
                 model.useSTXIQ2 = false;
                 model.useSRXLN = true;
                 model.useSRXIQ = true;
@@ -492,16 +495,17 @@ void mainJob()
                 model.numOfFilterTrainingSymbols = 1000;
               }
 
-                models ~= model;
-
-
               static if(methodName.endsWith("LMS") || methodName.endsWith("RLS"))
                 model.numOfFilterTrainingSymbols = 100;
+
+                model.ofdm.scaleOfUpSampling = 4;
+
+                models ~= model;
 
               static if(methodName.startsWith("FHF"))
                 dirs ~= "TXP%s_snr%s_inr%s_%s%s_Nswp%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols, model.swappedSymbols);
               else
-                dirs ~= "TXP%s_snr%s_inr%s_%s%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols);
+                dirs ~= "TXP%s_snr%s_inr%s_os%s_%s%s".format(model.pa.TX_POWER, model.SNR, model.INR, model.ofdm.scaleOfUpSampling, methodName, learningSymbols);
             }
 
             foreach(i; 0 .. models.length)

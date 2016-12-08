@@ -78,7 +78,8 @@ struct Model
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
-    real samplingFreq = 20e6 * 4;
+    real samplingFreq() const @property { return ofdm.scaleOfUpSampling * 20e6; }
+    uint scaleOfRFUpSampling = 1;
     real SNR = 20;
     real INR = 60;
     bool withSIC = true;
@@ -160,6 +161,16 @@ struct Model
     //    //size_t numOfShift = 0;
     //}
     //UpDownSampler upDownSampler;
+
+
+    struct HalfBandFilter
+    {
+        immutable(real)[] taps = [
+            0, -0.000638861, 0, 0.001631196, 0, -0.003550157, 0, 0.006773869, 0, -0.011882936, 0, 
+            0.019781829, 0, -0.032205286, 0, 0.05351179, 0, -0.099725345, 0, 0.316134097, 0.5, 
+            0.316134097, 0, -0.099725345, 0, 0.05351179, 0, -0.032205286, 0, 0.019781829, 0, 
+            -0.011882936, 0, 0.006773869, 0, -0.003550157, 0, 0.001631196, 0, -0.000638861, 0];
+    }
 
 
     struct PowerSpectralDensityAnalyzer
@@ -255,12 +266,15 @@ auto desiredRandomBits(Model model) { return randomBits(193, model); }
 
 
 
-auto modOFDM(Model model)
+auto modOFDM(Model model, Flag!"withRFUpSampling" withRFUpSampling = No.withRFUpSampling)
 {
+    uint ratio = model.ofdm.scaleOfUpSampling;
+    if(withRFUpSampling) ratio *= model.scaleOfRFUpSampling;
+
     return chainedMod(
         //dffdd.mod.bpsk.BPSK.init,
         dffdd.mod.qam.QAM(16),
-        new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling),
+        new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, ratio),
     );
 }
 
@@ -319,7 +333,7 @@ auto connectToDemodulator(R, Mod)(R r, Mod modObj/*, Bits bits*/, Model)
 
 auto thermalNoise(Model model)
 {
-    return ThermalNoise(model.samplingFreq, model.thermalNoise.temperature);
+    return ThermalNoise(model.samplingFreq * model.scaleOfRFUpSampling, model.thermalNoise.temperature);
 }
 
 
@@ -387,30 +401,28 @@ auto connectToPowerAmplifier(R)(R r, Model model)
 }
 
 
-shared immutable(Complex!float)[] channelCoefsOfSI;
-
-shared static this()
+auto connectToMultiPathChannel(R)(R r, Model model)
 {
     Random rGen;
     rGen.seed(114514);
 
     BoxMuller!Random gGen = BoxMuller!Random(rGen);
+    size_t taps = model.channel.taps * model.scaleOfRFUpSampling;
 
     Complex!float[] coefs;
 
-    foreach(i; 0 .. 64){
-        auto db = -40.0L * i / 64;
+    foreach(i; 0 .. taps){
+        auto db = -40.0L * i / taps;
+
+
         coefs ~= cast(Complex!float)(gGen.front * 10.0L^^(db/20));
         gGen.popFront();
     }
 
-    channelCoefsOfSI = coefs.dup;
-}
-
-
-auto connectToMultiPathChannel(R)(R r, Model model)
-{
-    return r.connectTo!FIRFilter(channelCoefsOfSI[0 .. model.channel.taps]).toWrappedRange;
+    //return r.connectTo!FIRFilter(channelCoefsOfSI[0 .. model.channel.taps]).toWrappedRange;
+    //auto coefs = channelCoefsOfSI[0 .. model.channel.taps].map!(a => [a].chain(repeat(typeof(a)(0, 0), model.scaleOfRFUpSampling-1))).joiner().array();
+    //auto coefs = channelCoefsOfSI[0 .. model.channel.taps * model.scaleOfRFUpSampling];
+    return r.connectTo!FIRFilter(coefs).toWrappedRange;
 }
 
 
@@ -502,7 +514,7 @@ auto makeParallelHammersteinFilter(bool isOrthogonalized, string optimizer, size
   else static if(optimizer == "LS")
   {
     immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
-    auto adapter = lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
+    auto adapter = lsAdapter(state, samplesOfOnePeriod).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod);
   }
 
     return oneStateFilter(state, adapter);
@@ -776,7 +788,7 @@ auto makeAliasRemovableParallelHammersteinFilter(bool isOrthogonalized, string o
 
     auto distortionFunc(in Complex!float[] tx)
     {
-        return generateOFDMAliasSignal!(1, BasisFunctions)(tx, numOfFFT, numOfCP);
+        return generateOFDMAliasSignal!(4, BasisFunctions)(tx, numOfFFT, numOfCP);
     }
 
     enum size_t numOfFIRFilters = typeof(distortionFunc(null)[0]).init.length;
@@ -788,7 +800,7 @@ auto makeAliasRemovableParallelHammersteinFilter(bool isOrthogonalized, string o
   else static if(optimizer == "LS")
   {
     immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
-    auto makeAdapter(State)(State state){ return lsAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod); }
+    auto makeAdapter(State)(State state){ return lsAdapter(state, samplesOfOnePeriod).trainingLimit(samplesOfOnePeriod * model.learningCount).ignoreHeadSamples(samplesOfOnePeriod); }
   }
 
     return generalParallelHammersteinFilter!(Complex!float, numOfFIRFilters, distortionFunc, makeAdapter)(model.firFilter.taps);
