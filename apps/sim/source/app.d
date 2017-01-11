@@ -434,27 +434,35 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("OCH_LS"))
+    foreach(methodName; AliasSeq!("FHF_LS", "PH_LS"))
         foreach(learningSymbols; [60])
         {
             Model[] models;
             string[] dirs;
 
-            foreach(inr; /*iota(20, 85, 5)*/ [40]) foreach(txp; /+iota(10, 31, 3)+/[20])
+            foreach(inr; [50]/* iota(20, 85, 5)*/)
+            // foreach(iip3; [12, 17, 22])
+            // foreach(irr; [15, 25, 35])
+            foreach(txp; iota(10, 32, 2))
+            foreach(bUseIQ2; [false, true])
             {
                 Model model;
                 model.SNR = 20;
                 model.INR = inr;
                 model.pa.TX_POWER = txp;
+                // model.txIQMixer.IIR = irr;
+                // model.rxIQMixer.IIR = irr;
+                model.quantizer.numOfBits = 14;
+                // model.pa.IIP3 = iip3;
 
                 // 再現する非線形性の選択
                 model.useDTXIQ = false;
                 model.useDTXPN = false;
                 model.useDTXPA = false;
-                model.useSTXIQ = false;
+                model.useSTXIQ = !bUseIQ2;
                 model.useSTXPN = false;
-                model.useSTXPA = false;
-                model.useSTXIQ2 = false;
+                model.useSTXPA = true;
+                model.useSTXIQ2 = bUseIQ2;
                 model.useSRXLN = true;
                 model.useSRXIQ = true;
                 model.useSRXQZ = true;
@@ -503,9 +511,9 @@ void mainJob()
                 models ~= model;
 
               static if(methodName.startsWith("FHF"))
-                dirs ~= "TXP%s_snr%s_inr%s_%s%s_Nswp%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols, model.swappedSymbols);
+                dirs ~= "TXP%s_inr%s_UseIQ2_%s_%s%s_Nswp%s".format(txp, model.INR, bUseIQ2, methodName, learningSymbols, model.swappedSymbols);
               else
-                dirs ~= "TXP%s_snr%s_inr%s_os%s_%s%s".format(model.pa.TX_POWER, model.SNR, model.INR, model.ofdm.scaleOfUpSampling, methodName, learningSymbols);
+                dirs ~= "TXP%s_inr%s_UseIQ2_%s_os%s_%s%s".format(txp, model.INR, bUseIQ2, model.ofdm.scaleOfUpSampling, methodName, learningSymbols);
             }
 
             foreach(i; 0 .. models.length)
