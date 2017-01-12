@@ -298,7 +298,9 @@ void mainImpl(string filterType)(Model model, string resultDir)
     }
 
 
-    {
+    immutable powerAfterSIC = (){
+        real power = 0;
+
         auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model);
         auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model);
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model);
@@ -318,8 +320,10 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
             // blockIdxoが10以上になるまで，慣らし運転する
             if(blockIdxo > 10){
-                foreach(i; 0 .. model.blockSize)
+                foreach(i; 0 .. model.blockSize){
                     refrs[i] = recvs[i] - outps[i];
+                    power += outps[i].re^^2 + outps[i].im^^2;
+                }
 
                 .put(psdBeforePSD, recvs);
                 .put(psdAfterSIC, outps);
@@ -327,7 +331,9 @@ void mainImpl(string filterType)(Model model, string resultDir)
                 .put(sicValue, recvs.zip(outps));
             }
         }
-    }
+
+        return power / (1024 - 11) / model.blockSize;
+    }();
 
     //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
     //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -418,11 +424,18 @@ void mainImpl(string filterType)(Model model, string resultDir)
     *switchDS = false;
     received.popFrontN(1024);
 
+    real noisePower = 0;
     foreach(blockIdxo; 0 .. 64 * 1024)
     {
-        .put(noisePSD, cast(Complex!float)received.front);
+        auto c = received.front;
+        .put(noisePSD, cast(Complex!float)c);
+        noisePower += c.re^^2 + c.im^^2;
         received.popFront();
     }
+    noisePower /= 64 * 1024;
+
+    File(buildPath(resultDir, "remained-interference-to-noise-power-ratio.csv"), "w")
+    .writeln(10*log10((powerAfterSIC - noisePower)/(noisePower)));
 }
 
 
@@ -440,20 +453,21 @@ void mainJob()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; [50]/* iota(20, 85, 5)*/)
-            // foreach(iip3; [12, 17, 22])
+            foreach(inr; iota(20, 85, 5))
+            foreach(iip3; [17])
             // foreach(irr; [15, 25, 35])
-            foreach(txp; iota(10, 32, 2))
-            foreach(bUseIQ2; [false, true])
+            // foreach(txp; iota(10, 32, 2))
+            // foreach(bUseIQ2; [false, true])
             {
+                immutable bUseIQ2 = true;
                 Model model;
                 model.SNR = 20;
                 model.INR = inr;
-                model.pa.TX_POWER = txp;
+                // model.pa.TX_POWER = txp;
                 // model.txIQMixer.IIR = irr;
                 // model.rxIQMixer.IIR = irr;
                 model.quantizer.numOfBits = 14;
-                // model.pa.IIP3 = iip3;
+                model.pa.IIP3 = iip3;
 
                 // 再現する非線形性の選択
                 model.useDTXIQ = false;
@@ -511,9 +525,9 @@ void mainJob()
                 models ~= model;
 
               static if(methodName.startsWith("FHF"))
-                dirs ~= "TXP%s_inr%s_UseIQ2_%s_%s%s_Nswp%s".format(txp, model.INR, bUseIQ2, methodName, learningSymbols, model.swappedSymbols);
+                dirs ~= "IIP3_%s_inr%s_%s%s_Nswp%s".format(iip3, model.INR, methodName, learningSymbols, model.swappedSymbols);
               else
-                dirs ~= "TXP%s_inr%s_UseIQ2_%s_os%s_%s%s".format(txp, model.INR, bUseIQ2, model.ofdm.scaleOfUpSampling, methodName, learningSymbols);
+                dirs ~= "IIP3_%s_inr%s_os%s_%s%s".format(iip3, model.INR, model.ofdm.scaleOfUpSampling, methodName, learningSymbols);
             }
 
             foreach(i; 0 .. models.length)
