@@ -454,8 +454,8 @@ void mainJob()
             string[] dirs;
 
             foreach(inr; iota(20, 85, 5))
-            foreach(iip3; [17])
-            // foreach(irr; [15, 25, 35])
+            // foreach(iip3; [17])
+            foreach(irr; [15, 25])
             // foreach(txp; iota(10, 32, 2))
             // foreach(bUseIQ2; [false, true])
             {
@@ -464,19 +464,19 @@ void mainJob()
                 model.SNR = 20;
                 model.INR = inr;
                 // model.pa.TX_POWER = txp;
-                // model.txIQMixer.IIR = irr;
-                // model.rxIQMixer.IIR = irr;
+                model.txIQMixer.IIR = irr;
+                model.rxIQMixer.IIR = irr;
                 model.quantizer.numOfBits = 14;
-                model.pa.IIP3 = iip3;
+                // model.pa.IIP3 = iip3;
 
                 // 再現する非線形性の選択
                 model.useDTXIQ = false;
                 model.useDTXPN = false;
                 model.useDTXPA = false;
-                model.useSTXIQ = !bUseIQ2;
+                model.useSTXIQ = true;
                 model.useSTXPN = false;
                 model.useSTXPA = true;
-                model.useSTXIQ2 = bUseIQ2;
+                // model.useSTXIQ2 = bUseIQ2;
                 model.useSRXLN = true;
                 model.useSRXIQ = true;
                 model.useSRXQZ = true;
@@ -525,9 +525,9 @@ void mainJob()
                 models ~= model;
 
               static if(methodName.startsWith("FHF"))
-                dirs ~= "IIP3_%s_inr%s_%s%s_Nswp%s".format(iip3, model.INR, methodName, learningSymbols, model.swappedSymbols);
+                dirs ~= "IRR%s_inr%s_%s%s_Nswp%s".format(irr, model.INR, methodName, learningSymbols, model.swappedSymbols);
               else
-                dirs ~= "IIP3_%s_inr%s_os%s_%s%s".format(iip3, model.INR, model.ofdm.scaleOfUpSampling, methodName, learningSymbols);
+                dirs ~= "IRR%s_inr%s_os%s_%s%s".format(irr, model.INR, model.ofdm.scaleOfUpSampling, methodName, learningSymbols);
             }
 
             foreach(i; 0 .. models.length)
