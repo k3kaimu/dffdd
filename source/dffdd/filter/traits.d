@@ -2,6 +2,62 @@ module dffdd.filter.traits;
 
 import std.traits;
 
+enum bool isBlockConverter(T, A, B) = is(typeof((T converter){
+    A[] input;
+    B[] output;
+    converter(input, output);
+    size_t lenInput = converter.inputBlockLength;
+    // size_t dimOutput = converter.outputDim;
+}));
+
+
+/**
++ opCallImpl(A, ref B)
+が定義されている時，次の定義を追加する
+*/
+mixin template ConverterOpCalls(A, B)
+{
+    void opCall(A a, ref B b)
+    {
+        this.opCallImpl(a, b);
+    }
+
+
+    B opCall(A a)
+    {
+        typeof(return) b;
+        this.opCallImpl(a, b);
+        return b;
+    }
+
+
+    void opCall(A[] as, ref B[] bs)
+    {
+        bs.length = as.length;
+        foreach(i; 0 .. as.length)
+            this.opCallImpl(as[i], bs[i]);
+    }
+
+
+    B[] opCall(A)(A[] as)
+    {
+        typeof(return) bs;
+        this.opCall(as, bs);
+        return bs;
+    }
+}
+
+
+enum bool isFilter(F, A, B) = is(typeof((F filter){
+    A[] input;
+    B[] desires;
+    B[] errors;
+    size_t lenInput = filter.inputBlockLength;
+    filter.apply!(Yes.learning)(input, desires, errors);
+    filter.apply!(No.learning)(input, desires, errors);
+}));
+
+
 enum bool isState(S) = is(typeof((ref S s){
     auto ssp = &(s.state);
     static assert(isStaticArray!(typeof(*ssp)));
@@ -82,4 +138,3 @@ enum bool isAdaptiveFilter(F, C = Complex!float) = is(typeof((F f, C[] buf){
     f.apply!false(cast(const)buf, cast(const)buf, buf);
     f.apply!true(cast(const)buf, cast(const)buf, buf);
 }));
-

@@ -4,6 +4,12 @@ import std.experimental.ndslice;
 import std.complex;
 
 
+enum Order
+{
+    RowMajor = 101,
+    ColMajor = 102,
+}
+
 nothrow @trusted extern(C)
 {
     int LAPACKE_zheev(
@@ -33,6 +39,26 @@ nothrow @trusted extern(C)
             int lda, double[2]* b,
             int ldb, double* s, double rcond,
             int* rank );
+
+    int LAPACKE_cgetrf(
+            int matrix_order, int m, int n,
+            float[2]* a, int lda, int* ipiv
+        );
+
+    int LAPACKE_zgetrf(
+            int matrix_order, int m, int n,
+            double[2]* a, int lda, int* ipiv
+        );
+
+    int LAPACKE_cgetri(
+            int matrix_order, int n,
+            float[2]* a, int lda, const int* ipiv
+        );
+
+    int LAPACKE_zgetri(
+            int matrix_order, int n,
+            double[2]* a, int lda, const int* ipiv
+        );
 }
 
 
@@ -244,6 +270,66 @@ void gemv(string opA = "", E)(E alpha, Slice!(2, E*) matA, Slice!(1, E*) x, E be
     cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), matA.length!0, matA.length!1, alpha, cast(_cdouble*)matA.ptr, matA.stride!0, cast(_cdouble*)x.ptr, x.stride!0, beta, cast(_cdouble*)y.ptr, y.stride!0);
   else
     static assert(0);
+}
+
+
+/**
+逆行列
+*/
+void gemi(E)(Slice!(2, E*) matA)
+in{
+    assert(!matA.isTransposed);
+    assert(matA.length!0 == matA.length!1);
+}
+body{
+    auto ipiv = new int[matA.length!0];
+
+    immutable n = matA.length!0;
+    immutable lda = matA.stride!0;
+
+  static if(is(typeof(E.init.re) == float))
+  {
+    LAPACKE_cgetrf(Order.RowMajor, cast(uint)n, cast(uint)n, cast(float[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
+    LAPACKE_cgetri(Order.RowMajor, cast(uint)n, cast(float[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
+  }
+  else static if(is(typeof(E.init.re) == double))
+  {
+    LAPACKE_zgetrf(Order.RowMajor, cast(uint)n, cast(uint)n, cast(double[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
+    LAPACKE_zgetri(Order.RowMajor, cast(uint)n, cast(double[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
+  }
+  else static assert(0);
+}
+
+unittest
+{
+    import std.math;
+    import std.stdio;
+    auto mat = new Complex!float[4].sliced(2, 2);
+    mat[0, 0] = 1;
+    mat[0, 1] = 0;
+    mat[1, 0] = 0;
+    mat[1, 1] = 1;
+
+    gemi(mat);
+    assert(approxEqual(mat[0, 0].re, 1));
+    assert(approxEqual(mat[0, 1].re, 0));
+    assert(approxEqual(mat[1, 0].re, 0));
+    assert(approxEqual(mat[1, 1].re, 1));
+    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(approxEqual(mat[i, j].im, 0));
+
+
+    mat[0, 0] = 3;
+    mat[0, 1] = 4;
+    mat[1, 0] = 1;
+    mat[1, 1] = 2;
+    gemi(mat);
+    //writeln(mat);
+
+    assert(approxEqual(mat[0, 0].re, 1));
+    assert(approxEqual(mat[0, 1].re, -2));
+    assert(approxEqual(mat[1, 0].re, -0.5));
+    assert(approxEqual(mat[1, 1].re, 1.5));
+    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(approxEqual(mat[i, j].im, 0));
 }
 
 

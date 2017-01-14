@@ -5,11 +5,11 @@ import std.math;
 import std.range : lockstep;
 import std.experimental.ndslice;
 
+
 final class LMSAdapter(State)
 {
     import std.algorithm;
 
-    enum bool usePower = true;
     alias C = State.StateElementType;
     alias F = typeof(C.init.re);
 
@@ -77,7 +77,18 @@ final class LMSAdapter(State)
 }
 
 
-auto lmsAdapter(State)(State state, real mu)
+auto makeLMSAdapter(State)(State state, real mu)
 {
     return new LMSAdapter!State(state, mu);
+}
+
+
+unittest
+{
+    import dffdd.filter.state;
+
+    auto state = new MultiFIRState!(Complex!float)(2, 12);
+    auto lms = makeLMSAdapter(state, 0.1);
+
+    assert(lms._power.length!0 == 2);
 }

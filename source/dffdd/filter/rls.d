@@ -11,14 +11,6 @@ import std.experimental.ndslice;
 final class RLSAdapter(State)
 {
     import std.algorithm;
-
-    enum bool usePower = false;
-
-    //enum size_t N = typeof(State.init.state).length;
-    //enum size_t P = typeof(State.init.state[0]).length;
-    //static assert(P == 1);
-
-    //alias C = typeof(State.init.state[0][0]);
     alias C = State.StateElementType;
     alias F = typeof(C.init.re);
 
@@ -27,22 +19,7 @@ final class RLSAdapter(State)
     {
         _lambdaInv = 1/lambda;
 
-        C zero = complexZero!C;
-
         immutable size = state.state.elementsCount;
-
-        // allocate
-        /*
-        _u = matrix!(C, dynamic, 1)(size);
-        _p = matrix!(C, dynamic, dynamic)(size, size);
-        _pu = matrix!(C, dynamic, 1)(size);
-        _uhp = matrix!(C, 1, dynamic)(size);
-        _k = matrix!(C, dynamic, 1)(size);
-
-        // initialize
-        _u = ones!float * zero;
-        _p = identity!float * ((1/delta) + complexZero!C);
-        */
         _u = new C[size].sliced(size);
         _p = new C[size*size].sliced(size, size);
         _pu = new C[size].sliced(size);
@@ -55,14 +32,10 @@ final class RLSAdapter(State)
     }
 
 
-    void adapt(ref State state, C error)
+    void adapt()(auto ref State state, C error)
     {
         immutable N = state.state.length!0;
-
-      static if(state.state.shape.length > 1)
         immutable P = state.state.length!1;
-      else 
-        immutable P = 1;
 
         foreach_reverse(i; P .. N*P)
             _u[i] = _u[i-P];
@@ -78,7 +51,7 @@ final class RLSAdapter(State)
         _uhp[] *= _lambdaInv;
 
         // _u * _pu
-        C uhpu = matop_Vh_dot_V(_u, _pu);
+        immutable C uhpu = matop_Vh_dot_V(_u, _pu);
 
         _k[] = _pu[];
         _k[] /= (1 + uhpu);
@@ -89,20 +62,11 @@ final class RLSAdapter(State)
             _p[i, j] -= _k[i] * _uhp[j];
 
         foreach(i; 0 .. N){
-          static if(state.state.shape.length > 1)
-          {
             foreach(j; 0 .. P){
                 auto idx = i*P + j;
                 auto kc = _k[idx].conj;
                 state.weight[i, j] += kc * error;
             }
-          }
-          else
-          {
-                auto idx = i;
-                auto kc = _k[idx].conj;
-                state.weight[i] += kc * error;
-          }
         }
     }
 

@@ -1,13 +1,16 @@
 module dffdd.filter.orthogonalize;
 
 import carbon.math;
-import carbon.linear;
+//import carbon.linear;
 import dffdd.utils.linalg;
+import dffdd.filter.traits;
 
 import std.math;
 import std.range;
 import std.complex;
 import std.experimental.ndslice;
+import std.traits;
+import std.meta;
 
 final class DiagonalizationOBFFactory(C, basisFuncs...)
 {
@@ -82,20 +85,20 @@ final class DiagonalizationOBFFactory(C, basisFuncs...)
 }
 
 
-final class GramSchmidtOBFFactory(C, basisFuncs...)
+final class GramSchmidtOBFFactory(C)
 {
-    enum size_t Dim = basisFuncs.length;
     alias F = typeof(C.init.re);
 
-    this()
+    this(size_t dim)
     {
-        _m = new C[Dim * Dim].sliced(Dim, Dim);
+        _m = new C[dim * dim].sliced(dim, dim);
+        _dim = dim;
     }
 
 
     void start()
     {
-        foreach(i; 0 .. Dim) foreach(j; 0 .. Dim)
+        foreach(i; 0 .. _dim) foreach(j; 0 .. _dim)
             _m[i, j] = complexZero!C;
 
         _xs.length = 0;
@@ -138,7 +141,7 @@ final class GramSchmidtOBFFactory(C, basisFuncs...)
 
             sum /= _xs.length;
             sum = sqrt(sum);
-            foreach(k; 0 .. Dim)
+            foreach(k; 0 .. _dim)
                 _m[i, k] /= sum;
         }
 
@@ -146,13 +149,13 @@ final class GramSchmidtOBFFactory(C, basisFuncs...)
         import std.conv;
         import std.exception;
 
-        foreach(i; 0 .. Dim){
+        auto res = new C[_dim];
+        foreach(i; 0 .. _dim){
             _m[i, i] = complexZero!C + 1;
 
-            C[Dim] res;
-            foreach(j; 0 .. Dim) res[j] = complexZero!C;
+            foreach(j; 0 .. _dim) res[j] = complexZero!C;
             foreach(j; 0 .. i){
-                auto c = innerProduct(i, j);
+                immutable c = innerProduct(i, j);
                 std.exception.enforce(!isNaN(c.re^^2 + c.im^^2), std.conv.to!string(i) ~ std.conv.to!string(j) ~ std.conv.to!string(_m));
                 foreach(k; 0 .. j+1)
                     res[k] += c * _m[j, k];
@@ -165,32 +168,460 @@ final class GramSchmidtOBFFactory(C, basisFuncs...)
     }
 
 
-    void put(R)(R xs)
+    void put(R)(R xss)
     if(isInputRange!R)
     {
-        foreach(x; xs){
-            C[Dim] fs;
-            foreach(i, f; basisFuncs){
-                fs[i] = f(x);
-            }
-
-            _xs ~= fs;
+        foreach(xs; xss){
+            assert(xs.length == _dim);
+            _xs ~= xs.dup;
         }
     }
 
 
     void getCoefs(size_t idx, C[] buf)
     {
-        foreach(i; 0 .. Dim)
+        foreach(i; 0 .. _dim)
             buf[i] = _m[idx, i];
     }
 
 
+    Slice!(2, C*) convertMatrix() @property
+    {
+        return _m;
+    }
+
+
   private:
+    size_t _dim;
     Slice!(2, C*) _m;
-    C[Dim][] _xs;
+    immutable(C[])[] _xs;
 }
 
+
+final class VectorConverter(C)
+{
+    alias OutputElementType(A) = C;
+
+
+    this(size_t dim)
+    {
+        this(new C[dim * dim].sliced(dim, dim));
+        this.convertMatrix[] = complexZero!C;
+        this.convertMatrix.diagonal[] = 1;
+    }
+
+
+    this(Slice!(2, C*) convMatrix)
+    {
+        _m = convMatrix;
+        _dim = convMatrix.length!0;
+    }
+
+
+    Slice!(2, C*) convertMatrix() @property 
+    {
+        return _m;
+    }
+
+
+    void opCallImpl(in C[] input, ref C[] output)
+    {
+        output.length = _dim;
+        foreach(p; 0 .. _dim){
+            output[p] = 0;
+            foreach(q; 0 .. _dim)
+                output[p] += input[q] * _m[p, q];
+        }
+    }
+
+    mixin ConverterOpCalls!(const(C[]), C[]);
+
+
+    // void opCall(in C[][] input, ref C[][] output)
+    // {
+    //     output.length = input.length;
+
+    //     foreach(i, ref e; input){
+    //         assert(e.length == _dim);
+    //         if(output[i].length != _dim)
+    //             output[i].length = _dim;
+
+    //         foreach(p; 0 .. _dim){
+    //             output[i][p] = 0;
+
+    //             foreach(q; 0 .. _dim)
+    //                 output[i][p] += input[i][q] * _m[p, q];
+    //         }
+    //     }
+    // }
+
+
+    // C[][] opCall(in C[][] input)
+    // {
+    //     C[][] output;
+    //     this.opCall(input, output);
+    //     return output;
+    // }
+
+
+    // C[] opCall(C[] input)
+    // {
+    //     C[][1] _stack_;
+    //     C[][1] _stack1_ = [input];
+    //     C[][] output = _stack_[];
+
+    //     this.opCall(_stack1_[], output);
+    //     return output[0];
+    // }
+
+
+    // void opCall(C[] input, ref C[] output)
+    // {
+    //     output.length = _dim;
+    //     C[][1] _stack1_ = [input];
+    //     C[][1] _stack2_ = [output];
+    //     C[][] output2 = _stack2_[];
+
+    //     this.opCall(_stack1_[], output2);
+    // }
+
+
+  private:
+    size_t _dim;
+    Slice!(2, C*) _m;
+}
+
+unittest
+{
+    import std.math;
+
+    alias C = Complex!float;
+
+    auto conv = new VectorConverter!(Complex!float)(2);
+    conv.convertMatrix[] = complexZero!C;
+    conv.convertMatrix[0, 0] = 1;
+    conv.convertMatrix[1, 1] = 1;
+
+    auto res = conv([Complex!float(1, 1), Complex!float(0, 1)]);
+    assert(approxEqual(res[0].re, 1));
+    assert(approxEqual(res[0].im, 1));
+    assert(approxEqual(res[1].re, 0));
+    assert(approxEqual(res[1].im, 1));
+
+    conv.convertMatrix[0, 1] = 1;
+    res = conv([Complex!float(1, 1), Complex!float(0, 1)]);
+    assert(approxEqual(res[0].re, 1));
+    assert(approxEqual(res[0].im, 2));
+    assert(approxEqual(res[1].re, 0));
+    assert(approxEqual(res[1].im, 1));
+
+    conv.convertMatrix[1, 0] = -1;
+    res = conv([Complex!float(1, 1), Complex!float(0, 1)]);
+    assert(approxEqual(res[0].re, 1));
+    assert(approxEqual(res[0].im, 2));
+    assert(approxEqual(res[1].re, -1));
+    assert(approxEqual(res[1].im, 0));
+}
+
+
+//final class MultiVectorConverter(C, size_t Dim)
+//{
+//    this(size_t numOfFreq)
+//    {
+//        foreach(i; 0 .. numOfFreq)
+//            _cs ~= new BasisVectorConverter!(C, Dim)(new C[Dim * Dim].sliced(Dim, Dim));
+//    }
+
+
+//    this(Slice!(2, C*)[] convMatrics)
+//    {
+//        foreach(e; convMatrics)
+//            _cs ~= new BasisVectorConverter!(C, Dim)(e);
+//    }
+
+
+//    VectorConverter!(C, Dim) converter(size_t i) @property { return _cs[i]; }
+//    Slice!(2, C*) convertMatrix(size_t i) @property { return _cs[i].convertMatrix; }
+
+
+//    void opCall(in C[Dim][] input, ref C[Dim][] output)
+//    {
+//        output.length = input.length;
+//        foreach(k, ref e; input){
+//            auto dst = output[k .. k+1];
+//            _cs[k](input[k .. k+1], dst);
+//        }
+//    }
+
+
+//  private:
+//    VectorConverter!(C, Dim)[] _cs;
+//}
+
+//unittest
+//{
+//    assert(0);
+//}
+
+
+final class ConvertedVectorDistorter(C, Distorter, Converter)
+{
+    // enum size_t dim = Distorter.dim;
+    size_t outputDim() const @property { return _distorter.outputDim; }
+
+
+    this(Distorter distorter, Converter converter)
+    {
+        _distorter = distorter;
+        _converter = converter;
+    }
+
+
+    Distorter distorter() @property { return _distorter; }
+    Converter converter() @property { return _converter; }
+
+
+    void opCallImpl(C c, ref C[] output)
+    {
+        _converter(_distorter(c), output);
+    }
+
+
+    mixin ConverterOpCalls!(const(C), C[]);
+
+
+    // void opCall(R, C)(R r, ref C[][] output)
+    // if(isInputRange!R)
+    // {
+    //     size_t i;
+    //     foreach(e; r){
+    //         output.length = (i + 1);
+    //         output[i] = this.opCall(e);
+    //         ++i;
+    //     }
+    // }
+
+
+    // C[][] opCall(R)(R r)
+    // if(isInputRange!R)
+    // {
+    //     C[][] dst;
+    //     this.opCall(r, dst);
+    //     return dst;
+    // }
+
+
+  private:
+    Distorter _distorter;
+    Converter _converter;
+}
+
+unittest
+{
+    import std.math;
+    import dffdd.filter.primitives;
+
+    alias C = Complex!float;
+
+    auto conv = new VectorConverter!(Complex!float)(2);
+    auto dist = new Distorter!(Complex!float, x => x, x => x*2)();
+
+    conv.convertMatrix[] = complexZero!C;
+    conv.convertMatrix[0, 0] = 1;
+    conv.convertMatrix[0, 1] = -1;
+    conv.convertMatrix[1, 0] = -1;
+    conv.convertMatrix[1, 1] = -1;
+
+    auto conn = new ConvertedVectorDistorter!(Complex!float, typeof(dist), typeof(conv))(dist, conv);
+
+    auto res = conn(Complex!float(1, 2));
+    assert(approxEqual(res[0].re, -1));
+    assert(approxEqual(res[0].im, -2));
+    assert(approxEqual(res[1].re, -3));
+    assert(approxEqual(res[1].im, -6));
+}
+
+
+//final class MultiConvertedVectorDistorter(Distorter, MultiConverter)
+//{
+//    enum size_t dim = Distorter.dim;
+
+
+//    this(Distorter dist, MultiConverter conv)
+//}
+
+
+final class OrthogonalizedVectorDistorter(C, Distorter, Orthogonalizer)
+if(Distorter.inputBlockLength == 1)
+{
+    // enum size_t dim = Distorter.dim;
+
+    this(Distorter distorter, Orthogonalizer orthogonalizer)
+    {
+        _dist = distorter;
+        _orth = orthogonalizer;
+        _conn = new typeof(_conn)(_dist, new VectorConverter!C(_dist.outputDim));
+        // _conn.converter.convertMatrix[] = complexZero!C;
+        // _conn.converter.convertMatrix.diagonal[] = 1;
+    }
+
+
+    size_t outputDim() const @property { return _dist.outputDim; }
+    enum size_t inputBlockLength = 1;
+
+
+    void learn(R)(R input)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+    {
+        _orth.start();
+
+        C[] output = new C[this.outputDim];
+        foreach(e; input){
+            _dist(e, output);
+            .put(_orth, output);
+        }
+
+        _orth.finish();
+        _conn.converter.convertMatrix[] = _orth.convertMatrix;
+    }
+
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        _conn(input, output);
+    }
+
+
+    mixin ConverterOpCalls!(const(C), C[]);
+
+
+    Distorter distorter() @property { return _dist; }
+    Orthogonalizer orthogonalizer() @property { return _orth; }
+    VectorConverter!C converter() @property { return _conn.converter; }
+    ConvertedVectorDistorter!(C, Distorter, VectorConverter!C) convertedDistorter() @property { return _conn; }
+
+
+  private:
+    Distorter _dist;
+    Orthogonalizer _orth;
+    ConvertedVectorDistorter!(C, Distorter, VectorConverter!C) _conn;
+}
+
+unittest
+{
+    import std.stdio;
+    import dffdd.filter.primitives;
+    import std.algorithm;
+
+    alias C = Complex!float;
+    alias Dist = Distorter!(Complex!float, x => x, x => x*2+1);
+    alias Gs = GramSchmidtOBFFactory!C;
+
+    auto orth = new OrthogonalizedVectorDistorter!(C, Dist, Gs)(new Dist(), new Gs(2));
+    static assert(isBlockConverter!(typeof(orth), C, C[]));
+
+
+    auto input = iota(4).map!(a => cast(C)std.complex.expi(PI_2 * a)).array();
+
+    orth.learn(input);
+
+    auto cm = orth._conn.converter.convertMatrix;
+
+    assert(approxEqual(cm[0, 0].re, 1));
+    assert(approxEqual(cm[0, 1].re, 0));
+    assert(approxEqual(cm[1, 0].re, -2));
+    assert(approxEqual(cm[1, 1].re, 1));
+
+    assert(approxEqual(cm[0, 0].im, 0));
+    assert(approxEqual(cm[0, 1].im, 0));
+    assert(approxEqual(cm[1, 0].im, 0));
+    assert(approxEqual(cm[1, 1].im, 0));
+
+    auto output = orth(input);
+
+    //assert(output[0].re == input)
+    //
+    foreach(e; zip(input, output)){
+        assert(approxEqual(e[1][0].re, e[0].re));
+        assert(approxEqual(e[1][0].im, e[0].im));
+
+        assert(approxEqual(e[1][1].re, 1));
+        assert(approxEqual(e[1][1].im, 0));
+    }
+}
+
+
+final class OrthogonalizedSpectrumConverter(C, Orthogonalizer)
+{
+    this(Orthogonalizer orthogonalizer, size_t dim, size_t nFFT)
+    {
+        _orth = orthogonalizer;
+        _dim = dim;
+
+        foreach(i; 0 .. nFFT)
+            _convs ~= new VectorConverter!C(dim);
+    }
+
+
+    size_t inputBlockLength() const @property { return _convs.length; }
+
+
+    void opCallImpl(C[][] input, ref C[][] output)
+    in{
+        foreach(e; input) assert(e.length == _dim);
+        // foreach(e; output) assert(e.length == _dim);
+    }
+    body{
+        output.length = input.length;
+        foreach(i; 0 .. _convs.length)
+            _convs[i](input[i], output[i]);
+    }
+
+
+    mixin ConverterOpCalls!(C[][], C[][]);
+
+
+    void learn(R)(R input, in bool[] scMap)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : const(C[][])))
+    {
+        const(C[][])[] specs;
+        foreach(e; input)
+            specs ~= e;
+
+        foreach(f; 0 .. _convs.length){
+            if(scMap[f]){
+                _orth.start();
+                foreach(e; specs)
+                    .put(_orth, e[f]);
+                _orth.finish();
+                _convs[f].convertMatrix[] = _orth.convertMatrix;
+            }
+        }
+    }
+
+
+    OrthogonalizedSpectrumConverter inverter() @property
+    {
+        immutable nFFT = _convs.length;
+        typeof(return) dst = new OrthogonalizedSpectrumConverter(_orth, _dim, nFFT);
+
+        import std.stdio;
+        writeln(nFFT);
+        foreach(i; 0 .. nFFT)
+            dst._convs[i].convertMatrix[] = this._convs[i].convertMatrix.transposed;
+        
+        return dst;
+    }
+
+
+    VectorConverter!C converter(size_t i) { return _convs[i]; }
+
+
+  private:
+    size_t _dim;
+    Orthogonalizer _orth;
+    VectorConverter!C[] _convs;
+}
 
 
 template OBFEval(basisFuncs...)
@@ -205,7 +636,6 @@ template OBFEval(basisFuncs...)
         return ret;
     }
 }
-
 
 
 unittest

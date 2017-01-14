@@ -9,7 +9,7 @@ import std.stdio;
 import dffdd.utils.linalg;
 
 
-LSAdapter!(State, NumOfADCBits) lsAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L)
+LSAdapter!(State, NumOfADCBits) makeLSAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L)
 {
     return new typeof(return)(state, L);
 }
@@ -18,8 +18,6 @@ LSAdapter!(State, NumOfADCBits) lsAdapter(size_t NumOfADCBits = 12, State)(State
 final class LSAdapter(State, size_t NumOfADCBits = 12)
 {
     import std.algorithm;
-
-    enum bool usePower = false;
 
   private
   {
@@ -42,7 +40,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     }
 
 
-    void adapt(ref State state, C error)
+    void adapt()(auto ref State state, C error)
     {
         _mx[0 .. $, _fillCNT] = state.state.byElement.sliced(state.state.elementsCount);
         _yv[_fillCNT] = error;
@@ -80,4 +78,12 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
 
         return _yv[0 .. numOfParams];
     }
+}
+
+unittest
+{
+    import dffdd.filter.state;
+
+    auto fir = new MultiFIRState!(Complex!float)(4, 4);
+    auto lsAdpt = makeLSAdapter(fir, 100);
 }

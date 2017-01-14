@@ -166,7 +166,6 @@ void mainImpl(string filterType)(Model model, string resultDir)
         desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
                          .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
 
-
         auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
         if(model.useSTXPN)  selfInterference = selfInterference.connectToTXIQPhaseNoise(model).psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
@@ -187,12 +186,14 @@ void mainImpl(string filterType)(Model model, string resultDir)
     }
 
     auto txReplica = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model)/*.drop(model.ofdm.numOfSamplesOf1Symbol/2)*/;
+    auto orthTrainReplica = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model);
 
     // モデルの安定化
     *switchDS = false;
     *switchSI = true;
     received.popFrontN(model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
     txReplica.popFrontN(model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
+    orthTrainReplica.popFrontN(model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
 
     // フィルタの学習
     *switchDS = false;
@@ -204,29 +205,58 @@ void mainImpl(string filterType)(Model model, string resultDir)
   enum string filterStructure = filterType.split("_")[0];
   enum string filterOptimizer = filterType.split("_")[1];
 
-  enum bool isOrthogonalized = filterStructure[0] == 'O';
+//   enum bool isOrthogonalized = filterStructure[0] == 'O';
 
   static if(filterStructure.endsWith("PHDCM"))
     auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
-    auto filter = makeCascadeHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("CWLH"))
-    auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("CWL1H"))
-    auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+    auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
+//   else static if(filterStructure.endsWith("CWLH"))
+//     auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+//   else static if(filterStructure.endsWith("CWL1H"))
+//     auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("CFHF"))
+    auto filter = makeFrequencyCascadeHammersteinFilter!(filterOptimizer)(model);
   else static if(filterStructure.endsWith("FHF"))
     auto filter = makeFrequencyHammersteinFilter!filterOptimizer(model);
   else static if(filterStructure.endsWith("WL"))
-    auto filter = makeParallelHammersteinFilter!(isOrthogonalized, filterOptimizer, 2)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 2)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
-    auto filter = makeParallelHammersteinFilter!(isOrthogonalized, filterOptimizer, 1)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
   else
     static assert("Cannot identify filter model.");
 
+//   static if(is(typeof(filter.learningFromTX([Complex!float.init]))))
+  {
+    if(model.orthogonalizer.enabled && model.orthogonalizer.numOfTrainingSymbols != 0)
+    {
+        static if(filterStructure.endsWith("FHF")){
+            writeln("SWAP");
+            *switchSwapping = true;
+        }
+
+        // 学習系列の生成
+        Complex!float[] txs;
+        foreach(i; 0 .. model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol){
+            static if(filterStructure.endsWith("FHF"))
+            if(i >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol){
+                if(*switchSwapping) writeln("END SWAP");
+                *switchSwapping = false;
+            }
+
+            txs ~= orthTrainReplica.front;
+            orthTrainReplica.popFront();
+        }
+
+        // 学習させる
+        filter.learningFromTX(txs);
+        writeln("Training of the distorter is finished.");
+    }
+  }
 
     {
         //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -235,7 +265,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
       static if(filterStructure.endsWith("FHF"))
       {
         *switchSwapping = true;
-        scope(exit) *switchSwapping = false;
+        //scope(exit) *switchSwapping = false;
       }
 
 
@@ -265,7 +295,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
                 txReplica.popFront();
             }
 
-            filter.apply!true(refrs, recvs, outps);
+            filter.apply!(Yes.learning)(refrs, recvs, outps);
             //filter.apply!false(refrs, recvs, outps);
 
             if(model.outputWaveform){
@@ -311,7 +341,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
                 txReplica.popFront();
             }
 
-            filter.apply!false(refrs, recvs, outps);
+            filter.apply!(No.learning)(refrs, recvs, outps);
 
             // blockIdxoが10以上になるまで，慣らし運転する
             if(blockIdxo > 10){
@@ -381,7 +411,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
             }
 
             if(model.withSIC && model.withSI)
-                filter.apply!false(refrs, recvs, outps);
+                filter.apply!(No.learning)(refrs, recvs, outps);
             else
                 outps[] = recvs[];
 
@@ -431,13 +461,15 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF_LS", "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/))
-        foreach(learningSymbols; [60])
+    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "CFHF_LS",
+                // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
+            ))
+        foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
         {
             Model[] models;
             string[] dirs;
 
-            foreach(inr; /*iota(20, 85, 5)*/ [60]) foreach(txp; iota(10, 31, 3))
+            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 18, 3))
             {
                 Model model;
                 model.SNR = 20;
@@ -456,10 +488,17 @@ void mainJob()
                 model.useSRXIQ = true;
                 model.useSRXQZ = true;
 
+                model.orthogonalizer.numOfTrainingSymbols = orthTrainingSymbols;
+
+                if(methodName[0] == 'O')
+                    model.orthogonalizer.enabled = true;
+                else
+                    model.orthogonalizer.enabled = false;
+
                 // ベースバンド信号波形の出力
                 model.outputWaveform = false;
 
-                model.channel.taps = 64;
+                model.channel.taps = 1;
                 model.firFilter.taps = 64;
 
                 model.outputBER = false;
@@ -481,7 +520,7 @@ void mainJob()
               }
 
 
-              static if(methodName.startsWith("FHF"))
+              static if(methodName.split("_")[0].endsWith("FHF"))
               {
                 model.swappedSymbols = 100000;
                 model.numOfFilterTrainingSymbols = 100;
@@ -494,14 +533,13 @@ void mainJob()
 
                 models ~= model;
 
-
               static if(methodName.endsWith("LMS") || methodName.endsWith("RLS"))
                 model.numOfFilterTrainingSymbols = 100;
 
-              static if(methodName.startsWith("FHF"))
-                dirs ~= "TXP%s_snr%s_inr%s_%s%s_Nswp%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols, model.swappedSymbols);
+              static if(methodName.split("_")[0].endsWith("FHF"))
+                dirs ~= "TXP%s_inr%s_%s%s_Nswp%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, learningSymbols, model.swappedSymbols, model.orthogonalizer.numOfTrainingSymbols);
               else
-                dirs ~= "TXP%s_snr%s_inr%s_%s%s".format(model.pa.TX_POWER, model.SNR, model.INR, methodName, learningSymbols);
+                dirs ~= "TXP%s_inr%s_%s%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, learningSymbols, model.orthogonalizer.numOfTrainingSymbols);
             }
 
             foreach(i; 0 .. models.length)

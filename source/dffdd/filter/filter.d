@@ -1,4 +1,4 @@
-module dffdd.filter.polynomial;
+module dffdd.filter.filter;
 
 import std.algorithm;
 import std.complex;
@@ -6,14 +6,18 @@ import std.math;
 import std.typetuple;
 import std.range;
 import std.traits;
+import std.experimental.ndslice;
+import std.numeric;
 
 import std.stdio;
 
+import carbon.math;
 import carbon.stream;
 import carbon.traits;
 
 import dffdd.filter.state;
 import dffdd.filter.traits;
+import dffdd.utils.fft;
 
 
 void learning(F, C)(ref F filter, in C[] tx, in C[] rx, C[] outputBuf)
@@ -171,13 +175,13 @@ unittest
     import dffdd.filter.lms;
 
     // FIRフィルタ
-    auto state1 = new FIRState!(Complex!float, true)(1),
-         state2 = new FIRState!(Complex!float, true)(1);
+    auto state1 = MultiFIRState!(Complex!float)(1, 1),
+         state2 = MultiFIRState!(Complex!float)(1, 1);
 
     // FIRフィルタとLMSアルゴリズムでフィルタを構成
     auto filter = parallelFilter(
-        state1, lmsAdapter(state1, 0.1),
-        state2, lmsAdapter(state2, 0.1)
+        state1, makeLMSAdapter(state1, 0.1),
+        state2, makeLMSAdapter(state2, 0.1)
     );
 }
 
@@ -191,7 +195,7 @@ auto oneStateFilter(State, Adapter)(State state, Adapter adapter)
     return new ParallelFilter!(State, Adapter)(state, adapter);
 }
 
-
+/+
 /**
 C: Complex Type
 numOfFIRState: the number of FIR filters
@@ -208,7 +212,7 @@ if(func.length == 2)
     this(func[0] distorter, size_t numOfTaps)
     {
         _f = distorter;
-        _state = new MultiFIRState!(C, numOfFIRState, true)(numOfTaps);
+        _state = MultiFIRState!C(numOfFIRState, numOfTaps);
         _adapter = func[1](_state);
     }
   }
@@ -216,7 +220,7 @@ if(func.length == 2)
   {
     this(size_t numOfTaps)
     {
-        _state = new MultiFIRState!(C, numOfFIRState, true)(numOfTaps);
+        _state = MultiFIRState!C(numOfFIRState, numOfTaps);
         _adapter = func[1](_state);
     }
   }
@@ -248,7 +252,7 @@ if(func.length == 2)
 
 
   private:
-    MultiFIRState!(C, numOfFIRState, true) _state;
+    MultiFIRState!C _state;
     typeof(func[1](_state)) _adapter;
 
   static if(isFunc0Type)
@@ -289,12 +293,710 @@ unittest
     }
 
     // フィルタの生成
-    auto filter = generalParallelHammersteinFilter!(Cpx, N, distortionFunc, s => lmsAdapter(s, 0.1))(10);
+    auto filter = generalParallelHammersteinFilter!(Cpx, N, distortionFunc, s => makeLMSAdapter(s, 0.1))(10);
 
     // こんな感じでも生成できる
-    auto filter2 = generalParallelHammersteinFilter!(Cpx, N, s => lmsAdapter(s, 0.1))
+    auto filter2 = generalParallelHammersteinFilter!(Cpx, N, s => makeLMSAdapter(s, 0.1))
                     (
                         delegate (Cpx[] tx) => tx.map!(a => cast(Cpx[N])[a, a*(a.abs^^2)]),
                         10
                     );
+}
++/
+
+
+
+final class SimpleTimeDomainParallelHammersteinFilter(C, Dist, alias genAdaptor)
+if(isBlockConverter!(Dist, C, C[]))
+{
+    this(Dist dist, size_t numOfFIR, size_t numOfTaps)
+    in{
+        assert(numOfFIR == dist.outputDim);
+    }
+    body {
+        _distorter = dist;
+        _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
+        _adaptor = genAdaptor(_state);
+        _buffer = new C[][](this.inputBlockLength, dist.outputDim);
+    }
+
+
+    size_t inputBlockLength() @property
+    {
+        return _distorter.inputBlockLength;
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(input.length == desired.length);
+        assert(input.length == errors.length);
+        assert(input.length % this.inputBlockLength == 0);
+    }
+    body{
+        immutable size_t blk = this.inputBlockLength;
+
+        foreach(i; 0 .. input.length / blk){
+            auto ips = input[i*blk .. (i+1) * blk];
+            auto dss = desired[i*blk .. (i+1) * blk];
+            auto ers = errors[i*blk .. (i+1) * blk];
+
+            _distorter(ips, _buffer);
+            foreach(j, e; _buffer){
+                _state.update(e);
+                ers[j] = dss[j] - _state.output;
+
+              static if(doLearning)
+                _adaptor.adapt(_state, ers[j]);
+            }
+        }
+    }
+
+
+  static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+  {
+    void learningFromTX(R)(R txs)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+    {
+        _distorter.learn(txs);
+    }
+  }
+
+  private:
+    Dist _distorter;
+    MultiFIRState!(Complex!float) _state;
+    typeof(genAdaptor(_state)) _adaptor;
+    C[][] _buffer;
+}
+
+final class SimpleTimeDomainParallelHammersteinFilterWithDCM(C, Dist, alias genAdaptor)
+if(isBlockConverter!(Dist, C, C[]))
+{
+    this(Dist dist, size_t numOfFIR, size_t numOfTaps)
+    in{
+        assert(numOfFIR == dist.outputDim);
+    }
+    body {
+        _distorter = dist;
+        _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
+
+        foreach(i; 0 .. numOfFIR)
+            _adaptors ~= genAdaptor(_state.subFIRState[i]);
+
+        _buffer = new C[][](this.inputBlockLength, this.outputDim);
+    }
+
+
+    size_t inputBlockLength() @property
+    {
+        return _distorter.inputBlockLength;
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(input.length == desired.length);
+        assert(input.length == errors.length);
+        assert(input.length % this.inputBlockLength == 0);
+    }
+    body{
+        immutable size_t blk = this.inputBlockLength;
+
+        foreach(i; 0 .. input.length / blk){
+            auto ips = input[i*blk .. (i+1) * blk];
+            auto dss = desired[i*blk .. (i+1) * blk];
+            auto ers = errors[i*blk .. (i+1) * blk];
+
+            _distorter(ips, _buffer);
+            foreach(j, e; _buffer){
+                _state.update(e);
+                ers[j] = dss[j] - _state.output;
+
+              static if(doLearning)
+              {
+                foreach(k, ref e; _adaptors){
+                    auto subState = _state.subFIRState(k);
+                    e.adapt(subState, ers[j]);
+                }
+              }
+            }
+        }
+    }
+
+
+    Dist distorter() @property { return _distorter; }
+
+
+  static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+  {
+    void learningFromTX(R)(R txs)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+    {
+        _distorter.learn(txs);
+    }
+  }
+
+
+  private:
+    Dist _distorter;
+    MultiFIRState!(Complex!float) _state;
+    typeof(genAdaptor(_state))[] _adaptors;
+    C[][] _buffer;
+}
+
+final class SimpleTimeDomainCascadeHammersteinFilter(C, Dist, alias genAdaptor)
+if(isBlockConverter!(Dist, C, C[]))
+{
+    this(Dist dist, size_t numOfFIR, size_t numOfTaps)
+    in{
+        assert(numOfFIR == dist.outputDim);
+    }
+    body {
+        _distorter = dist;
+        _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
+
+        foreach(i; 0 .. numOfFIR)
+            _adaptors ~= genAdaptor(i, _state.subFIRState(i));
+
+        _buffer = new C[][](this.inputBlockLength, dist.outputDim);
+    }
+
+
+    size_t inputBlockLength() @property
+    {
+        return _distorter.inputBlockLength;
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(input.length == desired.length);
+        assert(input.length == errors.length);
+        assert(input.length % this.inputBlockLength == 0);
+    }
+    body{
+        immutable size_t blk = this.inputBlockLength;
+
+        foreach(i; 0 .. input.length / blk){
+            auto ips = input[i*blk .. (i+1) * blk];
+            auto dss = desired[i*blk .. (i+1) * blk];
+            auto ers = errors[i*blk .. (i+1) * blk];
+
+            _distorter(ips, _buffer);
+            foreach(j, e; _buffer){
+                _state.update(e);
+
+                ers[j] = dss[j];
+                foreach(k, ref adaptor; _adaptors){
+                    auto subState = _state.subFIRState(k);
+                    ers[j] -= subState.output;
+
+                  static if(doLearning){
+                    adaptor.adapt(subState, ers[j]);
+                  }
+                }
+            }
+        }
+    }
+
+
+    Dist distorter() @property { return _distorter; }
+
+
+  static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+  {
+    void learningFromTX(R)(R txs)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+    {
+        _distorter.learn(txs);
+    }
+  }
+
+  private:
+    Dist _distorter;
+    MultiFIRState!(Complex!float) _state;
+    typeof(genAdaptor(0, _state))[] _adaptors;
+    C[][] _buffer;
+}
+
+final class SimpleFrequencyDomainParallelHammersteinFilter(C, Dist, SpecConv, alias genAdaptor)
+if(isBlockConverter!(Dist, C, C[]))
+{
+    import dffdd.filter.regenerator : OverlapSaveRegenerator;
+
+    this(Dist dist, SpecConv specConv, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS)
+    {
+        immutable dim = dist.outputDim;
+
+        _fftw = makeFFTWObject!Complex(nFFT * nOS);
+        _distorter = dist;
+        _specConv = specConv;
+        _invSpecConv = specConv;
+        auto sliceState = new C[nFFT * nOS * dim].sliced(nFFT * nOS, dim);
+        sliceState[] = complexZero!C;
+
+        _regenerator = new OverlapSaveRegenerator!C(sliceState);
+
+        foreach(i; 0 .. nFFT * nOS){
+            auto state = MultiFIRState!(Complex!float)(dim, 1);
+            // state.weight = sliceState[i .. (i+1), 0 .. $];
+            _states ~= state;
+            _adaptors ~= genAdaptor(i, subcarrierMap[i], state);
+        }
+
+        _scMap = subcarrierMap.dup;
+        _nFFT = nFFT;
+        _nCP = nCP;
+        _nOS = nOS;
+        _distortedBuffer = new C[][](this.inputBlockLength, dim);
+        _fftedBuffer = new C[][](dim, _nFFT * _nOS);
+    }
+
+
+    size_t inputBlockLength() @property
+    {
+        immutable a = _distorter.inputBlockLength,
+                  b = (_nFFT + _nCP) * _nOS;
+
+        return a * (b / gcd(a, b));     // LCM
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(input.length == desired.length);
+        assert(input.length == errors.length);
+        assert(input.length % this.inputBlockLength == 0);
+        foreach(e; input){
+            assert(!isNaN(e.re));
+            assert(!isNaN(e.im));
+        }
+        foreach(e; desired){
+            assert(!isNaN(e.re));
+            assert(!isNaN(e.im));
+        }
+    }
+    out{
+        foreach(e; errors){
+            assert(!isNaN(e.re));
+            assert(!isNaN(e.im));
+        }
+    }
+    body{
+        immutable size_t blk = this.inputBlockLength;
+        immutable size_t dim = _distorter.outputDim;
+
+        if(doLearning)
+        {
+            foreach(i; 0 .. input.length / blk){
+                auto ips = input[i*blk .. (i+1) * blk];
+                auto dss = desired[i*blk .. (i+1) * blk];
+                auto ers = errors[i*blk .. (i+1) * blk];
+
+                _distorter(ips, _distortedBuffer);
+                
+                immutable symLen = _nOS * (_nFFT + _nCP),
+                          cpLen = _nOS * _nCP;
+
+                foreach(j; 0 .. blk / symLen){
+                    auto bsym = _distortedBuffer[j * symLen + cpLen .. (j + 1) * symLen];
+                    auto dsym = dss[j * symLen + cpLen .. (j + 1) * symLen];
+
+                    // 非線形送信信号を周波数領域に変換
+                    foreach(p; 0 .. dim){
+                        foreach(k; 0 .. _nFFT * _nOS)
+                            _fftw.inputs!float[k] = bsym[k][p];
+
+                        _fftw.fft!float();
+                        _fftedBuffer[p][] = _fftw.outputs!float[];
+                    }
+
+                    // 受信信号の周波数成分
+                    _fftw.inputs!float[] = dsym[];
+                    _fftw.fft!float();
+                    auto rxFFTed = _fftw.outputs!float();
+
+                    // 全周波数で，適応フィルタにかける
+                    C[] vX = new C[dim];
+                    C[] vZ = new C[dim];
+                    foreach(f; 0 .. _nFFT * _nOS){
+                        foreach(p, ref e; vX)
+                            e = _fftedBuffer[p][f];
+
+                        // _specConvで送信信号のスペクトルに細工を加える
+                        _specConv.converter(f)(vX, vZ);
+
+                        _states[f].update(vZ);
+                        C error = rxFFTed[f] - _states[f].output;
+                        _adaptors[f].adapt(_states[f], error);
+                    }
+                }
+            }
+
+            // 除去用の周波数応答へ逆変換する
+            C[] vH = new C[dim];
+            C[] vG = new C[dim];
+            foreach(f; 0 .. _nFFT * _nOS){
+                vH.sliced(dim)[] = _states[f].weight[0];
+                _invSpecConv.converter(f)(vH, vG);
+                //vG[] = vH[];
+                _regenerator.frequencyResponse[f, 0 .. $] = vG.sliced(dim);
+            }
+        }
+
+        // 除去
+        foreach(i; 0 .. input.length / blk){
+            auto ips = input[i*blk .. (i+1) * blk];
+            auto dss = desired[i*blk .. (i+1) * blk];
+            auto ers = errors[i*blk .. (i+1) * blk];
+
+            _distorter(ips, _distortedBuffer);
+            foreach(es; _distortedBuffer) foreach(e; es){
+                assert(!isNaN(e.re));
+                assert(!isNaN(e.im));
+            }
+
+            immutable symLen = _nOS * (_nFFT + _nCP),
+                      cpLen = _nOS * _nCP;
+
+            // 直交変換を行う
+            /*
+            C[][] freqBuf = new C[][](_nOS * _nFFT, dim);
+            C[][] freqBufConv = new C[][](_nOS * _nFFT, dim);
+            foreach(p; 0 .. dim){
+                auto inputs = _fftw.inputs!float,
+                     outputs = _fftw.outputs!float;
+
+                foreach(j; cpLen .. symLen)
+                    inputs[j - cpLen] = _distortedBuffer[j][p];
+                
+                _fftw.fft!float();
+                foreach(j; 0 .. _nOS * _nFFT)
+                    freqBuf[j][p] = outputs[j];
+            }
+
+            _specConv(freqBuf, freqBufConv);
+
+            foreach(p; 0 .. dim){
+                auto inputs = _fftw.inputs!float,
+                     outputs = _fftw.outputs!float;
+
+                foreach(j; 0 .. _nOS * _nFFT)
+                    inputs[j] = freqBufConv[j][p];
+
+                _fftw.ifft!float();
+                foreach(j; 0 .. _nOS * _nFFT)
+                    _distortedBuffer[j + cpLen][p] = outputs[j];
+                
+                // CPをつける
+                foreach(j; 0 .. cpLen)
+                    _distortedBuffer[j][p] = outputs[$ - cpLen + j];
+            }*/
+
+            _regenerator.apply(_distortedBuffer, ers);
+            foreach(e; ers){
+                assert(!isNaN(e.re));
+                assert(!isNaN(e.im));
+            }
+
+            foreach(j; 0 .. blk)
+                ers[j] = dss[j] - ers[j];
+        }
+    }
+
+
+    Dist distorter() @property { return _distorter; }
+
+
+//   static if(is(typeof((SpecConv specConv, C[][][] txs){ specConv.learn(txs); })))
+//   {
+    void learningFromTX(R)(R txs)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+    {
+        immutable size_t dim = _distorter.outputDim;
+
+        // TODO
+        C[][] xs;
+        foreach(e; txs){
+            xs.length += 1;
+            _distorter(e, xs[$-1]);
+        }
+
+        immutable symLen = _nOS * (_nFFT + _nCP),
+                  cpLen = _nOS * _nCP;
+
+        C[][][] trs;
+        foreach(i; 0 .. xs.length / symLen){
+            C[][] spec = new C[][](_nFFT * _nOS, dim);
+            auto sym = xs[i * symLen + cpLen .. (i + 1) * symLen];
+            foreach(p; 0 .. dim)
+            {
+                auto ips = _fftw.inputs!float;
+                auto ops = _fftw.outputs!float;
+                foreach(j; 0 .. _nFFT * _nOS)
+                    ips[j] = sym[j][p];
+                
+                _fftw.fft!float();
+                foreach(j; 0 .. _nFFT * _nOS)
+                    spec[j][p] = ops[j];
+            }
+
+            trs ~= spec;
+        }
+
+        _specConv.learn(trs, _scMap);
+        import std.stdio;
+        writeln(_specConv.converter(1).convertMatrix);
+        _invSpecConv = _specConv.inverter;
+        writeln(_invSpecConv.converter(1).convertMatrix);
+        // _invSpecConv = _specConv;
+
+        // import std.stdio;
+        // _distorter.learn(txs);
+        // writeln(_distorter.converter.convertMatrix);
+    }
+//   }
+
+
+  private:
+    FFTWObject!Complex _fftw;
+    Dist _distorter;
+    SpecConv _specConv, _invSpecConv;
+    OverlapSaveRegenerator!C _regenerator;
+    immutable(bool[]) _scMap;
+    immutable size_t _nFFT, _nCP, _nOS;
+    MultiFIRState!(Complex!float)[] _states;
+    typeof(genAdaptor(0, true, _states[0]))[] _adaptors;
+    C[][] _distortedBuffer;
+    C[][] _fftedBuffer;
+}
+
+
+
+final class SimpleFrequencyDomainCascadeHammersteinFilter(C, Dist, SpecConv, alias genAdaptor)
+if(isBlockConverter!(Dist, C, C[]))
+{
+    import dffdd.filter.regenerator : OverlapSaveRegenerator;
+
+    this(Dist dist, SpecConv specConv, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS)
+    {
+        immutable dim = dist.outputDim;
+
+        _fftw = makeFFTWObject!Complex(nFFT * nOS);
+        _distorter = dist;
+        _specConv = specConv;
+        _invSpecConv = specConv;
+        auto sliceState = new C[nFFT * nOS * dim].sliced(nFFT * nOS, dim);
+        sliceState[] = complexZero!C;
+
+        _regenerator = new OverlapSaveRegenerator!C(sliceState);
+
+        foreach(i; 0 .. nFFT * nOS){
+            MultiFIRState!(Complex!float)[] sts;
+            typeof(_adaptors[0]) ads;
+            foreach(p; 0 .. dim){
+                auto state = MultiFIRState!(Complex!float)(1, 1);
+                // state.weight = sliceState[i .. (i+1), 0 .. $];
+                sts ~= state;
+                ads ~= genAdaptor(i, subcarrierMap[i], p, state);
+            }
+            _states ~= sts;
+            _adaptors ~= ads;
+        }
+
+        _scMap = subcarrierMap.dup;
+        _nFFT = nFFT;
+        _nCP = nCP;
+        _nOS = nOS;
+        _distortedBuffer = new C[][](this.inputBlockLength, dim);
+        _fftedBuffer = new C[][](dim, _nFFT * _nOS);
+    }
+
+
+    size_t inputBlockLength() @property
+    {
+        immutable a = _distorter.inputBlockLength,
+                  b = (_nFFT + _nCP) * _nOS;
+
+        return a * (b / gcd(a, b));     // LCM
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(input.length == desired.length);
+        assert(input.length == errors.length);
+        assert(input.length % this.inputBlockLength == 0);
+        foreach(e; input){
+            assert(!isNaN(e.re));
+            assert(!isNaN(e.im));
+        }
+        foreach(e; desired){
+            assert(!isNaN(e.re));
+            assert(!isNaN(e.im));
+        }
+    }
+    out{
+        foreach(e; errors){
+            assert(!isNaN(e.re));
+            assert(!isNaN(e.im));
+        }
+    }
+    body{
+        immutable size_t blk = this.inputBlockLength;
+        immutable size_t dim = _distorter.outputDim;
+
+        if(doLearning)
+        {
+            foreach(i; 0 .. input.length / blk){
+                auto ips = input[i*blk .. (i+1) * blk];
+                auto dss = desired[i*blk .. (i+1) * blk];
+                auto ers = errors[i*blk .. (i+1) * blk];
+
+                _distorter(ips, _distortedBuffer);
+                
+                immutable symLen = _nOS * (_nFFT + _nCP),
+                          cpLen = _nOS * _nCP;
+
+                foreach(j; 0 .. blk / symLen){
+                    auto bsym = _distortedBuffer[j * symLen + cpLen .. (j + 1) * symLen];
+                    auto dsym = dss[j * symLen + cpLen .. (j + 1) * symLen];
+
+                    // 非線形送信信号を周波数領域に変換
+                    foreach(p; 0 .. dim){
+                        foreach(k; 0 .. _nFFT * _nOS)
+                            _fftw.inputs!float[k] = bsym[k][p];
+
+                        _fftw.fft!float();
+                        _fftedBuffer[p][] = _fftw.outputs!float[];
+                    }
+
+                    // 受信信号の周波数成分
+                    _fftw.inputs!float[] = dsym[];
+                    _fftw.fft!float();
+                    auto rxFFTed = _fftw.outputs!float();
+
+                    // 全周波数で，適応フィルタにかける
+                    C[] vX = new C[dim];
+                    C[] vZ = new C[dim];
+                    foreach(f; 0 .. _nFFT * _nOS){
+                        foreach(p, ref e; vX)
+                            e = _fftedBuffer[p][f];
+
+                        // _specConvで送信信号のスペクトルに細工を加える
+                        _specConv.converter(f)(vX, vZ);
+                        // vZ[] = vX[];
+
+                        C error = rxFFTed[f];
+                        foreach(p; 0 .. dim){
+                            _states[f][p].update(vZ[p]);
+                            error -= _states[f][p].output;
+                            _adaptors[f][p].adapt(_states[f][p], error);
+                        }
+                    }
+                }
+            }
+
+            // 除去用の周波数応答へ逆変換する
+            C[] vH = new C[dim];
+            C[] vG = new C[dim];
+            foreach(f; 0 .. _nFFT * _nOS){
+                foreach(p; 0 .. dim)
+                    vH[p] = _states[f][p].weight[0, 0];
+                _invSpecConv.converter(f)(vH, vG);
+                foreach(p; 0 .. dim)
+                    _regenerator.frequencyResponse[f, p] = vG[p];
+                // foreach(p; 0 .. dim)
+                //     _regenerator.frequencyResponse[f, p] = vH[p];
+            }
+        }
+
+        // 除去
+        foreach(i; 0 .. input.length / blk){
+            auto ips = input[i*blk .. (i+1) * blk];
+            auto dss = desired[i*blk .. (i+1) * blk];
+            auto ers = errors[i*blk .. (i+1) * blk];
+
+            _distorter(ips, _distortedBuffer);
+            foreach(es; _distortedBuffer) foreach(e; es){
+                assert(!isNaN(e.re));
+                assert(!isNaN(e.im));
+            }
+
+            _regenerator.apply(_distortedBuffer, ers);
+            foreach(e; ers){
+                assert(!isNaN(e.re));
+                assert(!isNaN(e.im));
+            }
+
+            foreach(j; 0 .. blk)
+                ers[j] = dss[j] - ers[j];
+        }
+    }
+
+
+    Dist distorter() @property { return _distorter; }
+
+
+//   static if(is(typeof((SpecConv specConv, C[][][] txs){ specConv.learn(txs); })))
+//   {
+    void learningFromTX(R)(R txs)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+    {
+        immutable size_t dim = _distorter.outputDim;
+
+        // TODO
+        C[][] xs;
+        foreach(e; txs){
+            xs.length += 1;
+            _distorter(e, xs[$-1]);
+        }
+
+        immutable symLen = _nOS * (_nFFT + _nCP),
+                  cpLen = _nOS * _nCP;
+
+        C[][][] trs;
+        foreach(i; 0 .. xs.length / symLen){
+            C[][] spec = new C[][](_nFFT * _nOS, dim);
+            auto sym = xs[i * symLen + cpLen .. (i + 1) * symLen];
+            foreach(p; 0 .. dim)
+            {
+                auto ips = _fftw.inputs!float;
+                auto ops = _fftw.outputs!float;
+                foreach(j; 0 .. _nFFT * _nOS)
+                    ips[j] = sym[j][p];
+                
+                _fftw.fft!float();
+                foreach(j; 0 .. _nFFT * _nOS)
+                    spec[j][p] = ops[j];
+            }
+
+            trs ~= spec;
+        }
+
+        _specConv.learn(trs, _scMap);
+        import std.stdio;
+        writeln(_specConv.converter(1).convertMatrix);
+        _invSpecConv = _specConv.inverter;
+        writeln(_invSpecConv.converter(1).convertMatrix);
+        // _invSpecConv = _specConv;
+
+        // import std.stdio;
+        // _distorter.learn(txs);
+        // writeln(_distorter.converter.convertMatrix);
+    }
+//   }
+
+
+  private:
+    FFTWObject!Complex _fftw;
+    Dist _distorter;
+    SpecConv _specConv, _invSpecConv;
+    OverlapSaveRegenerator!C _regenerator;
+    immutable(bool[]) _scMap;
+    immutable size_t _nFFT, _nCP, _nOS;
+    MultiFIRState!(Complex!float)[][] _states;
+    typeof(genAdaptor(0, true, 0, _states[0][0]))[][] _adaptors;
+    C[][] _distortedBuffer;
+    C[][] _fftedBuffer;
 }

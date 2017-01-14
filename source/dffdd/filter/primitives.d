@@ -1,12 +1,16 @@
 module dffdd.filter.primitives;
 
+import std.range;
+import std.algorithm;
+import std.traits;
+
+import dffdd.filter.traits;
 import dffdd.mod.primitives;
 import dffdd.utils.fft;
 
 
 final class LimitedTrainingAdaptor(Adaptor)
 {
-    enum bool usePower = Adaptor.usePower;
     Adaptor parent;
     alias parent this;
 
@@ -47,7 +51,6 @@ LimitedTrainingAdaptor!Adaptor trainingLimit(Adaptor)(Adaptor adaptor, size_t li
 
 final class IgnoreHeadSamplesAdaptor(Adaptor)
 {
-    enum bool usePower = Adaptor.usePower;
     Adaptor parent;
     alias parent this;
 
@@ -85,6 +88,34 @@ final class IgnoreHeadSamplesAdaptor(Adaptor)
 IgnoreHeadSamplesAdaptor!Adaptor ignoreHeadSamples(Adaptor)(Adaptor adaptor, size_t ignoreSamples)
 {
     return new typeof(return)(adaptor, ignoreSamples);
+}
+
+
+final class Distorter(C, funcs...)
+{
+    enum size_t outputDim = funcs.length;
+    enum size_t inputBlockLength = 1;
+
+
+    this() {}
+
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        output.length = outputDim;
+        foreach(p, f; funcs)
+            output[p] = f(input);
+    }
+
+    mixin ConverterOpCalls!(const(C), C[]);
+}
+
+unittest
+{
+    import std.complex;
+    import dffdd.filter.traits;
+
+    static assert(isBlockConverter!(Distorter!(Complex!float, x => x, x => x*2), Complex!float, Complex!float[]));
 }
 
 

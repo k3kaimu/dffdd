@@ -1024,7 +1024,8 @@ unittest
 配列の前半分と後半分を入れ替えます．
 この操作をFFT後の配列に適用することで，等価低域系での周波数スペクトルが得られます．
 */
-void swapHalf(C)(C[] buf)
+void swapHalf(R)(R buf)
+if(isRandomAccessRange!R && hasLength!R)
 {
     import std.algorithm : swap;
 
