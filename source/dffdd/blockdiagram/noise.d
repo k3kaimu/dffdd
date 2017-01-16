@@ -52,11 +52,10 @@ struct BoxMuller(RNG)
 
     BoxMuller!RNG save() @property
     {
-        typeof(return) dst;
+        typeof(return) dst = this;
 
-        dst._urng = this._urng;
-        dst._x = this._x;
-        dst._y = this._y;
+        dst._urng = this._urng.save;
+
         return dst;
     }
 
@@ -101,10 +100,10 @@ struct ThermalNoise
 
     ThermalNoise save() @property
     {
-        typeof(return) dst;
+        typeof(return) dst = this;
 
-        dst._rnd = this._rnd;
-        dst._gain = this._gain;
+        dst._rnd = this._rnd.save;
+
         return dst;
     }
 
@@ -122,10 +121,25 @@ auto uniform01Range(Rnd = Random)(uint seedValue)
         auto front() const @property { return _front; }
         enum bool empty = false;
 
+
         void popFront()
         {
             _front = uniform01(_rnd);
         }
+
+
+      static if(isForwardRange!Rnd)
+      {
+        typeof(this) save() @property
+        {
+            typeof(return) dst = this;
+
+            dst._rnd = this._rnd.save;
+
+            return dst;
+        }
+      }
+
 
       private:
         Rnd _rnd;

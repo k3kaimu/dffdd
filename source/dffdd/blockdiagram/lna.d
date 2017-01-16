@@ -29,6 +29,20 @@ struct LNA(R)
     }
 
 
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+          typeof(return) dst = this;
+
+          dst._r = this._r.save;
+          dst._noise = this._noise.save;
+          
+          return dst;
+    }
+  }
+
+
   private:
     VGA!R _r;
     ThermalNoise _noise;

@@ -6,6 +6,7 @@ import std.math;
 import std.complex;
 import std.range;
 import std.algorithm;
+import std.traits;
 
 import dffdd.dsp.statistics;
 import dranges.range;
@@ -81,6 +82,20 @@ auto connectToSwitch(R)(R r, const(bool)* sw, ElementType!R zero = complexZero!(
         {
             return *_sw && _r.empty;
         }
+
+
+      static if(isForwardRange!R)
+      {
+        typeof(this) save() @property
+        {
+            typeof(return) dst = this;
+
+            dst._r = this._r.save;
+
+            return dst;
+        }
+      }
+
 
       private:
         R _r;
@@ -172,4 +187,165 @@ final class OFDMSymbolExchanger(Mod)
 OFDMSymbolExchanger!Mod makeOFDMSymbolExchanger(Mod)(Mod mod, const(bool)* sw, uint nFFT, uint nCp, uint nTone, uint nUpSampling = 1)
 {
     return new OFDMSymbolExchanger!Mod(mod, sw, nFFT, nCp, nTone, nUpSampling);
+}
+
+
+auto loggingTo(R, O)(R r, O orange)
+// if(isForwardRange!R && isOutputRange!(O, R))
+{
+    static struct Result
+    {
+        this(R r, O o, bool isOwner)
+        {
+            _r = r;
+            _o = o;
+            _isOwner = isOwner;
+            _isOutputted = false;
+        }
+
+
+        ElementType!R front()
+        {
+            auto f = _r.front;
+            if(!_isOutputted && _isOwner){
+                .put(_o, f);
+                _isOutputted = true;
+            }
+
+            return f;
+        }
+
+
+        void popFront()
+        {
+            _r.popFront();
+            _isOutputted = false;
+        }
+
+
+        bool empty() { return _r.empty; }
+
+
+        Result save()
+        {
+            typeof(return) dst = this;
+
+            dst._isOwner = false;
+            dst._r = this._r.save;
+
+            return dst;
+        }
+
+
+      private:
+        bool _isOwner;
+        bool _isOutputted;
+        R _r;
+        O _o;
+    }
+
+
+    return Result(r, orange, true);
+}
+
+
+template checkConcept(alias concept)
+{
+    auto checkConcept(R)(R r)
+    if(concept!R)
+    {
+        return r;
+    }
+}
+
+
+
+static
+final class ModulatedRange(R, Mod, bool isDemod = false)
+// if(isForwardRange!R)
+{
+  static if(isDemod)
+  {
+      alias A = Mod.OutputElementType;
+      alias B = Mod.InputElementType;
+
+      private size_t inputLen() { return _mod.symOutputLength; }
+      private size_t outputLen() { return _mod.symInputLength; }
+  }
+  else
+  {
+      alias A = Mod.InputElementType;
+      alias B = Mod.OutputElementType;
+
+      private size_t inputLen() { return _mod.symInputLength; }
+      private size_t outputLen() { return _mod.symOutputLength; }
+  }
+
+
+    private this() {}
+
+
+    this(R r, Mod modObj)
+    {
+        _r = r;
+        _mod = modObj;
+        _inputBuf = new A[this.inputLen];
+        _outputBuf = new B[this.outputLen];
+        _idx = this.outputLen - 1;
+        this.popFront();
+    }
+
+
+    B front() @property { return _outputBuf[_idx]; }
+    bool empty() @property { return _idx >= this.outputLen; }
+
+
+    void popFront()
+    {
+        if(_idx < this.outputLen - 1){
+            ++_idx;
+            return;
+        }
+
+        _idx = 0;
+        foreach(i, ref e; _inputBuf){
+            if(_r.empty) goto Lempty;
+            e = _r.front;
+            _r.popFront();
+        }
+
+      static if(isDemod)
+        _mod.demodulate(_inputBuf, _outputBuf);
+      else
+        _mod.modulate(_inputBuf, _outputBuf);
+
+        return;
+
+      Lempty:
+        _idx = this.outputLen;
+    }
+
+
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+        typeof(return) dst = new ModulatedRange();
+
+        dst._r = this._r.save;
+        dst._mod = this._mod;
+        dst._inputBuf = this._inputBuf.dup;
+        dst._outputBuf = this._outputBuf.dup;
+        dst._idx = this._idx;
+
+        return dst;
+    }
+  }
+
+    private:
+    R _r;
+    Mod _mod;
+    A[] _inputBuf;
+    B[] _outputBuf;
+    size_t _idx;
 }

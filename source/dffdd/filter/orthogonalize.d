@@ -466,7 +466,11 @@ if(Distorter.inputBlockLength == 1)
     }
 
 
+  static if(is(typeof((){ enum x = Distorter.outputDim; })))
+    enum size_t outputDim = Distorter.outputDim;
+  else
     size_t outputDim() const @property { return _dist.outputDim; }
+
     enum size_t inputBlockLength = 1;
 
 

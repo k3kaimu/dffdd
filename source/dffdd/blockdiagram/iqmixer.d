@@ -5,6 +5,7 @@ import dffdd.blockdiagram.noise;
 import std.random;
 import std.math;
 import std.complex;
+import std.range;
 
 
 auto addIQImbalance(R)(R r, Gain gain, Gain irr)
@@ -41,6 +42,19 @@ struct IQImbalance(R)
     {
         return _r.empty;
     }
+
+
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+        typeof(return) dst = this;
+
+        dst._r = this._r.save;
+
+        return dst;
+    }
+  }
 
 
   private:
@@ -84,6 +98,20 @@ struct PhaseNoise(R)
     {
         return _r.empty;
     }
+
+
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+        typeof(return) dst = this;
+
+        dst._r = this._r.save;
+        dst._noise = this._noise.save;
+
+        return dst;
+    }
+  }
 
 
   private:

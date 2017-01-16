@@ -18,6 +18,7 @@ import carbon.traits;
 import dffdd.filter.state;
 import dffdd.filter.traits;
 import dffdd.utils.fft;
+import dffdd.filter.primitives;
 
 
 void learning(F, C)(ref F filter, in C[] tx, in C[] rx, C[] outputBuf)
@@ -355,12 +356,20 @@ if(isBlockConverter!(Dist, C, C[]))
 
   static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
   {
-    void learningFromTX(R)(R txs)
+    private void learningFromTX(R)(R txs)
     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
     {
         _distorter.learn(txs);
     }
   }
+
+
+    void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
+    {
+        static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+            learningFromTX(digitalTx);
+    }
+
 
   private:
     Dist _distorter;
@@ -429,12 +438,20 @@ if(isBlockConverter!(Dist, C, C[]))
 
   static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
   {
-    void learningFromTX(R)(R txs)
+    private void learningFromTX(R)(R txs)
     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
     {
         _distorter.learn(txs);
     }
   }
+
+
+    void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
+    {
+        static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+            learningFromTX(digitalTx);
+    }
+
 
 
   private:
@@ -443,6 +460,7 @@ if(isBlockConverter!(Dist, C, C[]))
     typeof(genAdaptor(_state))[] _adaptors;
     C[][] _buffer;
 }
+
 
 final class SimpleTimeDomainCascadeHammersteinFilter(C, Dist, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
@@ -505,12 +523,19 @@ if(isBlockConverter!(Dist, C, C[]))
 
   static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
   {
-    void learningFromTX(R)(R txs)
+    private void learningFromTX(R)(R txs)
     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
     {
         _distorter.learn(txs);
     }
   }
+
+
+    void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
+    {
+        static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+            learningFromTX(digitalTx);
+    }
 
   private:
     Dist _distorter;
@@ -519,9 +544,12 @@ if(isBlockConverter!(Dist, C, C[]))
     C[][] _buffer;
 }
 
+
 final class SimpleFrequencyDomainParallelHammersteinFilter(C, Dist, SpecConv, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
+    enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
+
     import dffdd.filter.regenerator : OverlapSaveRegenerator;
 
     this(Dist dist, SpecConv specConv, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS)
@@ -624,7 +652,10 @@ if(isBlockConverter!(Dist, C, C[]))
                             e = _fftedBuffer[p][f];
 
                         // _specConvで送信信号のスペクトルに細工を加える
+                      static if(!is(SpecConv == typeof(null)))
                         _specConv.converter(f)(vX, vZ);
+                      else
+                        vZ[] = vX[];
 
                         _states[f].update(vZ);
                         C error = rxFFTed[f] - _states[f].output;
@@ -638,8 +669,12 @@ if(isBlockConverter!(Dist, C, C[]))
             C[] vG = new C[dim];
             foreach(f; 0 .. _nFFT * _nOS){
                 vH.sliced(dim)[] = _states[f].weight[0];
+
+              static if(!is(SpecConv == typeof(null)))
                 _invSpecConv.converter(f)(vH, vG);
-                //vG[] = vH[];
+              else
+                vG[] = vH[];
+
                 _regenerator.frequencyResponse[f, 0 .. $] = vG.sliced(dim);
             }
         }
@@ -659,40 +694,6 @@ if(isBlockConverter!(Dist, C, C[]))
             immutable symLen = _nOS * (_nFFT + _nCP),
                       cpLen = _nOS * _nCP;
 
-            // 直交変換を行う
-            /*
-            C[][] freqBuf = new C[][](_nOS * _nFFT, dim);
-            C[][] freqBufConv = new C[][](_nOS * _nFFT, dim);
-            foreach(p; 0 .. dim){
-                auto inputs = _fftw.inputs!float,
-                     outputs = _fftw.outputs!float;
-
-                foreach(j; cpLen .. symLen)
-                    inputs[j - cpLen] = _distortedBuffer[j][p];
-                
-                _fftw.fft!float();
-                foreach(j; 0 .. _nOS * _nFFT)
-                    freqBuf[j][p] = outputs[j];
-            }
-
-            _specConv(freqBuf, freqBufConv);
-
-            foreach(p; 0 .. dim){
-                auto inputs = _fftw.inputs!float,
-                     outputs = _fftw.outputs!float;
-
-                foreach(j; 0 .. _nOS * _nFFT)
-                    inputs[j] = freqBufConv[j][p];
-
-                _fftw.ifft!float();
-                foreach(j; 0 .. _nOS * _nFFT)
-                    _distortedBuffer[j + cpLen][p] = outputs[j];
-                
-                // CPをつける
-                foreach(j; 0 .. cpLen)
-                    _distortedBuffer[j][p] = outputs[$ - cpLen + j];
-            }*/
-
             _regenerator.apply(_distortedBuffer, ers);
             foreach(e; ers){
                 assert(!isNaN(e.re));
@@ -708,13 +709,18 @@ if(isBlockConverter!(Dist, C, C[]))
     Dist distorter() @property { return _distorter; }
 
 
-//   static if(is(typeof((SpecConv specConv, C[][][] txs){ specConv.learn(txs); })))
-//   {
-    void learningFromTX(R)(R txs)
+    private void learningFromTX(R)(R txs)
     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
     {
         immutable size_t dim = _distorter.outputDim;
 
+      static if(doesDistHaveLearn)
+      {
+        _distorter.learn(txs.save);
+      }
+
+      static if(!is(SpecConv == typeof(null)))
+      {
         // TODO
         C[][] xs;
         foreach(e; txs){
@@ -749,13 +755,17 @@ if(isBlockConverter!(Dist, C, C[]))
         writeln(_specConv.converter(1).convertMatrix);
         _invSpecConv = _specConv.inverter;
         writeln(_invSpecConv.converter(1).convertMatrix);
-        // _invSpecConv = _specConv;
-
-        // import std.stdio;
-        // _distorter.learn(txs);
-        // writeln(_distorter.converter.convertMatrix);
+      }
     }
-//   }
+
+
+    /**
+
+    */
+    void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
+    {
+        learningFromTX(digitalTx);
+    }
 
 
   private:
@@ -772,10 +782,11 @@ if(isBlockConverter!(Dist, C, C[]))
 }
 
 
-
 final class SimpleFrequencyDomainCascadeHammersteinFilter(C, Dist, SpecConv, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
+    enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
+
     import dffdd.filter.regenerator : OverlapSaveRegenerator;
 
     this(Dist dist, SpecConv specConv, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS)
@@ -884,8 +895,10 @@ if(isBlockConverter!(Dist, C, C[]))
                             e = _fftedBuffer[p][f];
 
                         // _specConvで送信信号のスペクトルに細工を加える
+                      static if(!is(SpecConv == typeof(null)))
                         _specConv.converter(f)(vX, vZ);
-                        // vZ[] = vX[];
+                      else
+                        vZ[] = vX[];
 
                         C error = rxFFTed[f];
                         foreach(p; 0 .. dim){
@@ -903,11 +916,18 @@ if(isBlockConverter!(Dist, C, C[]))
             foreach(f; 0 .. _nFFT * _nOS){
                 foreach(p; 0 .. dim)
                     vH[p] = _states[f][p].weight[0, 0];
+
+              static if(!is(SpecConv == typeof(null)))
+              {
                 _invSpecConv.converter(f)(vH, vG);
                 foreach(p; 0 .. dim)
                     _regenerator.frequencyResponse[f, p] = vG[p];
-                // foreach(p; 0 .. dim)
-                //     _regenerator.frequencyResponse[f, p] = vH[p];
+              }
+              else
+              {
+                foreach(p; 0 .. dim)
+                    _regenerator.frequencyResponse[f, p] = vH[p];
+              }
             }
         }
 
@@ -938,13 +958,20 @@ if(isBlockConverter!(Dist, C, C[]))
     Dist distorter() @property { return _distorter; }
 
 
-//   static if(is(typeof((SpecConv specConv, C[][][] txs){ specConv.learn(txs); })))
-//   {
+  //   static if(is(typeof((SpecConv specConv, C[][][] txs){ specConv.learn(txs); })))
+  //   {
     void learningFromTX(R)(R txs)
     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
     {
         immutable size_t dim = _distorter.outputDim;
 
+      static if(doesDistHaveLearn)
+      {
+        _distorter.learn(txs);
+      }
+
+      static if(!is(SpecConv == typeof(null)))
+      {
         // TODO
         C[][] xs;
         foreach(e; txs){
@@ -984,8 +1011,15 @@ if(isBlockConverter!(Dist, C, C[]))
         // import std.stdio;
         // _distorter.learn(txs);
         // writeln(_distorter.converter.convertMatrix);
+      }
     }
-//   }
+  //   }
+
+
+    void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
+    {
+        learningFromTX(digitalTx.map!(x => cast(C)x));
+    }
 
 
   private:
@@ -999,4 +1033,119 @@ if(isBlockConverter!(Dist, C, C[]))
     typeof(genAdaptor(0, true, 0, _states[0][0]))[][] _adaptors;
     C[][] _distortedBuffer;
     C[][] _fftedBuffer;
+}
+
+
+final class SimpleFrequencyDomainCascadeHammersteinFilterType2(C, Dist, alias genAdaptor)
+{
+    enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
+
+
+    this(Dist dist, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS)
+    {
+        _distorter = dist;
+
+        foreach(p; aliasSeqOf!(iota(0, Dist.outputDim))){
+            _filters[p] = new typeof(_filters[p])(new LinearDist(), null, subcarrierMap, nFFT, nCP, nOS);
+
+            foreach(i; 0 .. nFFT * nOS){
+                auto s = _filters[p]._states[i];
+                _filters[p]._adaptors[i] = genAdaptor(i, subcarrierMap[i], p, s);
+            }
+        }
+
+        _inputBuf = new C[][](Dist.outputDim, this.inputBlockLength);
+        _errorBuf = new C[](this.inputBlockLength);
+    }
+
+
+    size_t inputBlockLength() @property
+    {
+        return _filters[0].inputBlockLength;
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(input.length % this.inputBlockLength == 0);
+        assert(input.length == desired.length);
+        assert(input.length == errors.length);
+    }
+    body{
+        immutable blen = this.inputBlockLength;
+
+        foreach(i; 0 .. input.length / blen){
+
+            auto iblock = input[i*blen .. (i+1)*blen];
+            auto dblock = desired[i*blen .. (i+1)*blen];
+            auto eblock = errors[i*blen .. (i+1)*blen];
+
+            // 直交化処理
+            foreach(j; 0 .. blen)
+            {
+                C[Dist.outputDim] outs_;
+                auto tmpBuf = outs_[];
+                _distorter(iblock[j], tmpBuf);
+                foreach(p; 0 .. Dist.outputDim)
+                    _inputBuf[p][j] = tmpBuf[p];
+            }
+
+            _errorBuf[] = dblock[];
+
+            foreach(p; aliasSeqOf!(iota(0, Dist.outputDim))){
+                _filters[p].apply!(doLearning)(_inputBuf[p], _errorBuf, eblock);
+                _errorBuf[] = eblock[];
+            }
+        }
+    }
+
+
+    Dist distorter() @property { return _distorter; }
+
+
+    private void learningFromTX(R)(R txs)
+    if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+    {
+        immutable size_t dim = _distorter.outputDim;
+
+      static if(doesDistHaveLearn)
+      {
+        _distorter.learn(txs.save);
+      }
+    }
+
+
+    void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
+    {
+        learningFromTX(digitalTx.map!(x => cast(C)x));
+    }
+
+
+  private:
+    Dist _distorter;
+    FilterTypes!(Dist.outputDim) _filters;
+    C[][] _inputBuf;
+    C[] _errorBuf;
+
+  static
+  {
+    // template genAdaptorImpl(size_t p)
+    // {
+    //     auto genAdaptorImpl(State)(size_t fIdx, bool isUsedSC, State state)
+    //     {
+    //         return ;
+    //     }
+    // }
+
+    alias LinearDist = Distorter!(C, x => x);
+
+    template FilterTypes(size_t P)
+    {
+      static if(P == 0)
+        alias FilterTypes = AliasSeq!();
+      else
+        alias FilterTypes = AliasSeq!(FilterTypes!(P-1),
+                                      SimpleFrequencyDomainParallelHammersteinFilter!(C, LinearDist, typeof(null), (f, b, s) => typeof(genAdaptor(f, b, P-1, s)).init));
+    }
+  }
 }

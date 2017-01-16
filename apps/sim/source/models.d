@@ -276,29 +276,35 @@ auto connectToModulator(R, Mod)(R r, Mod modObj, const(bool)* swExchange, Model 
 {
     auto swModObj = modObj.makeOFDMSymbolExchanger(swExchange, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
 
-    return r
-    .splitN(swModObj.symInputLength)
-    .tmap!(reverseArgs!mod, [0])(swModObj)
-    .joiner()
-    .toWrappedRange
-    ;
+    // return r
+    // .splitN(swModObj.symInputLength)
+    // .tmap!(reverseArgs!mod, [0])(swModObj)
+    // .joiner()
+    // .toWrappedRange
+    // ;
+
+    return new ModulatedRange!(R, typeof(swModObj))(r, swModObj);
 }
 
 
 auto connectToDemodulator(R, Mod)(R r, Mod modObj/*, Bits bits*/, Model)
+// if(isForwardRange!R)
 {
-    static
-    Complex!float makeCpx(F)(Complex!F r) { return Complex!float(r.re, r.im); } 
+//    static
+//    Complex!float makeCpx(F)(Complex!F r) { return Complex!float(r.re, r.im); } 
 
+    return new ModulatedRange!(R, Mod, true)(r, modObj);
 
+/*
     return r
     .map!makeCpx
     .splitN(modObj.symOutputLength)
-    //.connectToOFDMEqualizer(modObj, bits)
     .tmap!(reverseArgs!demod, [0])(modObj)
     .joiner()
     .toWrappedRange
     ;
+*/
+    
 }
 
 
@@ -803,7 +809,7 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t numOfBasisFuncs = Bas
 }
 
 
-auto makeFrequencyHammersteinFilter(string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
+auto makeFrequencyHammersteinFilter(Flag!"isOrthInTime" isOrthInTime, Flag!"isOrthInFreq" isOrthInFreq, string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
 {
     alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
 
@@ -826,9 +832,16 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t numOfBasisFuncs = B
     alias C = Complex!float;
     alias Dist = Distorter!(C, BFs);
     alias GS = GramSchmidtOBFFactory!C;
-    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
 
+  static if(isOrthInTime)
+    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
+  else
+    auto dist = new Dist();
+
+  static if(isOrthInFreq)
     auto specConv = new OrthogonalizedSpectrumConverter!(C, GS)(new GS(numOfBasisFuncs), numOfBasisFuncs, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
+  else
+    typeof(null) specConv = null;
 
    return new SimpleFrequencyDomainParallelHammersteinFilter!(
            //(i, bIsSC, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
@@ -851,11 +864,11 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t numOfBasisFuncs = B
 }
 
 
-auto makeFrequencyCascadeHammersteinFilter(string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
+auto makeFrequencyCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
 {
     alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
 
-   auto makeOptimizer(State)(State state)
+   auto makeOptimizer(State)(size_t p, State state)
    {
        immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
@@ -864,7 +877,7 @@ auto makeFrequencyCascadeHammersteinFilter(string optimizer, size_t numOfBasisFu
      else static if(optimizer == "RLS")
        return makeRLSAdapter(state, 0.5, 1E-7).trainingLimit(model.learningSymbols);
      else static if(optimizer == "LS")
-       return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols);
+       return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols).ignoreHeadSamples(p * model.learningSymbols);
    }
 
    //auto distorter = Distorter!BasisFunctions();
@@ -874,22 +887,29 @@ auto makeFrequencyCascadeHammersteinFilter(string optimizer, size_t numOfBasisFu
     alias C = Complex!float;
     alias Dist = Distorter!(C, BFs);
     alias GS = GramSchmidtOBFFactory!C;
-    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
 
+//   static if(isOrthogonalized)
+    // auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
+//   else
+    auto dist = new Dist();
+
+    // auto dist = new Dist();
     auto specConv = new OrthogonalizedSpectrumConverter!(C, GS)(new GS(numOfBasisFuncs), numOfBasisFuncs, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
 
-   return new SimpleFrequencyDomainCascadeHammersteinFilter!(
+   return new SimpleFrequencyDomainCascadeHammersteinFilterType2!(
            //(i, bIsSC, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
            //(i, bIsSC, s) => makeRLSAdapter(s, 0.97, 1E-7),//.trainingLimit(model.learningSymbols * model.learningCount),
            //(i, bIsSC, s) => lmsAdapter(s, 0.4, 1024, 0.5),
            Complex!float,
            typeof(dist),
-           typeof(specConv),
-           (i, bIsSC, p, s) => makeOptimizer(s),
+        //    typeof(null),
+        //    typeof(specConv),
+           (i, bIsSC, p, s) => makeOptimizer(p, s),
         //    typeof(specConv),
        )(
            dist,
-           specConv,
+        //    null,
+        //    specConv,
            model.ofdm.subCarrierMap,
         //    model.firFilter.taps,
            model.ofdm.numOfFFT,

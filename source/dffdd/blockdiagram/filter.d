@@ -35,17 +35,7 @@ struct FIRFilter
             _r = r;
             _coefs = coefs.dup;
             _regs = (new E[coefs.length]).cycle();
-            /*
-            foreach(i; 0 .. coefs.length-1){
-                if(_r.empty){
-                    _empty = true;
-                    return;
-                }
 
-                _regs.popFront();
-                _regs[_coefs.length - 1] = _r.front;
-                _r.popFront();
-            }*/
             foreach(i; 0 .. coefs.length)
                 _regs[i] = cast(F)0;
 
@@ -72,9 +62,25 @@ struct FIRFilter
         }
 
 
+      static if(isForwardRange!R)
+      {
+        typeof(this) save() @property
+        {
+            typeof(return) dst = this;
+
+            dst._r = this._r.save;
+            dst._regs = (new E[this._coefs.length]).cycle;
+            foreach(i; 0 .. this._coefs.length)
+                dst._regs[i] = this._regs[i];
+
+            return dst;
+        }
+      }
+
+
       private:
         R _r;
-        const(C)[] _coefs;
+        immutable(C)[] _coefs;
         typeof(cycle(new E[1])) _regs;
         F _front;
         bool _empty;
@@ -115,6 +121,17 @@ struct FIRFilter
 
             _front = _x0 + _x1*_coef1;
         }
+
+
+      static if(isForwardRange!R)
+      {
+        typeof(this) save() @property
+        {
+            typeof(return) dst = this;
+
+            dst._r = this._r.save;
+        }
+      }
 
 
       private:
@@ -165,6 +182,19 @@ struct IIRFilter
             _front = _r.front + _coef1 * _front;
             _r.popFront();
         }
+
+
+      static if(isForwardRange!R)
+      {
+        typeof(this) save() @property
+        {
+            typeof(return) dst = this;
+
+            dst._r = this._r.save;
+            return dst;
+        }
+      }
+
 
       private:
         R _r;

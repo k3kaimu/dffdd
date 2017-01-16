@@ -56,6 +56,19 @@ struct Quantizer(R)
     }
 
 
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+        typeof(return) dst = this;
+
+        dst._r = this._r.save;
+
+        return dst;
+    }
+  }
+
+
 
   private:
     R _r;
@@ -113,6 +126,19 @@ struct SimpleQuantizer(R)
     bool empty() @property
     {
         return _r.empty;
+    }
+  }
+
+
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+        typeof(return) dst = this;
+
+        dst._r = this._r.save;
+
+        return dst;
     }
   }
 

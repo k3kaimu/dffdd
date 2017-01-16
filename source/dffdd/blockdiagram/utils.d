@@ -17,10 +17,13 @@ template connectTo(alias Block)
         return Block(r, params);
       else static if(is(typeof((){ auto b = Block.makeBlock(r, params); })))    // Block has .makeBlock
         return Block.makeBlock(r, params);
+      else static if(is(typeof((){ auto b = Block!R(r, params); })))
+        return Block!R(r, params);
       else static if(is(typeof((){ auto b = new Block!R(r, params); })))
         return new Block!R(r, params);                                          // Block is class
       else
-        return Block!R(r, params);
+        static assert(0);
+        // return Block!R(r, params);
     }
 }
 
@@ -318,4 +321,30 @@ unittest
 }
 
 
-std.range.interfaces.InputRange!(ElementType!R) toWrappedRange(R)(R r){ return r.inputRangeObject; }
+ForwardRange!(ElementType!R) toWrappedRange(R)(R r)
+if(isForwardRange!R)
+{
+  static if(is(R : typeof(return)))
+    return r;
+  else
+    return inputRangeObject(r);
+}
+
+
+// final class ForwardRangeObject(R) : std.range.interfaces.ForwardRange!(ElementType!R)
+// {
+//     this(R r)
+//     {
+//         _r = r;
+//     }
+
+//     ElementType!R front() @property { return _r.front; }
+//     ElementType!R moveFront() { return _r.moveFront(); }
+//     void popFront() { _r.popFront(); }
+//     bool empty() @property { return _r.empty; }
+//     ForwardRangeObject!R save() @property { return new ForwardRangeObject(_r.save); }
+
+//   private:
+//     R _r;
+// }
+

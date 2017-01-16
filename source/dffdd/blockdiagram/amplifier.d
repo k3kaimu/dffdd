@@ -3,6 +3,7 @@ module dffdd.blockdiagram.amplifier;
 import std.traits;
 import std.range;
 import std.math;
+import std.complex;
 
 import dffdd.utils.unit;
 
@@ -97,6 +98,19 @@ struct VGA(R)
     }
 
 
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+        typeof(return) dst = this;
+
+        dst._r = this._r.save;
+
+        return dst;
+    }
+  }
+
+
   private:
     R _r;
     real _gain1V;
@@ -113,7 +127,6 @@ struct PowerControlAmplifier
     }
 
 
-    static
     struct PowerControlAmplifierImpl(R)
     {
         this(R r, Voltage op, size_t avgSize)
@@ -160,7 +173,7 @@ struct PowerControlAmplifier
                     if(_sumPower == 0)
                         _alpha = _alpha;
                     else
-                        _alpha  = _alpha / 2 + sqrt(_power / (_sumPower / _avgSize)) / 2;
+                        _alpha = _alpha / 2 + sqrt(_power / (_sumPower / _avgSize)) / 2;
 
                     ++_avgCount;
                 }
@@ -169,9 +182,39 @@ struct PowerControlAmplifier
                 _cnt = 0;
             }
 
-            _front = _r.front;
+            _front = this._r.front;
+
             _r.popFront();
+
+            // import std.stdio;
+            // if(_cnt < 10 && _avgCount == 0)
+            //     writeln(this._r.front, this.tupleof[1 .. $], cast(void*)(this._r), " -- ", cast(void*)&(this._r.front));
         }
+
+
+      static if(isForwardRange!R)
+      {
+        typeof(this) save() @property
+        {
+            typeof(return) dst = this;
+
+            // import std.stdio;
+            dst._r = this._r.save;
+
+            // foreach(i; 0 .. 10){
+            //     writefln("%s : %s", this.front, this._r.front);
+            //     writefln("%s : %s", dst.front, dst._r.front);
+            //     writeln(this.tupleof[1 .. $], cast(void*)(this._r));
+            //     writeln(dst.tupleof[1 .. $], cast(void*)(dst._r));
+            //     writeln();
+
+            //     this.popFront();
+            //     dst.popFront();
+            // }
+
+            return dst;
+        }
+      }
 
 
       private:
@@ -186,4 +229,3 @@ struct PowerControlAmplifier
         real _sumPower;
     }
 }
-
