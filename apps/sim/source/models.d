@@ -809,113 +809,80 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t numOfBasisFuncs = Bas
 }
 
 
-auto makeFrequencyHammersteinFilter(Flag!"isOrthInTime" isOrthInTime, Flag!"isOrthInFreq" isOrthInFreq, string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
+auto makeFrequencyHammersteinFilter(string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
 {
     alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
 
-   auto makeOptimizer(State)(State state)
-   {
-       immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    auto makeOptimizer(State)(State state)
+    {
+        immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
-     static if(optimizer == "LMS")
-       return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
-     else static if(optimizer == "RLS")
-       return makeRLSAdapter(state, 0.97, 1E-7).trainingLimit(model.learningSymbols);
-     else static if(optimizer == "LS")
-       return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols);
-   }
-
-   //auto distorter = Distorter!BasisFunctions();
-    // auto distorter = new Distorter!(Complex!float, BasisFunctions)();
-   //auto specConv = new BasisSpectrumConverter!(Complex!float, BasisFunctions.length)(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
+      static if(optimizer == "LMS")
+        return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "RLS")
+        return makeRLSAdapter(state, 0.97, 1E-7).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "LS")
+        return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols);
+    }
 
     alias C = Complex!float;
     alias Dist = Distorter!(C, BFs);
-    alias GS = GramSchmidtOBFFactory!C;
 
-  static if(isOrthInTime)
-    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
-  else
     auto dist = new Dist();
 
-  static if(isOrthInFreq)
-    auto specConv = new OrthogonalizedSpectrumConverter!(C, GS)(new GS(numOfBasisFuncs), numOfBasisFuncs, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
-  else
-    typeof(null) specConv = null;
-
-   return new SimpleFrequencyDomainParallelHammersteinFilter!(
-           //(i, bIsSC, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
-           //(i, bIsSC, s) => makeRLSAdapter(s, 0.97, 1E-7),//.trainingLimit(model.learningSymbols * model.learningCount),
-           //(i, bIsSC, s) => lmsAdapter(s, 0.4, 1024, 0.5),
-           Complex!float,
-           typeof(dist),
-           typeof(specConv),
-           (i, bIsSC, s) => makeOptimizer(s),
-        //    typeof(specConv),
-       )(
-           dist,
-           specConv,
-           model.ofdm.subCarrierMap,
-        //    model.firFilter.taps,
-           model.ofdm.numOfFFT,
-           model.ofdm.numOfCP,
-           model.ofdm.scaleOfUpSampling
-       );
+    return new SimpleFrequencyDomainParallelHammersteinFilter!(
+            Complex!float,
+            typeof(dist),
+            (i, bIsSC, s) => makeOptimizer(s),
+        )(
+            dist,
+            model.ofdm.subCarrierMap,
+            model.ofdm.numOfFFT,
+            model.ofdm.numOfCP,
+            model.ofdm.scaleOfUpSampling
+        );
 }
 
 
-auto makeFrequencyCascadeHammersteinFilter(bool isOrthogonalized, string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
+auto makeFrequencyDCMHammersteinFilter(size_t type, Flag!"isParallel" isParallel, string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
+if(type == 1 || type == 2)
 {
     alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
 
-   auto makeOptimizer(State)(size_t p, State state)
-   {
-       immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+    auto makeOptimizer(State)(size_t p, State state)
+    {
+        immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
-     static if(optimizer == "LMS")
-       return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
-     else static if(optimizer == "RLS")
-       return makeRLSAdapter(state, 0.5, 1E-7).trainingLimit(model.learningSymbols);
-     else static if(optimizer == "LS")
-       return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols).ignoreHeadSamples(p * model.learningSymbols);
-   }
-
-   //auto distorter = Distorter!BasisFunctions();
-    // auto distorter = new Distorter!(Complex!float, BasisFunctions)();
-   //auto specConv = new BasisSpectrumConverter!(Complex!float, BasisFunctions.length)(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
+      static if(optimizer == "LMS")
+        return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "RLS")
+        return makeRLSAdapter(state, 0.5, 1E-7).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "LS")
+        return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningCount * model.learningSymbols).ignoreHeadSamples(p * model.learningSymbols);
+    }
 
     alias C = Complex!float;
     alias Dist = Distorter!(C, BFs);
-    alias GS = GramSchmidtOBFFactory!C;
 
-//   static if(isOrthogonalized)
-    // auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
-//   else
     auto dist = new Dist();
 
-    // auto dist = new Dist();
-    auto specConv = new OrthogonalizedSpectrumConverter!(C, GS)(new GS(numOfBasisFuncs), numOfBasisFuncs, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
+  static if(type == 1)
+    alias FilterType = SimpleFrequencyDomainDCMHammersteinFilterType1;
+  else
+    alias FilterType = SimpleFrequencyDomainDCMHammersteinFilterType2; 
 
-   return new SimpleFrequencyDomainCascadeHammersteinFilterType2!(
-           //(i, bIsSC, s) => lsAdapter(s, model.learningSymbols).trainingLimit(model.learningSymbols * model.learningCount),
-           //(i, bIsSC, s) => makeRLSAdapter(s, 0.97, 1E-7),//.trainingLimit(model.learningSymbols * model.learningCount),
-           //(i, bIsSC, s) => lmsAdapter(s, 0.4, 1024, 0.5),
-           Complex!float,
-           typeof(dist),
-        //    typeof(null),
-        //    typeof(specConv),
-           (i, bIsSC, p, s) => makeOptimizer(p, s),
-        //    typeof(specConv),
-       )(
-           dist,
-        //    null,
-        //    specConv,
-           model.ofdm.subCarrierMap,
-        //    model.firFilter.taps,
-           model.ofdm.numOfFFT,
-           model.ofdm.numOfCP,
-           model.ofdm.scaleOfUpSampling
-       );
+    return new FilterType!(
+            Complex!float,
+            typeof(dist),
+            (i, bIsSC, p, s) => makeOptimizer(p, s),
+            isParallel
+        )(
+            dist,
+            model.ofdm.subCarrierMap,
+            model.ofdm.numOfFFT,
+            model.ofdm.numOfCP,
+            model.ofdm.scaleOfUpSampling
+        );
 }
 
 

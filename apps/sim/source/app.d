@@ -222,11 +222,25 @@ void mainImpl(string filterType)(Model model, string resultDir)
 //     auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
 //   else static if(filterStructure.endsWith("CWL1H"))
 //     auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("DCMFHF"))
+  {
+      static assert(!isOrthogonalized);
+      enum string filterOption = filterStructure[0 .. $-6];
+
+      static assert(filterOption.canFind('1') || filterOption.canFind('2'));
+      static assert(filterOption.canFind('P') || filterOption.canFind('C'));
+
+      enum size_t type = filterOption.canFind('1') ? 1 : 2;
+      enum Flag!"isParallel" isParallel = filterOption.canFind('P') ? Yes.isParallel : No.isParallel;
+
+      auto filter = makeFrequencyDCMHammersteinFilter!(type, isParallel, filterOptimizer)(model);
+  }
   else static if(filterStructure.endsWith("CFHF"))
-    auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
-  else static if(filterStructure.endsWith("FHF"))
-    auto filter = makeFrequencyHammersteinFilter!(No.isOrthInTime, Yes.isOrthInFreq, filterOptimizer)(model);
-  else static if(filterStructure.endsWith("WL"))
+    static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
+  else static if(filterStructure.endsWith("FHF")){
+    static assert(!isOrthogonalized);
+    auto filter = makeFrequencyHammersteinFilter!(filterOptimizer)(model);
+  }else static if(filterStructure.endsWith("WL"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 2)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
@@ -261,9 +275,9 @@ void mainImpl(string filterType)(Model model, string resultDir)
 //         writeln("Training of the distorter is finished.");
 //     }
 //   }
-    filter.preLearning(txReplica.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol),
-                       paDirect.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol),
-                       received.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol));
+    filter.preLearning(txReplica.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol).map!(a => cast(Complex!float)a),
+                       paDirect.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol).map!(a => cast(Complex!float)a),
+                       received.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol).map!(a => cast(Complex!float)a));
 
     {
         //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -468,7 +482,7 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "CFHF_LS",
+    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "FHF_LS", "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
         foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
@@ -476,7 +490,7 @@ void mainJob()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(80, 85, 5)) foreach(txp; iota(15, 18, 3))
+            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 18, 3))
             {
                 Model model;
                 model.SNR = 20;
@@ -505,20 +519,15 @@ void mainJob()
                 // ベースバンド信号波形の出力
                 model.outputWaveform = false;
 
-                model.channel.taps = 1;
+                model.channel.taps = 64;
                 model.firFilter.taps = 64;
 
                 model.outputBER = false;
 
-              static if(methodName.split("_")[0].endsWith("DCM"))
+              static if(methodName.canFind("DCM"))
               {
-                if(learningSymbols == 10){
-                    model.learningSymbols = 4;
-                    model.learningCount = 3;
-                }else{
-                    model.learningSymbols = 4;
-                    model.learningCount = 15;
-                }
+                model.learningSymbols = 10;
+                model.learningCount = 3;
               }
               else
               {
