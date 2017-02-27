@@ -58,6 +58,7 @@ import dffdd.dsp.statistics;
 import constant;
 import models;
 import snippet;
+import sigsim;
 
 
 real qfunc(real x) { return 0.5 * erfc(x / SQRT2); }
@@ -143,6 +144,7 @@ auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Mo
 void mainImpl(string filterType)(Model model, string resultDir)
 {
     immutable bool* alwaysFalsePointer = new bool(false);
+    immutable bool* alwaysTruePointer = new bool(true);
 
     immutable ofdmModSignalPower = (){
         auto _modOFDMTest = modOFDM(model);
@@ -151,60 +153,11 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
     mkdirRecurse(resultDir);
 
-    bool* switchDS = new bool(false),
-          switchSI = new bool(true);
-
-    bool* switchSwapping = new bool(false);
-
-    auto noise = thermalNoise(model);
-
-    ForwardRange!(Complex!real) received;
-    ForwardRange!(Complex!real) paDirect;
-    ForwardRange!(Complex!real) txReplica;
-    {
-        auto desired = desiredRandomBits(model).connectToModulator(modOFDM(model), alwaysFalsePointer, model).map!"a*1.0L".psdSaveTo("psd_desired_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useDTXIQ)  desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useDTXPN)  desired = desired.connectToTXIQPhaseNoise(model).psdSaveTo("psd_desired_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useDTXPA)  desired = desired.connectToPowerAmplifier(model).psdSaveTo("psd_desired_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        // if(model.useDTXIQ2) desired = desired.connectToTXIQMixer(model).psdSaveTo("psd_desired_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
-                         .psdSaveTo("psd_desired_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-
-        auto selfInterference = siRandomBits(model).connectToModulator(modOFDM(model), switchSwapping, model).map!"a*1.0L".psdSaveTo("psd_SI_afterMD.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        txReplica = selfInterference.save;
-        if(model.useSTXIQ)  selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSTXPN)  selfInterference = selfInterference.connectToTXIQPhaseNoise(model).psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSTXPA)  selfInterference = selfInterference.connectToPowerAmplifier(model).psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSTXIQ2) selfInterference = selfInterference.connectToTXIQMixer(model).psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        paDirect = selfInterference.save;
-        selfInterference = selfInterference/*.drop(model.ofdm.numOfSamplesOf1Symbol/2)*/.connectToMultiPathChannel(model).connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR + model.lna.NF/* + 4.3 - 10*log10(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier)*/).dB.gain^^2).sqrt.V)
-                                           .psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-
-        received = desired.connectToSwitch(switchDS)
-            .add(selfInterference.connectToSwitch(switchSI))
-            /*.connectToAWGN(model)*/
-            .add(thermalNoise(model).psdSaveTo("psd_thermal_noise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model))
-            .psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-
-        if(model.useSRXLN) received = received.connectToLNA(model).psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSRXIQ) received = received.connectToRXIQMixer(model).psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        if(model.useSRXQZ) received = received.connectToQuantizer(model);
-    }
-
-    // モデルの安定化
-    *switchDS = false;
-    *switchSI = true;
-    received.popFrontN(model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
-    txReplica.popFrontN(model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
-    paDirect.popFrontN(model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
+    auto signals = makeSimulatedSignals(model, resultDir);
+    signals.trainAGC();
+    writeln("END TRAINING");
 
     // フィルタの学習
-    *switchDS = false;
-    *switchSI = true;
-    auto recvs = new Complex!float[model.blockSize],
-         refrs = new Complex!float[model.blockSize],
-         outps = new Complex!float[model.blockSize];
-
   enum string filterStructure = filterType.split("_")[0];
   enum string filterOptimizer = filterType.split("_")[1];
 
@@ -241,54 +194,33 @@ void mainImpl(string filterType)(Model model, string resultDir)
     static assert(!isOrthogonalized);
     auto filter = makeFrequencyHammersteinFilter!(filterOptimizer)(model);
   }else static if(filterStructure.endsWith("WL"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 2)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("L"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("L"))
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, true)(modOFDM(model), model);
   else
     static assert("Cannot identify filter model.");
 
-//   static if(is(typeof(filter.learningFromTX([Complex!float.init]))))
-//   {
-//     if(model.orthogonalizer.enabled && model.orthogonalizer.numOfTrainingSymbols != 0)
-//     {
-//         static if(filterStructure.endsWith("FHF")){
-//             writeln("SWAP");
-//             *switchSwapping = true;
-//         }
+    // フィルタの学習
+    auto recvs = new Complex!float[model.blockSize],
+         refrs = new Complex!float[model.blockSize],
+         outps = new Complex!float[model.blockSize];
 
-//         // 学習系列の生成
-//         auto orthTrainReplica = txReplica.save;
-//         Complex!float[] txs;
-//         foreach(i; 0 .. model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol){
-//             static if(filterStructure.endsWith("FHF"))
-//             if(i >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol){
-//                 if(*switchSwapping) writeln("END SWAP");
-//                 *switchSwapping = false;
-//             }
+    {
+        assert(model.rndSeed != 893);
 
-//             txs ~= orthTrainReplica.front;
-//             orthTrainReplica.popFront();
-//         }
+        filter.preLearning(model, (Model m){
+            m.rndSeed = 893;
 
-//         // 学習させる
-//         filter.learningFromTX(txs);
-//         writeln("Training of the distorter is finished.");
-//     }
-//   }
-    filter.preLearning(txReplica.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol).map!(a => cast(Complex!float)a),
-                       paDirect.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol).map!(a => cast(Complex!float)a),
-                       received.save.take(model.orthogonalizer.numOfTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol).map!(a => cast(Complex!float)a));
+            auto ss = makeSimulatedSignals(m);
+            ss.trainAGC();
+
+            return ss;
+        });
+    }
 
     {
         //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
         //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
-
-      static if(filterStructure.endsWith("FHF"))
-      {
-        *switchSwapping = true;
-        //scope(exit) *switchSwapping = false;
-      }
-
 
         auto fftObj = new Fft(model.blockSize.nextPowOf2(0));
 
@@ -301,20 +233,15 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
         foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
-          static if(filterStructure.endsWith("FHF"))
-          {
-            if(blockIdx >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
-                *switchSwapping = false;
-          }
-
-
-            foreach(i; 0 .. model.blockSize){
-                recvs[i] = (a => complex(a.re, a.im))(received.front);
-                refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
-
-                received.popFront();
-                txReplica.popFront();
+            static if(filterStructure.endsWith("FHF"))
+            {
+                if(blockIdx >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
+                    signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
+                else
+                    signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(refrs, recvs);
             }
+            else
+                signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
 
             filter.apply!(Yes.learning)(refrs, recvs, outps);
             //filter.apply!false(refrs, recvs, outps);
@@ -354,13 +281,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
         foreach(blockIdxo; 0 .. 1024)
         {
-            foreach(i; 0 .. model.blockSize){
-                recvs[i] = (a => complex(a.re, a.im))(received.front);
-                refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
-
-                received.popFront();
-                txReplica.popFront();
-            }
+            signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
 
             filter.apply!(No.learning)(refrs, recvs, outps);
 
@@ -383,10 +304,6 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
     if(model.outputBER)
     {
-        // BER count
-        *switchDS = true;
-        *switchSI = model.withSI;
-
         size_t inpSize, outSize;
         {
             auto mod = modOFDM(model);
@@ -394,20 +311,16 @@ void mainImpl(string filterType)(Model model, string resultDir)
             outSize = mod.symOutputLength;
         }
 
+        // 復調器の学習に必要
         immutable numOfTrainingBits = model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / outSize * inpSize;
-        immutable numOfTrainingSample2 = numOfTrainingBits / inpSize * outSize;
 
-        received.popFrontN(numOfTrainingSample2);
-        txReplica.popFrontN(numOfTrainingSample2);
+        auto refBits = signals.desiredBaseband.save.connectToDemodulator(modOFDM(model), model);
 
         real berResult = -1;
         auto berCounter = makeInstrument(delegate void (FiberRange!(Complex!float) r){
             auto bits = r
             .connectTo!PowerControlAmplifier(ofdmModSignalPower.sqrt.V)
             .connectToDemodulator(modOFDM(model), model);
-
-            auto refBits = desiredRandomBits(model);
-            refBits.popFrontN(numOfTrainingBits);
 
             // 慣らし運転
             bits.popFrontN(numOfTrainingBits);
@@ -423,13 +336,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         while(berResult == -1){
             ++loopCount;
 
-            foreach(i; 0 .. model.blockSize){
-                recvs[i] = (a => complex(a.re, a.im))(received.front);
-                refrs[i] = (a => complex(a.re, a.im))(txReplica.front);
-
-                received.popFront();
-                txReplica.popFront();
-            }
+            signals.fillBuffer!(["txBaseband", "received"])(refrs, recvs);
 
             if(model.withSIC && model.withSI)
                 filter.apply!(No.learning)(refrs, recvs, outps);
@@ -453,24 +360,12 @@ void mainImpl(string filterType)(Model model, string resultDir)
         File file = File(buildPath(resultDir, "ber.csv"), "w");
         file.writeln(berResult);
 
-        writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR, model.INR, berResult);
+        writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR.dB, model.INR.dB, berResult);
     }
 
     // ノイズ電力
     auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
-
-    //model.lna.GAIN = 0;
-    //received = thermalNoise(model).connectToLNA(model).toWrappedRange;
-
-    *switchSI = false;
-    *switchDS = false;
-    received.popFrontN(1024);
-
-    foreach(blockIdxo; 0 .. 64 * 1024)
-    {
-        .put(noisePSD, cast(Complex!float)received.front);
-        received.popFront();
-    }
+    .put(noisePSD, signals.noise.save.map!(a => Complex!float(a)).take(64*1024));
 }
 
 
@@ -479,10 +374,10 @@ void mainJob()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    auto taskList = new MultiTaskList();
+    // auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "FHF_LS", "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",
+    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "FHF_LS"/*, "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
         foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
@@ -490,12 +385,15 @@ void mainJob()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 18, 3))
+            foreach(inr; iota(40, 45, 5)) foreach(txp; iota(15, 18, 3))
             {
                 Model model;
-                model.SNR = 20;
-                model.INR = inr;
-                model.pa.TX_POWER = txp;
+                model.SNR = 11.dB;
+                model.INR = inr.dB;
+                model.pa.TX_POWER = txp.dBm;
+
+                // model.withSI = false;
+                // model.withSIC = false;
 
                 // 再現する非線形性の選択
                 model.useDTXIQ = false;
@@ -558,12 +456,14 @@ void mainJob()
                 dirs ~= "TXP%s_inr%s_%s%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, learningSymbols, model.orthogonalizer.numOfTrainingSymbols);
             }
 
+            // foreach(i; 0 .. models.length)
+                // taskList.append((Model m, string dir){ mainImpl!methodName(m, dir); }, models[i], buildPath("results", dirs[i]));
             foreach(i; 0 .. models.length)
-                taskList.append((Model m, string dir){ mainImpl!methodName(m, dir); }, models[i], buildPath("results", dirs[i]));
+                mainImpl!methodName(models[i], buildPath("results", dirs[i]));
         }
 
     //auto scheduler = new MPITaskScheduler();
-    jobRun(taskList);
+    // jobRun(taskList);
 }
 
 

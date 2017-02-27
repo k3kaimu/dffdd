@@ -143,6 +143,16 @@ struct FIRFilter
     }
 }
 
+unittest
+{
+    import std.algorithm;
+    import std.range;
+    import std.stdio;
+
+    auto sig = FIRFilter.makeBlock([0, 1, 2, 3], [0, 1]);
+    assert(equal(sig, [0, 0, 1, 2]));
+}
+
 
 struct IIRFilter
 {

@@ -55,7 +55,7 @@ final class OFDM(C)
                 mainLobeH[1 .. _nTone/2 + 1] = inpTones[0 .. _nTone/2];
                 mainLobeL[$ - _nTone/2 .. $] = inpTones[_nTone/2 .. _nTone];
             }else{
-                mainLobeH[1 .. (_nTone+1)/2+1] = inputs[0 .. (_nTone+1)/2];
+                mainLobeH[1 .. (_nTone+1)/2+1] = inpTones[0 .. (_nTone+1)/2];
                 mainLobeL[$ - _nTone/2 .. $] = inpTones[(_nTone+1)/2 .. _nTone];
             }
 

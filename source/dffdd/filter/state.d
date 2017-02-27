@@ -207,45 +207,45 @@ import carbon.math;
 //}
 
 
-final class OneTapMultiFIRFilterState(C, size_t P)
-{
-   alias StateElementType = C;
+// final class OneTapMultiFIRFilterState(C, size_t P)
+// {
+//    alias StateElementType = C;
 
-   enum size_t numOfFIRState = P;
-   Slice!(2, C*) state, weight;
-   Slice!(1, typeof(C.init.re)*) power;
-
-
-   this()
-   {
-       state = new C[P].sliced(1, P);
-       weight = new C[P].sliced(1, P);
-       power = new typeof(C.init.re)[P].sliced(P);
-
-       foreach(ref e; state[0]) e = complexZero!C;
-       foreach(ref e; weight[0]) e = complexZero!C;
-       foreach(ref e; power) e = 1;
-   }
+//    enum size_t numOfFIRState = P;
+//    Slice!(2, C*) state, weight;
+//    Slice!(1, typeof(C.init.re)*) power;
 
 
-   size_t numOfTaps() const @property { return state.length!0; }
+//    this()
+//    {
+//        state = new C[P].sliced(1, P);
+//        weight = new C[P].sliced(1, P);
+//        power = new typeof(C.init.re)[P].sliced(P);
+
+//        foreach(ref e; state[0]) e = complexZero!C;
+//        foreach(ref e; weight[0]) e = complexZero!C;
+//        foreach(ref e; power) e = 1;
+//    }
 
 
-   void update(in ref C[P] x)
-   {
-       state[0][] = x[];
-       foreach(i; 0 .. P) power[i] = x[i].re^^2 + x[i].im^^2;
-   }
+//    size_t numOfTaps() const @property { return state.length!0; }
 
 
-   C error(C y)
-   {
-       foreach(i; 0 .. P)
-           y -= state[0][i] * weight[0][i];
+//    void update(in ref C[P] x)
+//    {
+//        state[0][] = x[];
+//        foreach(i; 0 .. P) power[i] = x[i].re^^2 + x[i].im^^2;
+//    }
 
-       return y;
-   }
-}
+
+//    C error(C y)
+//    {
+//        foreach(i; 0 .. P)
+//            y -= state[0][i] * weight[0][i];
+
+//        return y;
+//    }
+// }
 
 struct MultiFIRState(C)
 {

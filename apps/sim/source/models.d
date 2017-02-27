@@ -27,7 +27,6 @@ import dffdd.blockdiagram.iqmixer;
 import dffdd.blockdiagram.mod.ofdm;
 import dffdd.blockdiagram.noise;
 import dffdd.blockdiagram.quantizer;
-import dffdd.blockdiagram.txchain;
 import dffdd.blockdiagram.utils;
 import dffdd.filter.lms;
 import dffdd.filter.ls;
@@ -61,15 +60,27 @@ import dffdd.dsp.statistics;
 import constant;
 import snippet;
 
-alias BasisFunctions = AliasSeq!(x => x,
-                              x => x.conj,
-                              x => x * (x.re^^2 + x.im^^2),
-                              x => x.conj * (x.re^^2 + x.im^^2),
-                              x => x * (x.re^^2 + x.im^^2)^^2,
-                              x => x.conj * (x.re^^2 + x.im^^2)^^2,
-                              //x => x * (x.re^^2 + x.im^^2)^^3,
-                              //x => x.conj * (x.re^^2 + x.im^^2)^^3,
-                              );
+// alias BasisFunctions = AliasSeq!(x => x,
+//                               x => x.conj,
+//                               x => x * (x.re^^2 + x.im^^2),
+//                               x => x.conj * (x.re^^2 + x.im^^2),
+//                               x => x ^^ 3,
+//                               x => x.conj ^^ 3,
+//                               x => x^^5,
+//                               x => x^^3 * (x.re^^2 + x.im^^2),
+//                               x => x * (x.re^^2 + x.im^^2)^^2,
+//                               x => x.conj * (x.re^^2 + x.im^^2)^^2,
+//                               x => x.conj^^3 * (x.re^^2 + x.im^^2),
+//                               x => x.conj^^5,
+//                             //   x => x * (x.re^^2 + x.im^^2)^^3,
+//                             //   x => x.conj * (x.re^^2 + x.im^^2)^^3,
+//                               //x => x * (x.re^^2 + x.im^^2)^^3,
+//                               //x => x.conj * (x.re^^2 + x.im^^2)^^3,
+//                               );
+
+enum size_t defaultDistortionOrder = 7;
+alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
+
 
 struct Model
 {
@@ -78,9 +89,9 @@ struct Model
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
-    real samplingFreq = 20e6 * 4;
-    real SNR = 20;
-    real INR = 60;
+    real samplingFreq = 20e6 * 8;
+    Gain SNR = 20.dB;
+    Gain INR = 60.dB;
     bool withSIC = true;
     bool withSI = true;
     size_t learningSymbols = 10;
@@ -88,6 +99,8 @@ struct Model
     size_t swappedSymbols = 0;
     bool outputWaveform = false;
     bool outputBER = true;
+
+    uint rndSeed = 114514;
 
 
     bool useDTXIQ = true;
@@ -115,18 +128,23 @@ struct Model
         uint numOfFFT = 64;
         uint numOfCP = 16;
         uint numOfSubcarrier = 52;
-        uint scaleOfUpSampling = 4;
-        real PAPR = 10;                 // 10dB
+        uint scaleOfUpSampling = 8;
+        Gain PAPR = 10.dB;                 // 10dB
         //uint model.numOfSamplesOf1Symbol = 
         uint numOfSamplesOf1Symbol() const @property { return scaleOfUpSampling * (numOfFFT + numOfCP); }
         bool[] subCarrierMap() const @property
         {
             bool[] ret = new bool[scaleOfUpSampling * numOfFFT];
 
-            assert(numOfSubcarrier % 2 == 0);
+            // assert(numOfSubcarrier % 2 == 0);
 
-            ret[1 .. numOfSubcarrier/2 + 1] = true;
-            ret[$ - numOfSubcarrier/2 .. $] = true;
+            if(numOfSubcarrier % 2 == 0){
+                ret[1 .. numOfSubcarrier/2 + 1] = true;
+                ret[$ - numOfSubcarrier/2 .. $] = true;
+            }else{
+                ret[1 .. (numOfSubcarrier+1)/2 + 1] = true;
+                ret[$ - (numOfSubcarrier+1)/2 + 1 .. $] = true;
+            }
 
             return ret;
         }
@@ -178,14 +196,14 @@ struct Model
 
     struct TXIQMixer
     {
-        real IIR = 25;  // 25dB
+        Gain IIR = 25.dB;  // 25dB
     }
     TXIQMixer txIQMixer;
 
 
     struct RXIQMixer
     {
-        real IIR = 25;  // 25dB
+        Gain IIR = 25.dB;  // 25dB
     }
     RXIQMixer rxIQMixer;
 
@@ -199,16 +217,18 @@ struct Model
 
     struct PA 
     {
-        real GAIN = 27;     // 30dB
-        real IIP3 = 17;     // 20dBm
-        real TX_POWER = 15; // 20dBm
+        Gain GAIN = 27.dB;
+        Voltage IIP3 = 13.dBm;
+        Voltage TX_POWER = 15.dBm;
     }
     PA pa;
 
     struct LNA
     {
-        real GAIN = 20;     // 20dB
-        real NF = 4;        // 4dB
+        Gain GAIN = 20.dB;      // 20dB
+        Gain NF = 4.dB;         // 4dB
+        uint noiseSeedOffset = 123;
+        Gain DR = 70.dB;        // Dynamic Range
     }
     LNA lna;
 
@@ -222,7 +242,7 @@ struct Model
 
     struct AWGN
     {
-        real SNR = 24;      // 24dB
+        // Gain SNR = 24;      // 24dB
     }
     AWGN awgn;
 
@@ -230,6 +250,8 @@ struct Model
     struct SIChannel
     {
         size_t taps = 64;
+        Gain c = (40.0 / 64).dB;     // 64サンプル遅延で80dB減衰
+        bool isCoaxialCable = false;
     }
     SIChannel channel;
 
@@ -247,6 +269,18 @@ struct Model
         size_t numOfTrainingSymbols = 10000;
     }
     Orthogonalizer orthogonalizer;
+
+
+    void txPower(Voltage p) @property
+    {
+        this.pa.TX_POWER = p;
+    }
+
+
+    void useCoaxialCableAsChannel() @property
+    {
+        this.channel.isCoaxialCable = true;
+    }
 }
 
 
@@ -330,9 +364,9 @@ auto connectToDemodulator(R, Mod)(R r, Mod modObj/*, Bits bits*/, Model)
 //}
 
 
-auto thermalNoise(Model model)
+auto thermalNoise(Model model, uint seedOffset = 123321)
 {
-    return ThermalNoise(model.samplingFreq, model.thermalNoise.temperature);
+    return ThermalNoise(model.samplingFreq, model.thermalNoise.temperature, model.rndSeed + seedOffset);
 }
 
 
@@ -373,7 +407,7 @@ auto connectToAWGN(R)(R r, Model model)
 
 auto connectToTXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.IIR.dB).toWrappedRange;
+    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.IIR).toWrappedRange;
 }
 
 
@@ -385,53 +419,58 @@ auto connectToTXIQPhaseNoise(R)(R r, Model model)
 
 auto connectToRXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.IIR.dB).toWrappedRange;
+    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.IIR).toWrappedRange;
 }
 
 
 auto connectToPowerAmplifier(R)(R r, Model model)
 {
-    auto v = (model.pa.TX_POWER - model.pa.GAIN).dBm;
+    auto v = (model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm;
 
     return r
     .connectTo!PowerControlAmplifier(v)
-    .connectTo!PowerAmplifier(model.pa.GAIN.dB, model.pa.IIP3.dBm)
+    .connectTo!RappModel(model.pa.GAIN, 1, (model.pa.IIP3.dBm - 36).dB.gain)
+    // .connectTo!RappPowerAmplifier(model.pa.GAIN, model.pa.IIP3)
     .toWrappedRange;
-}
-
-
-shared immutable(Complex!float)[] channelCoefsOfSI;
-
-shared static this()
-{
-    Random rGen;
-    rGen.seed(114514);
-
-    BoxMuller!Random gGen = BoxMuller!Random(rGen);
-
-    Complex!float[] coefs;
-
-    foreach(i; 0 .. 64){
-        auto db = -40.0L * i / 64;
-        coefs ~= cast(Complex!float)(gGen.front * 10.0L^^(db/20));
-        gGen.popFront();
-    }
-
-    channelCoefsOfSI = coefs.dup;
 }
 
 
 auto connectToMultiPathChannel(R)(R r, Model model)
 {
-    return r.connectTo!FIRFilter(channelCoefsOfSI[0 .. model.channel.taps]).toWrappedRange;
+    if(model.channel.isCoaxialCable)
+    {
+        Random rGen;
+        rGen.seed(model.rndSeed);
+
+        BoxMuller!Random gGen = BoxMuller!Random(rGen);
+
+        return r.connectTo!FIRFilter([Complex!float(0, 0), cast(Complex!float)gGen.front]).toWrappedRange;
+    }
+    else
+    {
+        Random rGen;
+        rGen.seed(model.rndSeed);
+
+        BoxMuller!Random gGen = BoxMuller!Random(rGen);
+
+        Complex!float[] coefs;
+        foreach(i; 0 .. model.channel.taps){
+            auto db = -1 * model.channel.c.dB * i;
+            coefs ~= cast(Complex!float)(gGen.front * 10.0L ^^ (db/20));
+            gGen.popFront();
+        }
+
+        return r.connectTo!FIRFilter(coefs).toWrappedRange;
+    }
 }
 
 
 auto connectToLNA(R)(R r, Model model)
 {
     return r
-    .add(thermalNoise(model).tmap!"a*b"(sqrt(model.lna.NF.dB.gain^^2 - 1)))
-    .tmap!"a*b"(model.lna.GAIN.dB.gain)
+    .add(thermalNoise(model, model.lna.noiseSeedOffset).connectTo!VGA(Gain.fromPowerGain(model.lna.NF.gain^^2 - 1)))
+    .connectTo!RappModel(model.lna.GAIN, 3, (17.7 - 36).dB.gain)
+    // .connectTo!VGA(model.lna.GAIN)
     .toWrappedRange;
 }
 
@@ -439,7 +478,7 @@ auto connectToLNA(R)(R r, Model model)
 auto connectToQuantizer(R)(R r, Model model)
 {
     return r
-    .connectTo!PowerControlAmplifier((30 - model.ofdm.PAPR + 4.76).dBm)
+    .connectTo!PowerControlAmplifier((30 - model.ofdm.PAPR.dB + 4.76).dBm)
     .connectTo!SimpleQuantizer(model.quantizer.numOfBits)
     .toWrappedRange;
 }
@@ -752,16 +791,20 @@ auto connectToRxChain(R)(R r)
 //}
 
 
-auto makeParallelHammersteinFilter(string optimizer, size_t numOfBasisFuncs = BasisFunctions.length, Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, size_t useWL = true, Mod)(Mod mod, Model model)
 {
-
-
-    alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
-
     alias C = Complex!float;
-    alias Dist = Distorter!(C, BFs);
+
+  static if(useWL)
+    alias Dist = CompleteDistorter!(distortionOrder);
+  else
+  {
+    static assert(distortionOrder == 1);
+    alias Dist = Distorter!(C, x => x);
+  }
+
     alias GS = GramSchmidtOBFFactory!C;
-    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
+    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(Dist.outputDim));
 
     auto makeOptimizer(State)(State state)
     {
@@ -773,7 +816,7 @@ auto makeParallelHammersteinFilter(string optimizer, size_t numOfBasisFuncs = Ba
             return makeRLSAdapter(state, 1 - 1E-4, 1E-7).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "LS")
         {
-            immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+            // immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
             return makeLSAdapter(state, samplesOfOnePeriod).trainingLimit(samplesOfOnePeriod).ignoreHeadSamples(samplesOfOnePeriod);
         }
     }
@@ -782,14 +825,12 @@ auto makeParallelHammersteinFilter(string optimizer, size_t numOfBasisFuncs = Ba
 }
 
 
-auto makeCascadeHammersteinFilter(string optimizer, size_t numOfBasisFuncs = BasisFunctions.length, Mod)(Mod mod, Model model)
+auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, Mod)(Mod mod, Model model)
 {
-    alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
-
     alias C = Complex!float;
-    alias Dist = Distorter!(C, BFs);
+    alias Dist = CompleteDistorter!(distortionOrder);
     alias GS = GramSchmidtOBFFactory!C;
-    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(numOfBasisFuncs));
+    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(Dist.outputDim));
 
     auto makeOptimizer(State)(size_t i, State state)
     {
@@ -809,9 +850,10 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t numOfBasisFuncs = Bas
 }
 
 
-auto makeFrequencyHammersteinFilter(string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
+auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model)
 {
-    alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
+    // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
+    alias Dist = CompleteDistorter!(distortionOrder);
 
     auto makeOptimizer(State)(State state)
     {
@@ -826,28 +868,32 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t numOfBasisFuncs = B
     }
 
     alias C = Complex!float;
-    alias Dist = Distorter!(C, BFs);
+    // alias Dist = Distorter!(C, BFs);
 
     auto dist = new Dist();
 
     return new SimpleFrequencyDomainParallelHammersteinFilter!(
             Complex!float,
             typeof(dist),
-            (i, bIsSC, s) => makeOptimizer(s),
+            typeof(makeOptimizer(MultiFIRState!C.init)),
+            true
         )(
             dist,
+            (size_t i, bool b, MultiFIRState!C s) => makeOptimizer(s),
             model.ofdm.subCarrierMap,
             model.ofdm.numOfFFT,
             model.ofdm.numOfCP,
-            model.ofdm.scaleOfUpSampling
+            model.ofdm.scaleOfUpSampling,
+            model.samplingFreq
         );
 }
 
 
-auto makeFrequencyDCMHammersteinFilter(size_t type, Flag!"isParallel" isParallel, string optimizer, size_t numOfBasisFuncs = BasisFunctions.length)(Model model)
+auto makeFrequencyDCMHammersteinFilter(size_t type, Flag!"isParallel" isParallel, string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model)
 if(type == 1 || type == 2)
 {
-    alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
+    // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
+    alias Dist = CompleteDistorter!(distortionOrder);
 
     auto makeOptimizer(State)(size_t p, State state)
     {
@@ -862,7 +908,7 @@ if(type == 1 || type == 2)
     }
 
     alias C = Complex!float;
-    alias Dist = Distorter!(C, BFs);
+    // alias Dist = Distorter!(C, BFs);
 
     auto dist = new Dist();
 

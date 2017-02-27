@@ -40,7 +40,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     }
 
 
-    void adapt()(auto ref State state, C error)
+    void adapt()(ref State state, C error)
     {
         _mx[0 .. $, _fillCNT] = state.state.byElement.sliced(state.state.elementsCount);
         _yv[_fillCNT] = error;

@@ -75,11 +75,11 @@ real noisePower(real bandWidth, real tempK)
 
 struct ThermalNoise
 {
-    this(real sampFreq, real tempK)
+    this(real sampFreq, real tempK, uint s = unpredictableSeed())
     {
         _rnd = boxMullerNoise();
         _gain = sqrt(noisePower(sampFreq, tempK) / 2);
-        _rnd.seed(unpredictableSeed());
+        _rnd.seed(s);
     }
 
 

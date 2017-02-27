@@ -69,10 +69,74 @@ struct PowerAmplifier(R)
 }
 
 
+/**
+o: saturation value
+s: smooth factor
+u: |x[n]|
+g(u) = (G*u)/(1+(u/o)^^(2s))^^(1/(2*s))
+*/
+struct RappModel(R)
+{
+    this(R r, Gain gain, real smoothFactor, real saturation)
+    {
+        _r = r;
+
+        _g = gain.gain;
+        _s = smoothFactor;
+        _o = saturation;
+    }
+
+
+    auto front()
+    {
+        auto x = _r.front;
+        auto r = abs(x),
+             u = x / r;     // unit vector
+
+        // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
+        if(r <= 1E-6)
+            return x;
+
+        r = (r * _g) / (( 1 + (r/_o)^^(2*_s) )^^(1/(2*_s)));
+        return r * u;
+    }
+
+
+    void popFront()
+    {
+        _r.popFront();
+    }
+
+
+    bool empty()
+    {
+        return _r.empty;
+    }
+
+
+  static if(isForwardRange!R)
+  {
+    typeof(this) save() @property
+    {
+        typeof(this) dst;
+        dst._r = this._r.save;
+        dst._g = this._g;
+        dst._s = this._s;
+        dst._o = this._o;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    R _r;
+    real _g, _s, _o;
+}
+
+
 struct VGA(R)
 {
-    pragma(msg, R);
-
     this(R r, Gain gain)
     {
         _r = r;
@@ -120,6 +184,8 @@ struct VGA(R)
 
 struct PowerControlAmplifier
 {
+    import std.stdio;
+
     static
     auto makeBlock(R)(R r, Voltage op, size_t avgSize = 512)
     {
@@ -127,6 +193,7 @@ struct PowerControlAmplifier
     }
 
 
+    static
     struct PowerControlAmplifierImpl(R)
     {
         this(R r, Voltage op, size_t avgSize)
@@ -185,10 +252,6 @@ struct PowerControlAmplifier
             _front = this._r.front;
 
             _r.popFront();
-
-            // import std.stdio;
-            // if(_cnt < 10 && _avgCount == 0)
-            //     writeln(this._r.front, this.tupleof[1 .. $], cast(void*)(this._r), " -- ", cast(void*)&(this._r.front));
         }
 
 
@@ -198,19 +261,7 @@ struct PowerControlAmplifier
         {
             typeof(return) dst = this;
 
-            // import std.stdio;
             dst._r = this._r.save;
-
-            // foreach(i; 0 .. 10){
-            //     writefln("%s : %s", this.front, this._r.front);
-            //     writefln("%s : %s", dst.front, dst._r.front);
-            //     writeln(this.tupleof[1 .. $], cast(void*)(this._r));
-            //     writeln(dst.tupleof[1 .. $], cast(void*)(dst._r));
-            //     writeln();
-
-            //     this.popFront();
-            //     dst.popFront();
-            // }
 
             return dst;
         }
@@ -228,4 +279,9 @@ struct PowerControlAmplifier
         size_t _avgCount;
         real _sumPower;
     }
+}
+
+unittest
+{
+    auto pc = PowerControlAmplifier.makeBlock(repeat(Complex!real(0, 0)), 10.dBm);
 }

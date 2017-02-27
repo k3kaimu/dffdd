@@ -14,7 +14,13 @@ auto add(R1, R2)(R1 r1, R2 r2)
             _r1.popFront();
             _r2.popFront();
         }
-        bool empty() { return _r1.empty || _r2.empty; }
+
+
+        bool empty()
+        {
+            import std.stdio;
+            return _r1.empty || _r2.empty;
+        }
 
       static if(isForwardRange!R1 && isForwardRange!R2)
       {
@@ -33,6 +39,12 @@ auto add(R1, R2)(R1 r1, R2 r2)
         R1 _r1;
         R2 _r2;
     }
+
+    static if(is(typeof(r1 is null)))
+        assert(r1 !is null);
+
+    static if(is(typeof(r2 is null)))
+        assert(r2 !is null);
 
     return AdderResult(r1, r2);
 }

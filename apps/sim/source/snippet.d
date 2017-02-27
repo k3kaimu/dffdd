@@ -74,13 +74,13 @@ auto connectToSwitch(R)(R r, const(bool)* sw, ElementType!R zero = complexZero!(
 
         void popFront()
         {
-            if(*_sw) _r.popFront();
+            _r.popFront();
         }
 
 
         bool empty()
         {
-            return *_sw && _r.empty;
+            return _r.empty;
         }
 
 
