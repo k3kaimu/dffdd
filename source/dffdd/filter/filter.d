@@ -567,14 +567,14 @@ if(isBlockConverter!(Dist, C, C[]))
 }
 
 
-final class SimpleFrequencyDomainParallelHammersteinFilter(C, Dist, Adapter, bool doProfiling = false)
+final class SimpleFrequencyDomainParallelHammersteinFilter(C, Dist, Adapter)
 if(isBlockConverter!(Dist, C, C[]))
 {
     enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
 
     import dffdd.filter.regenerator : OverlapSaveRegenerator;
 
-    this(Dist dist, Adapter delegate(size_t i, bool b, MultiFIRState!C) genAdapter, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS, real sampFreq, Gain limitIRR = 20.dB, Gain gainMargin = 10.dB)
+    this(Dist dist, Adapter delegate(size_t i, bool b, MultiFIRState!C) genAdapter, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS, real sampFreq, bool doSelect = false, size_t nEstH = 2, Gain limitIRR = 20.dB, Gain gainMargin = 6.dB)
     {
         immutable dim = dist.outputDim;
 
@@ -601,6 +601,8 @@ if(isBlockConverter!(Dist, C, C[]))
         _sampFreq = sampFreq;
         _distortedBuffer = new C[][](this.inputBlockLength, dim);
         _fftedBuffer = new C[][](dim, _nFFT * _nOS);
+        _doSelect = doSelect;
+        _nEstH = nEstH;
         _limitIRR = limitIRR;
         _gainMargin = gainMargin;
     }
@@ -609,7 +611,7 @@ if(isBlockConverter!(Dist, C, C[]))
     size_t inputBlockLength() @property
     {
         immutable a = _distorter.inputBlockLength,
-                  b = (_nFFT + _nCP) * _nOS;
+                  b = (_nFFT + _nCP) * _nOS * (_doSelect ? _nEstH : 1);
 
         return a * (b / gcd(a, b));     // LCM
     }
@@ -641,31 +643,45 @@ if(isBlockConverter!(Dist, C, C[]))
 
         if(doLearning)
         {
-            if(_importance !is null && _selectedBasisFuncs is null){
+            if(_doSelect && _importance !is null && _selectedBasisFuncs is null){
                 // 
                 _selectedBasisFuncs = new bool[][](_nFFT * _nOS, Dist.outputDim);
-
-                auto txs = input[_nCP * _nOS .. (_nFFT + _nCP) * _nOS].dup;
-                auto rxs = desired[_nCP * _nOS .. (_nFFT + _nCP) * _nOS].dup;
-
                 auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
-                fftw.inputs!float[] = txs[];
-                fftw.fft!float();
-                txs[] = fftw.outputs!float[];
 
-                fftw.inputs!float[] = rxs[];
-                fftw.fft!float();
-                rxs[] = fftw.outputs!float[];
+                C[][] freqX = new C[][](_nEstH, _nFFT * _nOS);
+                C[][] freqY = new C[][](_nEstH, _nFFT * _nOS);
+                foreach(idxOfEstH; 0 .. _nEstH){
+                    fftw.inputs!float[] = input[idxOfEstH * (_nFFT + _nCP) * _nOS .. $][_nCP * _nOS .. (_nFFT + _nCP) * _nOS];
+                    fftw.fft!float();
+                    freqX[idxOfEstH][] = fftw.outputs!float[];
+
+                    fftw.inputs!float[] = desired[idxOfEstH * (_nFFT + _nCP) * _nOS .. $][_nCP * _nOS .. (_nFFT + _nCP) * _nOS];
+                    fftw.fft!float();
+                    freqY[idxOfEstH][] = fftw.outputs!float[];
+                }
+
+                // MMSE推定する
+                C[] freqH = new C[](_nFFT * _nOS);
+                foreach(f; 0 .. _nFFT * _nOS){
+                    real den = _noiseFloor;
+                    C num = C(0, 0);
+
+                    foreach(idxOfEstH; 0 .. _nEstH){
+                        den += freqX[idxOfEstH][f].sqAbs;
+                        num += freqX[idxOfEstH][f].conj * freqY[idxOfEstH][f].conj;
+                    }
+
+                    freqH[f] = cast(C)(num / den);
+                }
 
                 foreach(f; 0 .. _nFFT * _nOS){
-                    float h = (rxs[f] * txs[f].conj / (txs[f].sqAbs + _noiseFloor)).sqAbs;
-                    float hinv = (rxs[$-1-f] * txs[$-1-f].conj / (txs[$-1-f].sqAbs + _noiseFloor)).sqAbs;
+                    float h = freqH[f].sqAbs;
+                    float hinv = freqH[$-1-f].sqAbs;
 
-                    writefln("%s, %s, %s", f, h, hinv);
+                    // writefln("%s, %s, %s", f, h, hinv);
 
                     // この条件が満たされたとき，全基底関数を使用する
                     if(hinv > h * _limitIRR.gain^^2) {
-                        // writefln("%s, %s, %s", f, h, hinv);
                         foreach(p; 0 .. Dist.outputDim)
                             _selectedBasisFuncs[f][p] = true;
                         
@@ -674,8 +690,15 @@ if(isBlockConverter!(Dist, C, C[]))
 
                     size_t cnt;
                     foreach(p; 0 .. Dist.outputDim) if(!_selectedBasisFuncs[f][p]) {
-                        // 重要度とチャネルの積が，推定された干渉電力になる
-                        float ip = _importance[f][p] * rxs[f].sqAbs;
+                        // 重要度と受信信号電力の積が，推定された干渉電力になる
+                        // float ip = _importance[f][p] * freqY[f].sqAbs;
+                        immutable float ip = (){
+                            real y = 0;
+                            foreach(idxOfEstH; 0 .. _nEstH)
+                                y += freqY[idxOfEstH][f].sqAbs;
+                            
+                            return (y / _nEstH) * _importance[f][p];
+                        }();
                         // if(f == 0 || f == 256){
                         //     writefln("%s, %s, %s, %s, %s", p, ip, _importance[f][p], rxs[f].sqAbs, _noiseFloor);
                         // }
@@ -689,13 +712,6 @@ if(isBlockConverter!(Dist, C, C[]))
                     }
 
                     if(cnt == 0){
-                        // writeln(_importance[f]);
-                        // writeln(h);
-                        // writeln(hinv);
-                        // writeln(rxs[f].sqAbs);
-                        // writeln(_noiseFloor);
-                        // writeln(_importance[f][0] * rxs[f].sqAbs);
-                        // assert(cnt != 0);
                         _selectedBasisFuncs[f][0] = true;
                         cnt += 1;
                     }
@@ -821,7 +837,7 @@ if(isBlockConverter!(Dist, C, C[]))
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
             _distorter.learn(signalGenerator(model).txBaseband);
 
-        static if(doProfiling)
+        if(_doSelect)
             profiling(model, signalGenerator);
     }
 
@@ -880,7 +896,7 @@ if(isBlockConverter!(Dist, C, C[]))
         auto testfilter = new SimpleFrequencyDomainParallelHammersteinFilter!(C, Dist, LSAdapter!(MultiFIRState!C))
                         (   _distorter,
                             (size_t i, bool b, MultiFIRState!C s) => makeLSAdapter(s, 1024),
-                            _scMap, _nFFT, _nCP, _nOS, _sampFreq);
+                            _scMap, _nFFT, _nCP, _nOS, _sampFreq, false);
 
         immutable spb = this.inputBlockLength / ((_nFFT + _nCP) * _nOS);    // 1ブロックあたりのシンボル数
 
@@ -969,6 +985,56 @@ if(isBlockConverter!(Dist, C, C[]))
     }
 
 
+    void saveInfoToDir(string dir)
+    {
+        import std.file : mkdirRecurse;
+        import std.stdio;
+        import std.path;
+        import std.json;
+        import std.conv;
+
+        dir = buildPath(dir, "filterSpec");
+        mkdirRecurse(dir);
+
+        if(_doSelect){
+            auto file = File(buildPath(dir, "significance.csv"), "w");
+            // 重要度
+            foreach(f; 0 .. _nFFT * _nOS)
+                file.writefln("%s, %(%s, %)", f, _importance[f].map!(a => 10*log10(a)));
+
+            // サブキャリアの使用状況
+            file = File(buildPath(dir, "basisfuncs_per_subcarrier.csv"), "w");
+            foreach(f; 0 .. _nFFT * _nOS)
+                file.writefln("%s, %(%s, %)", f, _selectedBasisFuncs[f].map!`a ? 1 : 0`.zip(iota(1, _selectedBasisFuncs[f].length+1)).map!`a[0]*a[1]`);
+        }
+
+        JSONValue jv = [ "type": typeof(this).stringof ];
+        if(_doSelect){
+            jv["limitIRR"] = _limitIRR.to!string;
+            jv["gainMargin"] = _gainMargin.to!string;
+            jv["numOfEstimationOfH"] = _nEstH;
+            jv["selectingBFCounts"] = (){
+                size_t[] cnts = new size_t[_distorter.outputDim+1];
+                foreach(f; 0 .. _nFFT * _nOS){
+                    auto cnt = _selectedBasisFuncs[f].map!`a ? 1 : 0`.sum();
+                    cnts[cnt] += 1;
+                }
+                return cnts;
+            }();
+            jv["noiseFloor"] = (10*log10(_noiseFloor)).dB.to!string;
+        }
+        jv["scMap"] = _scMap.map!(a => a ? 1 : 0).array();
+        jv["nFFT"] = _nFFT;
+        jv["nCP"] = _nCP;
+        jv["nOS"] = _nOS;
+        jv["sampFreq"] = _sampFreq;
+        jv["doSelect"] = _doSelect;
+
+        auto file = File(buildPath(dir, "info.json"), "w");
+        file.writeln(jv.toPrettyString());
+    }
+
+
   private:
     FFTWObject!Complex _fftw;
     Dist _distorter;
@@ -977,6 +1043,8 @@ if(isBlockConverter!(Dist, C, C[]))
     immutable(bool[]) _scMap;
     immutable size_t _nFFT, _nCP, _nOS;
     immutable real _sampFreq;
+    immutable bool _doSelect;
+    immutable size_t _nEstH;
     immutable Gain _limitIRR, _gainMargin;
     MultiFIRState!C[] _states;
     Adapter[] _adapters;

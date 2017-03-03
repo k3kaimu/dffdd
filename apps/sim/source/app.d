@@ -21,6 +21,7 @@ import std.file : mkdirRecurse;
 import std.meta;
 import std.numeric;
 import std.exception;
+import std.json;
 
 import carbon.math : nextPowOf2;
 
@@ -143,6 +144,8 @@ auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Mo
 
 void mainImpl(string filterType)(Model model, string resultDir)
 {
+    JSONValue infoJV = cast(JSONValue[string])null;
+
     immutable bool* alwaysFalsePointer = new bool(false);
     immutable bool* alwaysTruePointer = new bool(true);
 
@@ -155,7 +158,6 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
     auto signals = makeSimulatedSignals(model, resultDir);
     signals.trainAGC();
-    writeln("END TRAINING");
 
     // フィルタの学習
   enum string filterStructure = filterType.split("_")[0];
@@ -192,7 +194,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
     static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
   else static if(filterStructure.endsWith("FHF")){
     static assert(!isOrthogonalized);
-    auto filter = makeFrequencyHammersteinFilter!(filterOptimizer)(model);
+    auto filter = makeFrequencyHammersteinFilter!(filterOptimizer)(model, filterStructure.endsWith("SFHF"));
   }else static if(filterStructure.endsWith("WL"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
@@ -231,6 +233,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         auto waveAfterSIC = makeWaveformProbe!(Complex!float)("waveform_afterSIC_init.csv", resultDir, 0, model);
         auto waveFilterOutput = makeWaveformProbe!(Complex!float)("waveform_filterOutput_init.csv", resultDir, 0, model);
 
+        StopWatch sw;
         foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
             static if(filterStructure.endsWith("FHF"))
@@ -243,7 +246,9 @@ void mainImpl(string filterType)(Model model, string resultDir)
             else
                 signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
 
+            sw.start();
             filter.apply!(Yes.learning)(refrs, recvs, outps);
+            sw.stop();
             //filter.apply!false(refrs, recvs, outps);
 
             if(model.outputWaveform){
@@ -270,6 +275,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
             .put(sicIterValue, recvs.zip(outps));
         }
+
+        infoJV["training_symbols_per_second"] = model.numOfFilterTrainingSymbols / ((cast(real)sw.peek.usecs) / 1_000_000);
     }
 
 
@@ -279,11 +286,14 @@ void mainImpl(string filterType)(Model model, string resultDir)
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model);
         auto sicValue = makeCancellationProbe!(Complex!float)("cancellation_value.csv", resultDir, 0, model);
 
+        StopWatch sw;
         foreach(blockIdxo; 0 .. 1024)
         {
             signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
 
+            sw.start();
             filter.apply!(No.learning)(refrs, recvs, outps);
+            sw.stop();
 
             // blockIdxoが10以上になるまで，慣らし運転する
             if(blockIdxo > 10){
@@ -296,6 +306,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
                 .put(sicValue, recvs.zip(outps));
             }
         }
+
+        infoJV["canceling_symbols_per_second"] = 1024 * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
     }
 
     //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -366,6 +378,12 @@ void mainImpl(string filterType)(Model model, string resultDir)
     // ノイズ電力
     auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
     .put(noisePSD, signals.noise.save.map!(a => Complex!float(a)).take(64*1024));
+
+
+    static if(is(typeof((){ filter.saveInfoToDir(""); })))
+        filter.saveInfoToDir(resultDir);
+
+    std.file.write(buildPath(resultDir, "info.json"), infoJV.toPrettyString());
 }
 
 
@@ -374,10 +392,10 @@ void mainJob()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    // auto taskList = new MultiTaskList();
+    auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "FHF_LS"/*, "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",*/
+    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "SFHF_RLS", "FHF_RLS"/*, "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
         foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
@@ -385,7 +403,7 @@ void mainJob()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(40, 45, 5)) foreach(txp; iota(15, 18, 3))
+            foreach(inr; iota(20, 85, 5)) foreach(txp; iota(15, 18, 3))
             {
                 Model model;
                 model.SNR = 11.dB;
@@ -456,14 +474,14 @@ void mainJob()
                 dirs ~= "TXP%s_inr%s_%s%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, learningSymbols, model.orthogonalizer.numOfTrainingSymbols);
             }
 
-            // foreach(i; 0 .. models.length)
-                // taskList.append((Model m, string dir){ mainImpl!methodName(m, dir); }, models[i], buildPath("results", dirs[i]));
             foreach(i; 0 .. models.length)
-                mainImpl!methodName(models[i], buildPath("results", dirs[i]));
+                taskList.append((Model m, string dir){ mainImpl!methodName(m, dir); }, models[i], buildPath("results", dirs[i]));
+            // foreach(i; 0 .. models.length)
+            //     mainImpl!methodName(models[i], buildPath("results", dirs[i]));
         }
 
     //auto scheduler = new MPITaskScheduler();
-    // jobRun(taskList);
+    jobRun(taskList);
 }
 
 

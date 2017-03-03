@@ -78,7 +78,7 @@ import snippet;
 //                               //x => x.conj * (x.re^^2 + x.im^^2)^^3,
 //                               );
 
-enum size_t defaultDistortionOrder = 7;
+enum size_t defaultDistortionOrder = 3;
 alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
 
 
@@ -89,7 +89,7 @@ struct Model
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
-    real samplingFreq = 20e6 * 8;
+    real samplingFreq = 20e6 * 4;
     Gain SNR = 20.dB;
     Gain INR = 60.dB;
     bool withSIC = true;
@@ -128,7 +128,7 @@ struct Model
         uint numOfFFT = 64;
         uint numOfCP = 16;
         uint numOfSubcarrier = 52;
-        uint scaleOfUpSampling = 8;
+        uint scaleOfUpSampling = 4;
         Gain PAPR = 10.dB;                 // 10dB
         //uint model.numOfSamplesOf1Symbol = 
         uint numOfSamplesOf1Symbol() const @property { return scaleOfUpSampling * (numOfFFT + numOfCP); }
@@ -850,7 +850,7 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = def
 }
 
 
-auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model)
+auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false)
 {
     // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
     alias Dist = CompleteDistorter!(distortionOrder);
@@ -876,7 +876,6 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
             Complex!float,
             typeof(dist),
             typeof(makeOptimizer(MultiFIRState!C.init)),
-            true
         )(
             dist,
             (size_t i, bool b, MultiFIRState!C s) => makeOptimizer(s),
@@ -884,7 +883,8 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
             model.ofdm.numOfFFT,
             model.ofdm.numOfCP,
             model.ofdm.scaleOfUpSampling,
-            model.samplingFreq
+            model.samplingFreq,
+            selectBF,
         );
 }
 
