@@ -18,6 +18,7 @@ final class OverlapSaveRegenerator(C)
     {
         _freqResponse = freqResponse;
         _fftw = makeFFTWObject!Complex(freqResponse.length!0);
+        _buffer = new C[](freqResponse.length!0);
         _inputs = new C[][](freqResponse.length!1, freqResponse.length!0);
         foreach(ref es; _inputs) foreach(ref e; es) e = complexZero!C;
     }
@@ -80,6 +81,9 @@ final class OverlapSaveRegenerator(C)
         immutable size_t size = tx.length;
         output[] = complexZero!C;
 
+        // _bufferをゼロ初期化
+        foreach(ref e; _buffer) e = complexZero!C;
+
         foreach(p; 0 .. _freqResponse.length!1)
         {
             // _inputsをシフトして，後ろにsize分の空きを作る
@@ -98,15 +102,15 @@ final class OverlapSaveRegenerator(C)
 
             // XとHの積を計算する
             foreach(i; 0 .. _freqResponse.length)
-                ips[i] = ops[i] * _freqResponse[i][p];
-
-            // y = IFFT{XH}の計算
-            // IFFT
-            _fftw.ifft!float();
-
-            // 結果の後ろをoutputに足す
-            output[] += ops[$ - size .. $];
+                _buffer[i] += ops[i] * _freqResponse[i][p];
         }
+
+        // y = IFFT{XH}の計算
+        // IFFT
+        _fftw.inputs!float[] = _buffer[];
+        _fftw.ifft!float();
+        // 結果の後ろをoutputに足す
+        output[] += _fftw.outputs!float[$ - size .. $];
     }
 
 
@@ -114,6 +118,7 @@ final class OverlapSaveRegenerator(C)
     FFTWObject!Complex _fftw;
     Slice!(2, C*) _freqResponse;
     C[][] _inputs;
+    C[] _buffer;
 }
 
 

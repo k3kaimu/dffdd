@@ -75,9 +75,13 @@ if(isForwardRange!R)
 
 auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize, Model model)
 {
-    return makeInstrument!C(delegate void(FiberRange!C r){
-        r.drop(dropSize).writePSD(File(buildPath(resultDir, filename), "w"), model.samplingFreq, 1024);
-    });
+    if(resultDir !is null) {
+        return makeInstrument!C(delegate void(FiberRange!C r){
+            r.drop(dropSize).writePSD(File(buildPath(resultDir, filename), "w"), model.samplingFreq, 1024);
+        });
+    }else{
+        return makeInstrument!C(delegate void(FiberRange!C r){});
+    }
 }
 
 
@@ -85,12 +89,16 @@ auto makeCancellationProbe(C)(string filename, string resultDir, size_t dropSize
 {
     alias Tup = Tuple!(C, C);
 
-    return makeInstrument!Tup(delegate void(FiberRange!Tup r){
-        auto rd = r.drop(dropSize);
-        auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
-        auto file = File(buildPath(resultDir, filename), "w");
-        file.writefln("%s", 10*log10(ratio));
-    });
+    if(resultDir !is null) {
+        return makeInstrument!Tup(delegate void(FiberRange!Tup r){
+            auto rd = r.drop(dropSize);
+            auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+            auto file = File(buildPath(resultDir, filename), "w");
+            file.writefln("%s", 10*log10(ratio));
+        });
+    }else{
+        return makeInstrument!Tup(delegate void(FiberRange!Tup r) {});
+    }
 }
 
 
@@ -98,51 +106,59 @@ auto makeCancellationIterationProbe(C)(string filename, string resultDir, size_t
 {
     alias Tup = Tuple!(C, C);
 
-    return makeInstrument!Tup(delegate void(FiberRange!Tup r){
-        auto rd = r.drop(dropSize);
-        auto file = File(buildPath(resultDir, filename), "w");
+    if(resultDir !is null){
+        return makeInstrument!Tup(delegate void(FiberRange!Tup r){
+            auto rd = r.drop(dropSize);
+            auto file = File(buildPath(resultDir, filename), "w");
 
-        size_t cnt;
-        while(!rd.empty){
-            auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, 1);
-            //if(ratio.isNaN && rd.empty) return;
-            if(ratio.isNaN) ratio = 0;
+            size_t cnt;
+            while(!rd.empty){
+                auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, 1);
+                //if(ratio.isNaN && rd.empty) return;
+                if(ratio.isNaN) ratio = 0;
 
-            file.writefln("%s,%s", cnt*1024, 10*log10(ratio));
-            file.flush();
-            ++cnt;
-        }
-    });
+                file.writefln("%s,%s", cnt*1024, 10*log10(ratio));
+                file.flush();
+                ++cnt;
+            }
+        });
+    }else{
+        return makeInstrument!Tup(delegate void(FiberRange!Tup r) {});
+    }
 }
 
 
 auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Model model)
 {
-    return makeInstrument!C(delegate void(FiberRange!C r){
-        File datfile = File(buildPath(resultDir, filename.stripExtension ~ ".dat"), "w");
-        File csvfile = File(buildPath(resultDir, filename.stripExtension ~ ".csv"), "w");
-        r = r.drop(dropSize);
+    if(resultDir !is null) {
+        return makeInstrument!C(delegate void(FiberRange!C r){
+            File datfile = File(buildPath(resultDir, filename.stripExtension ~ ".dat"), "w");
+            File csvfile = File(buildPath(resultDir, filename.stripExtension ~ ".csv"), "w");
+            r = r.drop(dropSize);
 
-        float[2][] chunk = new float[2][](1024);
-        while(!r.empty){
-            chunk.length = 0;
+            float[2][] chunk = new float[2][](1024);
+            while(!r.empty){
+                chunk.length = 0;
 
-            foreach(i; 0 .. 1024){
-                if(r.empty) break;
-                auto frnt = r.front;
-                chunk ~= [frnt.re, frnt.im];
-                r.popFront();
+                foreach(i; 0 .. 1024){
+                    if(r.empty) break;
+                    auto frnt = r.front;
+                    chunk ~= [frnt.re, frnt.im];
+                    r.popFront();
+                }
+
+                datfile.rawWrite(chunk);
+                foreach(e; chunk)
+                    csvfile.writefln("%s,%s,", e[0], e[1]);
             }
-
-            datfile.rawWrite(chunk);
-            foreach(e; chunk)
-                csvfile.writefln("%s,%s,", e[0], e[1]);
-        }
-    });
+        });
+    }else{
+        return makeInstrument!C(delegate void(FiberRange!C r) {});
+    }
 }
 
 
-void mainImpl(string filterType)(Model model, string resultDir)
+JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 {
     JSONValue infoJV = cast(JSONValue[string])null;
 
@@ -154,7 +170,8 @@ void mainImpl(string filterType)(Model model, string resultDir)
         return randomBits(1, model).connectToModulator(_modOFDMTest, alwaysFalsePointer, model).measurePower(1024*1024);
     }();
 
-    mkdirRecurse(resultDir);
+    if(resultDir !is null)
+        mkdirRecurse(resultDir);
 
     auto signals = makeSimulatedSignals(model, resultDir);
     signals.trainAGC();
@@ -211,7 +228,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
         assert(model.rndSeed != 893);
 
         filter.preLearning(model, (Model m){
-            m.rndSeed = 893;
+            // m.rndSeed = 893;
 
             auto ss = makeSimulatedSignals(m);
             ss.trainAGC();
@@ -260,7 +277,7 @@ void mainImpl(string filterType)(Model model, string resultDir)
                 }
             }
 
-            if(blockIdx == 0)
+            if(blockIdx == 0 && resultDir !is null)
             {
                 File outFile = File(buildPath(resultDir, "errorout_start.csv"), "w");
                 foreach(i; 0 .. model.blockSize){
@@ -381,9 +398,20 @@ void mainImpl(string filterType)(Model model, string resultDir)
 
 
     static if(is(typeof((){ filter.saveInfoToDir(""); })))
-        filter.saveInfoToDir(resultDir);
+    {
+        if(resultDir !is null)
+            filter.saveInfoToDir(buildPath("resultDir", "filterSpec"));
+    }
 
-    std.file.write(buildPath(resultDir, "info.json"), infoJV.toPrettyString());
+    static if(is(typeof((){ infoJV["filterSpec"] = filter.infoJV; })))
+    {
+        infoJV["filterSpec"] = filter.infoJV;
+    }
+
+    if(resultDir !is null)
+        std.file.write(buildPath(resultDir, "info.json"), infoJV.toPrettyString());
+
+    return infoJV;
 }
 
 
@@ -451,7 +479,6 @@ void mainJob()
                 model.learningCount = 1;
               }
 
-
               static if(methodName.split("_")[0].endsWith("FHF"))
               {
                 model.swappedSymbols = 100000;
@@ -475,7 +502,7 @@ void mainJob()
             }
 
             foreach(i; 0 .. models.length)
-                taskList.append((Model m, string dir){ mainImpl!methodName(m, dir); }, models[i], buildPath("results", dirs[i]));
+                taskList.append((Model m, string dir){ writeln(mainImpl!methodName(m, dir)); }, models[i], /*buildPath("results", dirs[i])*/ null);
             // foreach(i; 0 .. models.length)
             //     mainImpl!methodName(models[i], buildPath("results", dirs[i]));
         }
@@ -490,7 +517,7 @@ void main()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    //jobRun(1, 0, {
+    // jobRun(1, 0, {
         mainJob();
-    //});
+    // });
 }
