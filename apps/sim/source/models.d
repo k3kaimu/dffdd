@@ -821,7 +821,7 @@ auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = de
         }
     }
 
-    return new SimpleTimeDomainParallelHammersteinFilter!(Complex!float, typeof(dist), (s) => makeOptimizer(s))(dist, numOfBasisFuncs, model.firFilter.taps);
+    return new SimpleTimeDomainParallelHammersteinFilter!(Complex!float, typeof(dist), (s) => makeOptimizer(s))(dist, model.firFilter.taps);
 }
 
 
@@ -846,7 +846,7 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = def
         }
     }
 
-    return new SimpleTimeDomainCascadeHammersteinFilter!(Complex!float, typeof(dist), (i, s) => makeOptimizer(i, s))(dist, numOfBasisFuncs, model.firFilter.taps);
+    return new SimpleTimeDomainCascadeHammersteinFilter!(Complex!float, typeof(dist), (i, s) => makeOptimizer(i, s))(dist, model.firFilter.taps);
 }
 
 

@@ -330,11 +330,9 @@ unittest
 final class SimpleTimeDomainParallelHammersteinFilter(C, Dist, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
-    this(Dist dist, size_t numOfFIR, size_t numOfTaps)
-    in{
-        assert(numOfFIR == dist.outputDim);
-    }
-    body {
+    this(Dist dist, size_t numOfTaps)
+    {
+        auto numOfFIR = dist.outputDim;
         _distorter = dist;
         _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
         _adaptor = genAdaptor(_state);
@@ -392,14 +390,19 @@ if(isBlockConverter!(Dist, C, C[]))
 
 
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
-    if(isModelParameterSet!M)
+    // if(isModelParameterSet!M)
     {
         // メンバーを持っているかどうかチェック
         static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
 
         // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-            _distorter.learn(signalGenerator(model).txBaseband);
+        {
+            auto sig = signalGenerator(model);
+            auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
+            sig.fillBuffer!(["txBaseband"])(buf);
+            _distorter.learn(buf);
+        }
     }
 
 
@@ -413,11 +416,10 @@ if(isBlockConverter!(Dist, C, C[]))
 final class SimpleTimeDomainParallelHammersteinFilterWithDCM(C, Dist, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
-    this(Dist dist, size_t numOfFIR, size_t numOfTaps)
-    in{
-        assert(numOfFIR == dist.outputDim);
-    }
-    body {
+    this(Dist dist, size_t numOfTaps)
+    {
+        auto numOfFIR = dist.outputDim;
+
         _distorter = dist;
         _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
 
