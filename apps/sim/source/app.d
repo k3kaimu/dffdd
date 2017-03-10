@@ -22,6 +22,8 @@ import std.meta;
 import std.numeric;
 import std.exception;
 import std.json;
+import std.variant;
+
 
 import carbon.math : nextPowOf2;
 
@@ -85,20 +87,20 @@ auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize,
 }
 
 
-auto makeCancellationProbe(C)(string filename, string resultDir, size_t dropSize, Model model)
+auto makeCancellationProbe(C)(float* dst, string filename, string resultDir, size_t dropSize, Model model)
 {
     alias Tup = Tuple!(C, C);
 
-    if(resultDir !is null) {
-        return makeInstrument!Tup(delegate void(FiberRange!Tup r){
-            auto rd = r.drop(dropSize);
-            auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+    return makeInstrument!Tup(delegate void(FiberRange!Tup r){
+        auto rd = r.drop(dropSize);
+        auto ratio = rd.calculateSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+        if(dst !is null) *dst = 10*log10(ratio);
+
+        if(resultDir !is null) {
             auto file = File(buildPath(resultDir, filename), "w");
             file.writefln("%s", 10*log10(ratio));
-        });
-    }else{
-        return makeInstrument!Tup(delegate void(FiberRange!Tup r) {});
-    }
+        }
+    });
 }
 
 
@@ -160,7 +162,7 @@ auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Mo
 
 JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 {
-    JSONValue infoJV = cast(JSONValue[string])null;
+    JSONValue infoResult = ["type": filterType];
 
     immutable bool* alwaysFalsePointer = new bool(false);
     immutable bool* alwaysTruePointer = new bool(true);
@@ -293,15 +295,17 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
             .put(sicIterValue, recvs.zip(outps));
         }
 
-        infoJV["training_symbols_per_second"] = model.numOfFilterTrainingSymbols / ((cast(real)sw.peek.usecs) / 1_000_000);
+        infoResult["training_symbols_per_second"] = model.numOfFilterTrainingSymbols / ((cast(real)sw.peek.usecs) / 1_000_000);
     }
 
 
     {
+        float sicv;
+
         auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model);
         auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model);
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model);
-        auto sicValue = makeCancellationProbe!(Complex!float)("cancellation_value.csv", resultDir, 0, model);
+        auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model);
 
         StopWatch sw;
         foreach(blockIdxo; 0 .. 1024)
@@ -324,7 +328,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
             }
         }
 
-        infoJV["canceling_symbols_per_second"] = 1024 * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
+        infoResult["canceling_symbols_per_second"] = 1024 * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
+        infoResult["cancellation_dB"] = sicv;
     }
 
     //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -386,10 +391,14 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
                     rcvBeforeSICPSD.put(e);
         }
 
-        File file = File(buildPath(resultDir, "ber.csv"), "w");
-        file.writeln(berResult);
+        if(resultDir !is null){
+            File file = File(buildPath(resultDir, "ber.csv"), "w");
+            file.writeln(berResult);
+        }
 
-        writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR.dB, model.INR.dB, berResult);
+        infoResult["ber"] = berResult;
+
+        // writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR.dB, model.INR.dB, berResult);
     }
 
     // ノイズ電力
@@ -400,18 +409,18 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     static if(is(typeof((){ filter.saveInfoToDir(""); })))
     {
         if(resultDir !is null)
-            filter.saveInfoToDir(buildPath("resultDir", "filterSpec"));
+            filter.saveInfoToDir(resultDir);
     }
 
-    static if(is(typeof((){ infoJV["filterSpec"] = filter.infoJV; })))
+    static if(is(typeof((){ infoResult["filterSpec"] = filter.info; })))
     {
-        infoJV["filterSpec"] = filter.infoJV;
+        infoResult["filterSpec"] = filter.info;
     }
 
     if(resultDir !is null)
-        std.file.write(buildPath(resultDir, "info.json"), infoJV.toPrettyString());
+        std.file.write(buildPath(resultDir, "info.json"), infoResult.toPrettyString());
 
-    return infoJV;
+    return infoResult;
 }
 
 
@@ -423,7 +432,7 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OFHF_LS",*/ "OPH_LS", "SFHF_RLS", "FHF_RLS"/*, "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",*/
+    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OPH_LS",*/ "SFHF_RLS"/*, "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
         foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
@@ -431,7 +440,7 @@ void mainJob()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(20, 85, 5)) foreach(txp; iota(15, 18, 3))
+            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 18, 3))
             {
                 Model model;
                 model.SNR = 11.dB;
@@ -502,7 +511,95 @@ void mainJob()
             }
 
             foreach(i; 0 .. models.length)
-                taskList.append((Model m, string dir){ writeln(mainImpl!methodName(m, dir)); }, models[i], /*buildPath("results", dirs[i])*/ null);
+                taskList.append((Model m, string dir){
+                    JSONValue[] resList;
+
+                    // 最初の一回は普通にやる
+                    resList ~= mainImpl!methodName(m, dir);
+
+                    static if(methodName.startsWith("SFHF"))
+                    // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
+                    enum K = 1;    // 試行回数
+                    uint sumOfSuccFreq;
+                    JSONValue[] selectingRatioList;
+                    foreach(j; 0 .. K){
+                        m.rndSeed += 100;   // seed値を100ずつ足していく
+                        auto res = mainImpl!methodName(m, null);
+                        resList ~= res;
+                        auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();
+                        sumOfSuccFreq += cnt;
+                        selectingRatioList ~= JSONValue(cnt / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling));
+                    }
+
+                    JSONValue jv = ["list": JSONValue(resList)];
+                    
+                    jv["selecting"] = (){
+                        JSONValue[string] vv;
+                        vv["selectingRatio"] = sumOfSuccFreq / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * K);
+                        vv["selectingRatioList"] = selectingRatioList;
+
+                        size_t failedCNT;
+                        size_t matchCNT;
+                        size_t overCNT;
+                        foreach(k, ref ev; resList){
+                            auto reqs = ev["filterSpec"]["actualRequiredBasisFuncs"].array;
+                            auto used = ev["filterSpec"]["selectedBasisFuncs"].array;
+                            foreach(f; 0 .. m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling){
+                                auto r = reqs[f].array;
+                                auto u = used[f].array;
+
+                                // 推定ミスした周波数のカウント
+                                foreach(p; 0 .. r.length)
+                                    if(r[p].type == JSON_TYPE.TRUE && u[p].type == JSON_TYPE.FALSE){
+                                        ++failedCNT;
+                                        break;
+                                    }
+                                
+                                // 完全推定できた周波数のカウント
+                                foreach(p; 0 .. r.length){
+                                    if(r[p].type != u[p].type) break;
+                                    if(p == r.length - 1) ++matchCNT;
+                                }
+
+                                // 過大評価した周波数のカウント
+                                foreach(p; 0 .. r.length)
+                                    if(r[p].type == JSON_TYPE.FALSE && u[p].type == JSON_TYPE.TRUE){
+                                        ++overCNT;
+                                        break;
+                                    }
+                            }
+                        }
+                        vv["failedRatio"] = failedCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+                        vv["matchRatio"] = matchCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+                        vv["overRatio"] = overCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+
+                        return vv;
+                    }();
+
+                    // 要素数が100以上の配列をJSONから削除する
+                    // static ref JSONValue removeOver100Array(return ref JSONValue obj)
+                    // {
+                    //     if(obj.type == JSON_TYPE.OBJECT)
+                    //     {
+                    //         string[] rmlist;
+                    //         foreach(k, ref v; obj.object){
+                    //             if(v.type == JSON_TYPE.ARRAY){
+                    //                 if(v.array.length >= 100) rmlist ~= k;
+                    //             }else{
+                    //                 removeOver100Array(v);
+                    //             }
+                    //         }
+
+                    //         foreach(s; rmlist) obj.object.remove(s);
+                    //     }
+
+                    //     return obj;
+                    // }
+                    
+                    auto file = File(buildPath(dir, "allResult.json"), "w");
+                    file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
+
+                }, models[i], buildPath("results", dirs[i]));
             // foreach(i; 0 .. models.length)
             //     mainImpl!methodName(models[i], buildPath("results", dirs[i]));
         }

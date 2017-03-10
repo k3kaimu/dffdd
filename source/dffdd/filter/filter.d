@@ -10,6 +10,7 @@ import std.experimental.ndslice;
 import std.numeric;
 import std.typecons;
 import std.json;
+import std.variant;
 
 import std.stdio;
 
@@ -651,7 +652,6 @@ if(isBlockConverter!(Dist, C, C[]))
                 _selectingIsSuccess = new bool[](_nFFT * _nOS);
                 _selectingIsSuccess[] = true;
                 _estimatedPower = new real[][](_nFFT * _nOS, Dist.outputDim);
-                foreach(ref es; _actualPower) foreach(ref e; es) e = 0;
                 auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
 
                 C[][] freqX = new C[][](_nEstH, _nFFT * _nOS);
@@ -684,6 +684,18 @@ if(isBlockConverter!(Dist, C, C[]))
                     float h = freqH[f].sqAbs;
                     float hinv = freqH[$-1-f].sqAbs;
 
+                    foreach(p; 0 .. Dist.outputDim){
+                        // 重要度と受信信号電力の積が，推定された干渉電力になる
+                        immutable float ip = (){
+                                real y = 0;
+                                foreach(idxOfEstH; 0 .. _nEstH)
+                                    y += freqY[idxOfEstH][f].sqAbs;
+                                
+                                return (y / _nEstH) * _importance[f][p];
+                            }();
+                        _estimatedPower[f][p] = ip;
+                    }
+
                     // writefln("%s, %s, %s", f, h, hinv);
 
                     // この条件が満たされたとき，全基底関数を使用する
@@ -696,27 +708,16 @@ if(isBlockConverter!(Dist, C, C[]))
                     }
 
                     size_t cnt;
-                    foreach(p; 0 .. Dist.outputDim) if(Dist.indexOfConjugated(p) >= p && !_selectedBasisFuncs[f][p]) {
-                        // 重要度と受信信号電力の積が，推定された干渉電力になる
-                        // float ip = _importance[f][p] * freqY[f].sqAbs;
-                        immutable float ip = (){
-                            real y = 0;
-                            foreach(idxOfEstH; 0 .. _nEstH)
-                                y += freqY[idxOfEstH][f].sqAbs;
-                            
-                            return (y / _nEstH) * _importance[f][p];
-                        }();
-                        _estimatedPower[f][p] = ip;
-                        _estimatedPower[f][Dist.indexOfConjugated(p)] = ip;
-                        // if(f == 0 || f == 256){
-                        //     writefln("%s, %s, %s, %s, %s", p, ip, _importance[f][p], rxs[f].sqAbs, _noiseFloor);
-                        // }
+                    foreach(p; 0 .. Dist.outputDim) {
+                        auto ip = _estimatedPower[f][p];
 
-                        // 干渉電力にマージンを設けて，ノイズ電力と比較する
-                        if(ip * _gainMargin.gain^^2 > _noiseFloor){
-                            _selectedBasisFuncs[f][p] = true;
-                            _selectedBasisFuncs[f][Dist.indexOfConjugated(p)] = true;
-                            cnt += 2;
+                        if(Dist.indexOfConjugated(p) >= p && !_selectedBasisFuncs[f][p]) {
+                            // 干渉電力にマージンを設けて，ノイズ電力と比較する
+                            if(ip * _gainMargin.gain^^2 > _noiseFloor){
+                                _selectedBasisFuncs[f][p] = true;
+                                _selectedBasisFuncs[f][Dist.indexOfConjugated(p)] = true;
+                                cnt += 2;
+                            }
                         }
                     }
 
@@ -866,40 +867,43 @@ if(isBlockConverter!(Dist, C, C[]))
                 // 同軸線路を使用するように設定する
                 model.useCoaxialCableAsChannel();
                 model.rndSeed += 114514;
-
-                // 最初にノイズ電力の計測
-                // _noiseFloor = signals.noise.save.map!`a.re^^2 + a.im^^2`.take(1024*1024).sum() / (1024 * 1024);
-                {
-                    auto signals = genSignal(model);
-
-                    auto n = signals.noise.save;
-                    auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
-                    float[] buf = new float[_nFFT * _nOS];
-                
-                    foreach(ref e; buf)
-                        e = 0;
-
-                    // auto buf = new Complex!float[_nOS * _nFFT];
-                    foreach(i; 0 .. 1024){
-                        foreach(j; 0 .. _nOS * _nFFT){
-                            fftw.inputs!float[j] = cast(Complex!float)n.front;
-                            n.popFront();
-                        }
-
-                        fftw.fft!float();
-                        foreach(j; 0 .. _nOS * _nFFT)
-                            buf[j] += fftw.outputs!float[j].sqAbs;
-                    }
-
-                    foreach(j; 0 .. _nOS * _nFFT)
-                        buf[j] /= 1024;
-
-                    _noiseFloor = buf.sum() / (_nFFT * _nOS);
-                }
             }
 
-            // LNAダイナミックレンジ最大まで使用する
-            model.INR = model.lna.DR;
+            // 最初にノイズ電力の計測
+            // _noiseFloor = signals.noise.save.map!`a.re^^2 + a.im^^2`.take(1024*1024).sum() / (1024 * 1024);
+            {
+                auto signals = genSignal(model);
+
+                auto n = signals.noise.save;
+                auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
+                float[] buf = new float[_nFFT * _nOS];
+            
+                foreach(ref e; buf)
+                    e = 0;
+
+                // auto buf = new Complex!float[_nOS * _nFFT];
+                foreach(i; 0 .. 1024){
+                    foreach(j; 0 .. _nOS * _nFFT){
+                        fftw.inputs!float[j] = cast(Complex!float)n.front;
+                        n.popFront();
+                    }
+
+                    fftw.fft!float();
+                    foreach(j; 0 .. _nOS * _nFFT)
+                        buf[j] += fftw.outputs!float[j].sqAbs;
+                }
+
+                foreach(j; 0 .. _nOS * _nFFT)
+                    buf[j] /= 1024;
+
+                _noiseFloor = buf.sum() / (_nFFT * _nOS);
+            }
+
+            if(testcase == 0)
+            {
+                // LNAダイナミックレンジ最大まで使用する
+                model.INR = model.lna.DR;
+            }
 
             // {
             //     auto model4IRR = model;
@@ -950,7 +954,8 @@ if(isBlockConverter!(Dist, C, C[]))
             auto disted = new C[][]((_nFFT + _nCP) * _nOS, _distorter.outputDim);
 
             // 重要度を計算する
-            foreach(i; 0 .. 1024){
+            enum size_t Navg = 1024;
+            foreach(i; 0 .. Navg){
                 signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
                 _distorter(testTX, disted);
 
@@ -992,6 +997,10 @@ if(isBlockConverter!(Dist, C, C[]))
                 }
             }else if(testcase == 1){    // _actualPowerを算出するだけなら
                 _actualPower = powerOfSI;
+                foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
+                _requiredBasisFuncs = new bool[][](_nFFT * _nOS, _distorter.outputDim);
+                foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim)
+                    _requiredBasisFuncs[f][p] = (_actualPower[f][p] * (_gainMargin.gain^^2) >= _noiseFloor);
             }
         }
     }
@@ -1018,35 +1027,59 @@ if(isBlockConverter!(Dist, C, C[]))
             file = File(buildPath(dir, "basisfuncs_per_subcarrier.csv"), "w");
             foreach(f; 0 .. _nFFT * _nOS)
                 file.writefln("%s, %(%s, %)", f, _selectedBasisFuncs[f].map!`a ? 1 : 0`.zip(iota(1, _selectedBasisFuncs[f].length+1)).map!`a[0]*a[1]`);
+
+            // selectingIsSuccess
+            file = File(buildPath(dir, "success_estimation_for_selecting.csv"), "w");
+            foreach(f; 0 .. _nFFT * _nOS)
+                file.writefln("%s, %s", f, _selectingIsSuccess[f] ? 1 : 0);
+
+            // estimatedPower
+            file = File(buildPath(dir, "estimated_power.csv"), "w");
+            foreach(f; 0 .. _nFFT * _nOS)
+                file.writefln("%s, %(%s, %)", f, _estimatedPower[f].map!(a => a <= 0 ? -400 : 10*log10(a)));
+
+            // actualPower
+            file = File(buildPath(dir, "actual_power.csv"), "w");
+            foreach(f; 0 .. _nFFT * _nOS)
+                file.writefln("%s, %(%s, %)", f, _actualPower[f].map!(a => a <= 0 ? -400 : 10*log10(a)));
+
+            file = File(buildPath(dir, "actual_required_basis_funcs.csv"), "w");
+            foreach(f; 0 .. _nFFT * _nOS)
+                file.writefln("%s, %(%s, %)", f, _requiredBasisFuncs[f].map!`a ? 1 : 0`.zip(iota(1, _requiredBasisFuncs[f].length+1)).map!`a[0]*a[1]`);
         }
 
-        auto jv = this.infoJV;
+        auto jv = this.info;
         auto file = File(buildPath(dir, "info.json"), "w");
         file.writeln(jv.toPrettyString());
     }
 
 
-    JSONValue infoJV()
+    JSONValue info()
     {
         import std.conv;
 
         JSONValue jv = [ "type": typeof(this).stringof ];
         if(_doSelect){
-            jv["limitIRR"] = _limitIRR.to!string;
-            jv["gainMargin"] = _gainMargin.to!string;
-            jv["numOfEstimationOfH"] = _nEstH;
-            jv["selectingBFCounts"] = (){
+            size_t[] bfcounter(bool[][] arr) {
                 size_t[] cnts = new size_t[_distorter.outputDim+1];
                 foreach(f; 0 .. _nFFT * _nOS){
-                    auto cnt = _selectedBasisFuncs[f].map!`a ? 1 : 0`.sum();
+                    auto cnt = arr[f].map!`a ? 1 : 0`.sum();
                     cnts[cnt] += 1;
                 }
                 return cnts;
-            }();
+            }
+
+            jv["limitIRR"] = _limitIRR.to!string;
+            jv["gainMargin"] = _gainMargin.to!string;
+            jv["numOfEstimationOfH"] = _nEstH;
+            jv["selectedBasisFuncs"] = _selectedBasisFuncs;
+            jv["selectedBasisFuncsCounts"] = bfcounter(_selectedBasisFuncs);
             jv["noiseFloor"] = (10*log10(_noiseFloor)).dB.to!string;
             jv["selectingIsSuccess"] = _selectingIsSuccess;
             jv["estimatedPower"] = _estimatedPower;
             jv["actualPower"] = _actualPower;
+            jv["actualRequiredBasisFuncs"] = _requiredBasisFuncs;
+            jv["actualRequiredBasisFuncsCounts"] = bfcounter(_requiredBasisFuncs);
         }
         jv["scMap"] = _scMap.map!(a => a ? 1 : 0).array();
         jv["nFFT"] = _nFFT;
@@ -1083,6 +1116,7 @@ if(isBlockConverter!(Dist, C, C[]))
     bool[] _selectingIsSuccess;     // 各周波数で，重要度が指標として使用可能ならtrue, それ以外ならfalse
     real[][] _estimatedPower;       // 重要度から推定された各基底の電力
     real[][] _actualPower;
+    bool[][] _requiredBasisFuncs;
 }
 
 
