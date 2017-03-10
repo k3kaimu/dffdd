@@ -858,7 +858,7 @@ if(isBlockConverter!(Dist, C, C[]))
 
         // testcase == 0 : 重要度を計算する
         // testcase == 1 : デバッグ用に_actualPowerを計算する
-        foreach(testcase; [0, 1])
+        foreach(testcase; [1, 0])
         {
             auto model = originalModel;
 

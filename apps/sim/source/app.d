@@ -518,86 +518,110 @@ void mainJob()
                     resList ~= mainImpl!methodName(m, dir);
 
                     static if(methodName.startsWith("SFHF"))
-                    // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-                    enum K = 1;    // 試行回数
-                    uint sumOfSuccFreq;
-                    JSONValue[] selectingRatioList;
-                    foreach(j; 0 .. K){
-                        m.rndSeed += 100;   // seed値を100ずつ足していく
-                        auto res = mainImpl!methodName(m, null);
-                        resList ~= res;
-                        auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();
-                        sumOfSuccFreq += cnt;
-                        selectingRatioList ~= JSONValue(cnt / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling));
-                    }
-
-                    JSONValue jv = ["list": JSONValue(resList)];
-                    
-                    jv["selecting"] = (){
-                        JSONValue[string] vv;
-                        vv["selectingRatio"] = sumOfSuccFreq / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * K);
-                        vv["selectingRatioList"] = selectingRatioList;
-
-                        size_t failedCNT;
-                        size_t matchCNT;
-                        size_t overCNT;
-                        foreach(k, ref ev; resList){
-                            auto reqs = ev["filterSpec"]["actualRequiredBasisFuncs"].array;
-                            auto used = ev["filterSpec"]["selectedBasisFuncs"].array;
-                            foreach(f; 0 .. m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling){
-                                auto r = reqs[f].array;
-                                auto u = used[f].array;
-
-                                // 推定ミスした周波数のカウント
-                                foreach(p; 0 .. r.length)
-                                    if(r[p].type == JSON_TYPE.TRUE && u[p].type == JSON_TYPE.FALSE){
-                                        ++failedCNT;
-                                        break;
-                                    }
-                                
-                                // 完全推定できた周波数のカウント
-                                foreach(p; 0 .. r.length){
-                                    if(r[p].type != u[p].type) break;
-                                    if(p == r.length - 1) ++matchCNT;
-                                }
-
-                                // 過大評価した周波数のカウント
-                                foreach(p; 0 .. r.length)
-                                    if(r[p].type == JSON_TYPE.FALSE && u[p].type == JSON_TYPE.TRUE){
-                                        ++overCNT;
-                                        break;
-                                    }
-                            }
+                    {
+                        // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
+                        enum K = 1;    // 試行回数
+                        uint sumOfSuccFreq;
+                        JSONValue[] selectingRatioList;
+                        foreach(j; 0 .. K){
+                            m.rndSeed += 100;   // seed値を100ずつ足していく
+                            auto res = mainImpl!methodName(m, null);
+                            resList ~= res;
+                            auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();
+                            sumOfSuccFreq += cnt;
+                            selectingRatioList ~= JSONValue(cnt / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling));
                         }
-                        vv["failedRatio"] = failedCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
-                        vv["matchRatio"] = matchCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
-                        vv["overRatio"] = overCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
 
-                        return vv;
-                    }();
+                        JSONValue jv = cast(JSONValue[string])null;
 
-                    // 要素数が100以上の配列をJSONから削除する
-                    // static ref JSONValue removeOver100Array(return ref JSONValue obj)
-                    // {
-                    //     if(obj.type == JSON_TYPE.OBJECT)
-                    //     {
-                    //         string[] rmlist;
-                    //         foreach(k, ref v; obj.object){
-                    //             if(v.type == JSON_TYPE.ARRAY){
-                    //                 if(v.array.length >= 100) rmlist ~= k;
-                    //             }else{
-                    //                 removeOver100Array(v);
-                    //             }
-                    //         }
+                        jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
+                        
+                        jv["selecting"] = (){
+                            JSONValue[string] vv;
+                            vv["selectingRatio"] = sumOfSuccFreq / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * K);
+                            vv["selectingRatioList"] = selectingRatioList;
 
-                    //         foreach(s; rmlist) obj.object.remove(s);
-                    //     }
+                            size_t failedCNT, failedCNTPLQ;
+                            size_t matchCNT, matchCNTPLQ;
+                            size_t overCNT, overCNTPLQ;
+                            real idealCostRLS = 0;
+                            real idealCostLMS = 0;
+                            real actualCostRLS = 0;
+                            real actualCostLMS = 0;
+                            size_t distDim = 0;
+                            foreach(k, ref ev; resList){
+                                auto reqs = ev["filterSpec"]["actualRequiredBasisFuncs"].array;
+                                auto used = ev["filterSpec"]["selectedBasisFuncs"].array;
+                                foreach(f; 0 .. m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling){
+                                    auto r = reqs[f].array;
+                                    auto u = used[f].array;
 
-                    //     return obj;
-                    // }
-                    
-                    auto file = File(buildPath(dir, "allResult.json"), "w");
-                    file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
+                                    if(distDim == 0) distDim = r.length;
+
+                                    // idealCostに追加する
+                                    size_t reqsP, usedP;
+                                    foreach(p; 0 .. r.length){
+                                        if(r[p].type == JSON_TYPE.TRUE) ++reqsP;
+                                        if(u[p].type == JSON_TYPE.TRUE) ++usedP;
+                                    }
+                                    idealCostRLS += 4*(reqsP^^2) + 4*reqsP;
+                                    idealCostLMS += 2*reqsP;
+                                    actualCostRLS += 4*(usedP^^2) + 4*usedP;
+                                    actualCostLMS += 2*usedP;
+
+                                    // 推定ミスした周波数のカウント
+                                    foreach(p; 0 .. r.length) if(r[p].type == JSON_TYPE.TRUE && u[p].type == JSON_TYPE.FALSE) { ++failedCNT; break; }
+
+                                    // 過大評価した周波数のカウント
+                                    foreach(p; 0 .. r.length) if(r[p].type == JSON_TYPE.FALSE && u[p].type == JSON_TYPE.TRUE){ ++overCNT; break; }
+                                    
+                                    // 完全推定できた周波数のカウント
+                                    foreach(p; 0 .. r.length){
+                                        if(r[p].type != u[p].type) break;
+                                        if(p == r.length - 1) ++matchCNT;
+                                    }
+
+                                    // p>qについて
+                                    // 推定ミスした周波数のカウント
+                                    foreach(p; 0 .. r.length) if(CompleteDistorter!().indexOfConjugated(p) >= p) if(r[p].type == JSON_TYPE.TRUE && u[p].type == JSON_TYPE.FALSE) { ++failedCNTPLQ; break; }
+
+                                    // 過大評価した周波数のカウント
+                                    foreach(p; 0 .. r.length) if(CompleteDistorter!().indexOfConjugated(p) >= p) if(r[p].type == JSON_TYPE.FALSE && u[p].type == JSON_TYPE.TRUE){ ++overCNTPLQ; break; }
+                                    
+                                    // 完全推定できた周波数のカウント
+                                    bool bBreaked = false;
+                                    foreach(p; 0 .. r.length) if(CompleteDistorter!().indexOfConjugated(p) >= p) {
+                                        if(r[p].type != u[p].type){
+                                            bBreaked = true;
+                                            break;
+                                        }
+                                    }
+                                    if(!bBreaked) ++matchCNTPLQ;
+                                }
+                            }
+                            vv["failedRatio"] = failedCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+                            vv["matchRatio"] = matchCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+                            vv["overRatio"] = overCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+
+                            vv["failedPLQRatio"] = failedCNTPLQ / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+                            vv["matchPLQRatio"] = matchCNTPLQ / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+                            vv["overPLQRatio"] = overCNTPLQ / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+
+                            immutable size_t nfft = m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling;
+                            immutable size_t nsym = (m.ofdm.numOfFFT + m.ofdm.numOfCP) * m.ofdm.scaleOfUpSampling;
+                            vv["idealCostRLS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (idealCostRLS / resList.length))/nsym;
+                            vv["idealCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (idealCostLMS / resList.length))/nsym;
+                            vv["actualCostRLS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (actualCostRLS / resList.length))/nsym;
+                            vv["actualCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (actualCostLMS / resList.length))/nsym;
+                            vv["nonSelCostRLS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 4*(distDim^^2 + distDim) * nfft)/nsym;
+                            vv["nonSelCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 2 * distDim * nfft)/nsym;
+
+                            return vv;
+                        }();
+                        
+                        auto file = File(buildPath(dir, "allResult.json"), "w");
+                        file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
+                    }
 
                 }, models[i], buildPath("results", dirs[i]));
             // foreach(i; 0 .. models.length)
