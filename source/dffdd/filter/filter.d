@@ -669,12 +669,12 @@ if(isBlockConverter!(Dist, C, C[]))
                 // MMSE推定する
                 C[] freqH = new C[](_nFFT * _nOS);
                 foreach(f; 0 .. _nFFT * _nOS){
-                    real den = _noiseFloor;
+                    real den = 0;
                     C num = C(0, 0);
 
                     foreach(idxOfEstH; 0 .. _nEstH){
                         den += freqX[idxOfEstH][f].sqAbs;
-                        num += freqX[idxOfEstH][f].conj * freqY[idxOfEstH][f].conj;
+                        num += freqX[idxOfEstH][f].conj * freqY[idxOfEstH][f];
                     }
 
                     freqH[f] = cast(C)(num / den);
