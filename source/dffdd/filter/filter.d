@@ -1000,7 +1000,7 @@ if(isBlockConverter!(Dist, C, C[]))
                 foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
                 _requiredBasisFuncs = new bool[][](_nFFT * _nOS, _distorter.outputDim);
                 foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim)
-                    _requiredBasisFuncs[f][p] = (_actualPower[f][p] * (_gainMargin.gain^^2) >= _noiseFloor);
+                    _requiredBasisFuncs[f][p] = (_actualPower[f][p] >= _noiseFloor);
             }
         }
     }
