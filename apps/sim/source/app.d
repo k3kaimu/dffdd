@@ -440,7 +440,9 @@ void mainJob()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 18, 3))
+            foreach(inr; iota(20, 55, 5)) foreach(txp; iota(15, 18, 3))
+            foreach(gamma; iota(0, 8, 2))
+            foreach(beta; iota(0, 30, 5))
             {
                 Model model;
                 model.SNR = 11.dB;
@@ -499,15 +501,18 @@ void mainJob()
                 model.numOfFilterTrainingSymbols = 1000;
               }
 
+                model.basisFuncsSelection.imageMargin = (-beta).dB;
+                model.basisFuncsSelection.noiseMargin = gamma.dB;
+
                 models ~= model;
 
               static if(methodName.endsWith("LMS") || methodName.endsWith("RLS"))
                 model.numOfFilterTrainingSymbols = 100;
 
               static if(methodName.split("_")[0].endsWith("FHF"))
-                dirs ~= "TXP%s_inr%s_%s%s_Nswp%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, learningSymbols, model.swappedSymbols, model.orthogonalizer.numOfTrainingSymbols);
+                dirs ~= "TXP%s_inr%s_%s_B%s_G%s".format(model.pa.TX_POWER, model.INR, methodName, model.basisFuncsSelection.imageMargin, model.basisFuncsSelection.noiseMargin);
               else
-                dirs ~= "TXP%s_inr%s_%s%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, learningSymbols, model.orthogonalizer.numOfTrainingSymbols);
+                dirs ~= "TXP%s_inr%s_%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, model.orthogonalizer.numOfTrainingSymbols);
             }
 
             foreach(i; 0 .. models.length)
@@ -520,7 +525,7 @@ void mainJob()
                     static if(methodName.startsWith("SFHF"))
                     {
                         // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-                        enum K = 1;    // 試行回数
+                        enum K = 10;    // 試行回数
                         uint sumOfSuccFreq;
                         JSONValue[] selectingRatioList;
                         foreach(j; 0 .. K){

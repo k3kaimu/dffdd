@@ -271,6 +271,15 @@ struct Model
     Orthogonalizer orthogonalizer;
 
 
+    struct BasisFunctionSelection
+    {
+        Gain imageMargin = (-20).dB;
+        Gain noiseMargin = 6.dB;
+        size_t nEstH = 2;
+    }
+    BasisFunctionSelection basisFuncsSelection;
+
+
     void txPower(Voltage p) @property
     {
         this.pa.TX_POWER = p;
@@ -885,6 +894,9 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
             model.ofdm.scaleOfUpSampling,
             model.samplingFreq,
             selectBF,
+            model.basisFuncsSelection.nEstH,
+            (-model.basisFuncsSelection.imageMargin.dB).dB,
+            model.basisFuncsSelection.noiseMargin
         );
 }
 
