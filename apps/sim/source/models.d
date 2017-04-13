@@ -905,7 +905,7 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
 {
     import dffdd.filter.freqdomain;
     // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
-    alias Dist = CompleteDistorter!(1);
+    alias Dist = CompleteDistorter!(distortionOrder);
 
     auto makeOptimizer(State)(State state)
     {
