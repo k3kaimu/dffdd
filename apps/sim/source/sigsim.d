@@ -92,13 +92,24 @@ final class SimulatedSignals
 
         foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
         {
-            assert(txBaseband.front == txBasebandSWP.front);
-            assert(paDirect.front == paDirectSWP.front);
+            try{
+                assert(txBaseband.front == txBasebandSWP.front);
+                assert(paDirect.front == paDirectSWP.front);
 
-            assert(receivedSI.front == receivedSISWP.front);
-            assert(receivedSI.front == received.front);
+                assert(receivedSI.front == receivedSISWP.front);
+                assert(receivedSI.front == received.front);
+            }catch(Throwable o){
+                import std.stdio;
+                writeln(i);
+                writeln(txBaseband.front - txBasebandSWP.front);
+                writeln(paDirect.front - paDirectSWP.front);
 
-            this.popFront();
+                writeln(receivedSI.front - receivedSISWP.front);
+                writeln(receivedSI.front - received.front);
+                throw o;
+            }
+
+                this.popFront();
         }
 
         *_swIsAGCTraining = false;

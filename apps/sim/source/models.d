@@ -901,6 +901,56 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
 }
 
 
+auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false)
+{
+    import dffdd.filter.freqdomain;
+    // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
+    alias Dist = CompleteDistorter!(1);
+
+    auto makeOptimizer(State)(State state)
+    {
+        immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+
+      static if(optimizer == "LMS")
+        return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "RLS")
+        return makeRLSAdapter(state, 0.97, 1E-7).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "LS")
+        return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols);
+    }
+
+    alias C = Complex!float;
+    alias Adapter = typeof(makeOptimizer!(MultiFIRState!C)(MultiFIRState!C.init));
+
+    auto dist = new Dist();
+    auto regen = new OverlapSaveRegenerator2!C(Dist.outputDim, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
+    auto stateAdapter = new FrequencyDomainParallelHammersteinStateAdapter!(C, Adapter)
+                        (
+                            (size_t i, bool b, MultiFIRState!C s) => makeOptimizer(s),
+                            model.ofdm.subCarrierMap,
+                            Dist.outputDim
+                        );
+
+    return new FrequencyDomainHammersteinFilter!(
+            Complex!float,
+            typeof(dist),
+            typeof(stateAdapter),
+        )(
+            dist,
+            stateAdapter,
+            model.ofdm.subCarrierMap,
+            model.ofdm.numOfFFT,
+            model.ofdm.numOfCP,
+            model.ofdm.scaleOfUpSampling,
+            model.samplingFreq,
+            selectBF,
+            model.basisFuncsSelection.nEstH,
+            (-model.basisFuncsSelection.imageMargin.dB).dB,
+            model.basisFuncsSelection.noiseMargin
+        );
+}
+
+
 auto makeFrequencyDCMHammersteinFilter(size_t type, Flag!"isParallel" isParallel, string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model)
 if(type == 1 || type == 2)
 {
@@ -940,6 +990,57 @@ if(type == 1 || type == 2)
             model.ofdm.numOfFFT,
             model.ofdm.numOfCP,
             model.ofdm.scaleOfUpSampling
+        );
+}
+
+
+auto makeFrequencyDCMHammersteinFilter2(size_t type, Flag!"isParallel" isParallel, string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false)
+if(type == 2)
+{
+    import dffdd.filter.freqdomain;
+    // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
+    alias Dist = CompleteDistorter!(distortionOrder);
+
+    auto makeOptimizer(State)(size_t p, State state)
+    {
+        immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
+
+      static if(optimizer == "LMS")
+        return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "RLS")
+        return makeRLSAdapter(state, 0.5, 1E-7).trainingLimit(model.learningSymbols);
+      else static if(optimizer == "LS")
+        return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningCount * model.learningSymbols).ignoreHeadSamples(p * model.learningSymbols);
+    }
+
+    alias C = Complex!float;
+    alias Adapter = typeof(makeOptimizer!(MultiFIRState!C)(0, MultiFIRState!C.init));
+
+    auto dist = new Dist();
+    auto regen = new OverlapSaveRegenerator2!C(Dist.outputDim, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
+    auto stateAdapter = new FrequencyDomainDCMHammersteinStateAdapter!(C, Adapter, isParallel)
+                        (
+                            (size_t i, bool b, size_t p, MultiFIRState!C s) => makeOptimizer(p, s),
+                            model.ofdm.subCarrierMap,
+                            Dist.outputDim
+                        );
+
+    return new FrequencyDomainHammersteinFilter!(
+            Complex!float,
+            typeof(dist),
+            typeof(stateAdapter),
+        )(
+            dist,
+            stateAdapter,
+            model.ofdm.subCarrierMap,
+            model.ofdm.numOfFFT,
+            model.ofdm.numOfCP,
+            model.ofdm.scaleOfUpSampling,
+            model.samplingFreq,
+            selectBF,
+            model.basisFuncsSelection.nEstH,
+            (-model.basisFuncsSelection.imageMargin.dB).dB,
+            model.basisFuncsSelection.noiseMargin
         );
 }
 

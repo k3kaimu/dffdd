@@ -155,24 +155,34 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 //     auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
 //   else static if(filterStructure.endsWith("CWL1H"))
 //     auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("IQISICFHF"))
+  {
+    import dffdd.filter.freqdomain;
+    auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, 3, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
+  }
+  else static if(filterStructure.endsWith("WLFHF"))
+  {
+    static assert(!isOrthogonalized);
+    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer, 1)(model, filterStructure.endsWith("SWLFHF"));
+  }
   else static if(filterStructure.endsWith("DCMFHF"))
   {
-      static assert(!isOrthogonalized);
-      enum string filterOption = filterStructure[0 .. $-6];
+    static assert(!isOrthogonalized);
+    enum string filterOption = filterStructure[0 .. $-6];
 
-      static assert(filterOption.canFind('1') || filterOption.canFind('2'));
-      static assert(filterOption.canFind('P') || filterOption.canFind('C'));
+    static assert(filterOption.canFind('1') || filterOption.canFind('2'));
+    static assert(filterOption.canFind('P') || filterOption.canFind('C'));
 
-      enum size_t type = filterOption.canFind('1') ? 1 : 2;
-      enum Flag!"isParallel" isParallel = filterOption.canFind('P') ? Yes.isParallel : No.isParallel;
+    enum size_t type = filterOption.canFind('1') ? 1 : 2;
+    enum Flag!"isParallel" isParallel = filterOption.canFind('P') ? Yes.isParallel : No.isParallel;
 
-      auto filter = makeFrequencyDCMHammersteinFilter!(type, isParallel, filterOptimizer)(model);
+    auto filter = makeFrequencyDCMHammersteinFilter2!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
   }
   else static if(filterStructure.endsWith("CFHF"))
     static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
   else static if(filterStructure.endsWith("FHF")){
     static assert(!isOrthogonalized);
-    auto filter = makeFrequencyHammersteinFilter!(filterOptimizer)(model, filterStructure.endsWith("SFHF"));
+    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model, filterStructure.endsWith("SFHF"));
   }else static if(filterStructure.endsWith("WL"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))

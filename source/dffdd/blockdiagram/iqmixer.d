@@ -20,8 +20,6 @@ struct IQImbalance(R)
         _r = r;
         _g1V = gain.gain;
         _g2V = gain.gain / irr.gain;
-        //import std.stdio;
-        //writefln("%s, %s", _g1V, _g2V);
     }
 
 

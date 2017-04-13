@@ -23,17 +23,17 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!(/*"FHF_LS",*/ /*"OPH_LS",*/ "SFHF_RLS"/*, "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS",*/
+    foreach(methodName; AliasSeq!("IQISICFHF_X", "WLFHF_LS"/*"FHF_LS", "OPH_LS", "WLFHF_LS", "WL_LS", , "C1DCMFHF_LS", "C2DCMFHF_LS", "P1DCMFHF_LS", "P2DCMFHF_LS"*/ /*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
-        foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
+        foreach(learningSymbols; iota(10, 15, 5)) foreach(orthTrainingSymbols; [10000])
         {
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(20, 55, 5)) foreach(txp; iota(15, 18, 3))
-            foreach(gamma; iota(0, 8, 2))
-            foreach(beta; iota(0, 30, 5))
+            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 25, 5))
+            foreach(gamma; /*iota(0, 8, 2)*/ [6])
+            foreach(beta; /*iota(0, 30, 5)*/ [25])
             {
                 Model model;
                 model.SNR = 11.dB;
@@ -113,7 +113,7 @@ void mainJob()
                     // 最初の一回は普通にやる
                     resList ~= mainImpl!methodName(m, dir);
 
-                    static if(methodName.startsWith("SFHF"))
+                    static if(false /*methodName.startsWith("SFHF")*/)
                     {
                         // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
                         enum K = 10;    // 試行回数

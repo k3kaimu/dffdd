@@ -333,6 +333,29 @@ unittest
 }
 
 
+/**
+y[j] = sum_i mx[i, j] * a[i] のa[i]を最小二乗法で求める．
+結果は，y[0 .. P]に上書きされる．(P: mx.length!0)
+*/
+Complex!float[] leastSquareEstimate(Slice!(2, Complex!float*) mx, Complex!float[] y)
+{
+    import std.algorithm : min, max;
+
+    static float[] sworkSpace;
+
+    immutable L = y.length;
+    immutable P = mx.length!0;
+
+    int rankN = void;
+    static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
+
+    adjustSize(sworkSpace, min(L, P));
+    LAPACKE_cgelss(102, cast(int)L, cast(int)P, 1, cast(float[2]*)&(mx[0, 0]), cast(int)L, cast(float[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
+
+    return y[0 .. P];
+}
+
+
 __EOF__
 
 /* 
