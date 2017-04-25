@@ -330,7 +330,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
 
     this(Dist dist, StateAdapter stateAdapter, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS, real sampFreq,
-        bool doSelect = false, size_t nEstH = 2, Gain limitIRR = 20.dB, Gain gainMargin = 6.dB)
+        bool doSelect = false, bool doComplexSelect = false, size_t nEstH = 2, Gain limitIRR = 20.dB, Gain gainMargin = 6.dB)
     {
         immutable dim = dist.outputDim;
 
@@ -343,10 +343,12 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         _nFFT = nFFT;
         _nCP = nCP;
         _nOS = nOS;
+        _nSC = subcarrierMap.map!(a => a ? 1 : 0).sum();
         _sampFreq = sampFreq;
         _distortedBuffer = new C[][](this.inputBlockLength, dim);
         _fftedBuffer = new C[][](dim, _nFFT * _nOS);
         _doSelect = doSelect;
+        _doComplexSelect = doComplexSelect;
         _nEstH = nEstH;
         _limitIRR = limitIRR;
         _gainMargin = gainMargin;
@@ -408,72 +410,115 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                     freqY[idxOfEstH][] = _fftw.outputs!float[];
                 }
 
-                // MMSE推定する
-                C[] freqH = new C[](_nFFT * _nOS);
-                foreach(f; 0 .. _nFFT * _nOS){
-                    real den = 0;
-                    C num = C(0, 0);
+                if(_doComplexSelect)
+                {
+                    foreach(f; 0 .. _nFFT * _nOS){
+                        size_t cnt;
+                        foreach(p; 0 .. Dist.outputDim){
+                            // 重要度と受信信号電力の積が，推定された干渉電力になる
+                            immutable float ipR = (){
+                                    real y = 0;
+                                    foreach(idxOfEstH; 0 .. _nEstH)
+                                        y += freqY[idxOfEstH][f].sqAbs;
+                                    
+                                    return (y / _nEstH) * _importance[f][p];
+                                }();
 
-                    foreach(idxOfEstH; 0 .. _nEstH){
-                        den += freqX[idxOfEstH][f].sqAbs;
-                        num += freqX[idxOfEstH][f].conj * freqY[idxOfEstH][f];
-                    }
+                            immutable float ipI = (){
+                                    real y = 0;
+                                    foreach(idxOfEstH; 0 .. _nEstH)
+                                        y += freqY[idxOfEstH][f == 0 ? 0 : $-f].sqAbs;
+                                    
+                                    return (y / _nEstH) * _importance[f == 0 ? 0 : $-f][_distorter.indexOfConjugated(p)]
+                                                        * _iqRX.sqAbs;
+                                }();
 
-                    freqH[f] = cast(C)(num / den);
-                }
+                            _estimatedPower[f][p] = ipR + ipI + 2 * sqrt(ipR * ipI);
 
-                foreach(f; 0 .. _nFFT * _nOS){
-                    float h = freqH[f].sqAbs;
-                    float hinv = freqH[$-1-f].sqAbs;
-
-                    foreach(p; 0 .. Dist.outputDim){
-                        // 重要度と受信信号電力の積が，推定された干渉電力になる
-                        immutable float ip = (){
-                                real y = 0;
-                                foreach(idxOfEstH; 0 .. _nEstH)
-                                    y += freqY[idxOfEstH][f].sqAbs;
-                                
-                                return (y / _nEstH) * _importance[f][p];
-                            }();
-                        _estimatedPower[f][p] = ip;
-                    }
-
-                    // この条件が満たされたとき，全基底関数を使用する
-                    size_t cnt;
-                    if(hinv > h * _limitIRR.gain^^2) {
-                        cnt = Dist.outputDim;
-                        _selectingIsSuccess[f] = false;
-                        foreach(p; 0 .. Dist.outputDim)
-                            _selectedBasisFuncs[f][p] = true;
-                        
-                        goto LnextFreq;
-                    }
-
-                    foreach(p; 0 .. Dist.outputDim) {
-                        auto ip = _estimatedPower[f][p];
-
-                        if(Dist.indexOfConjugated(p) >= p && !_selectedBasisFuncs[f][p]) {
-                            // 干渉電力にマージンを設けて，ノイズ電力と比較する
-                            if(ip * _gainMargin.gain^^2 > _noiseFloor){
+                            if(_estimatedPower[f][p] * _gainMargin.gain^^2 > _noiseFloor){
                                 _selectedBasisFuncs[f][p] = true;
-                                _selectedBasisFuncs[f][Dist.indexOfConjugated(p)] = true;
-                                cnt += 2;
+                                cnt += 1;
                             }
                         }
+
+                        if(cnt == 0)
+                        {
+                            _selectedBasisFuncs[f][0] = true;
+                            cnt = 1;
+                        }
+
+                        _selectedBasisFuncsDim[f] = cnt;
+                    }
+                }
+                else
+                {
+                    // MMSE推定する
+                    C[] freqH = new C[](_nFFT * _nOS);
+                    foreach(f; 0 .. _nFFT * _nOS){
+                        real den = 0;
+                        C num = C(0, 0);
+
+                        foreach(idxOfEstH; 0 .. _nEstH){
+                            den += freqX[idxOfEstH][f].sqAbs;
+                            num += freqX[idxOfEstH][f].conj * freqY[idxOfEstH][f];
+                        }
+
+                        freqH[f] = cast(C)(num / den);
                     }
 
-                  LnextFreq:
-                    if(cnt == 0){
-                        _selectedBasisFuncs[f][0] = true;
-                        cnt += 1;
+                    foreach(f; 0 .. _nFFT * _nOS){
+                        float h = freqH[f].sqAbs;
+                        float hinv = freqH[$-1-f].sqAbs;
+
+                        foreach(p; 0 .. Dist.outputDim){
+                            // 重要度と受信信号電力の積が，推定された干渉電力になる
+                            immutable float ip = (){
+                                    real y = 0;
+                                    foreach(idxOfEstH; 0 .. _nEstH)
+                                        y += freqY[idxOfEstH][f].sqAbs;
+                                    
+                                    return (y / _nEstH) * _importance[f][p];
+                                }();
+                            _estimatedPower[f][p] = ip;
+                        }
+
+                        // この条件が満たされたとき，全基底関数を使用する
+                        size_t cnt;
+                        if(hinv > h * _limitIRR.gain^^2) {
+                            cnt = Dist.outputDim;
+                            _selectingIsSuccess[f] = false;
+                            foreach(p; 0 .. Dist.outputDim)
+                                _selectedBasisFuncs[f][p] = true;
+                            
+                            goto LnextFreq;
+                        }
+
+                        foreach(p; 0 .. Dist.outputDim) {
+                            auto ip = _estimatedPower[f][p];
+
+                            if(Dist.indexOfConjugated(p) >= p && !_selectedBasisFuncs[f][p]) {
+                                // 干渉電力にマージンを設けて，ノイズ電力と比較する
+                                if(ip * _gainMargin.gain^^2 > _noiseFloor){
+                                    _selectedBasisFuncs[f][p] = true;
+                                    _selectedBasisFuncs[f][Dist.indexOfConjugated(p)] = true;
+                                    cnt += 2;
+                                }
+                            }
+                        }
+
+                      LnextFreq:
+                        if(cnt == 0){
+                            _selectedBasisFuncs[f][0] = true;
+                            cnt += 1;
+                        }
+
+                        assert(cnt != 0);
+
+                        // _states, _adaptersを更新する
+                        // _states[f] = MultiFIRState!(Complex!float)(cnt, 1);
+                        // _adapters[f] = _genAdapter(f, _scMap[f], _states[f]);
+                        _selectedBasisFuncsDim[f] = cnt;
                     }
-
-                    assert(cnt != 0);
-
-                    // _states, _adaptersを更新する
-                    // _states[f] = MultiFIRState!(Complex!float)(cnt, 1);
-                    // _adapters[f] = _genAdapter(f, _scMap[f], _states[f]);
-                    _selectedBasisFuncsDim[f] = cnt;
                 }
 
                 _stateAdapter.setDimensionForEachFreq(_selectedBasisFuncsDim);
@@ -599,7 +644,6 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             }
 
             // 最初にノイズ電力の計測
-            // _noiseFloor = signals.noise.save.map!`a.re^^2 + a.im^^2`.take(1024*1024).sum() / (1024 * 1024);
             {
                 auto signals = genSignal(model);
 
@@ -640,6 +684,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             //     model.noImpairementsOnTX();
             // }
 
+            /*
             auto signals = genSignal(model);
 
             // 次のようなフィルタを学習してみる
@@ -669,71 +714,166 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             foreach(f; 0 .. _nFFT * _nOS)
                 foreach(p; 0 .. _distorter.outputDim)
                     weight[f][p] = testfilter._stateAdapter._states[f].weight[0][p];
+            */
 
-            real[][] powerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
-            real[][] firstPowerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
-            real[] powerOfRCV = new real[](_nFFT * _nOS);
-            real[] firstPowerOfRCV = new real[](_nFFT * _nOS);
-            foreach(f; 0 .. _nFFT * _nOS){
-                powerOfRCV[f] = 0;
-                foreach(p; 0 .. _distorter.outputDim)
-                    powerOfSI[f][p] = 0;
+            C[][] weight;
+            Tuple!(real[][], real[]) expectedPowers;
+            if(_doComplexSelect && testcase == 0)
+            {
+                _iqRX = estimateIQCoefs(estimateCFR(model, genSignal, C(0, 0)))[1];
+                weight = estimateCFR(model, genSignal, _iqRX);
+                expectedPowers = calculateExpectedPower(model, genSignal, weight, _iqRX);
             }
-
-            testTX = testTX[0 .. (_nFFT + _nCP) * _nOS];
-            testRX = testRX[0 .. (_nFFT + _nCP) * _nOS];
-            auto disted = new C[][]((_nFFT + _nCP) * _nOS, _distorter.outputDim);
-
-            // 重要度を計算する
-            enum size_t Navg = 1024;
-            foreach(i; 0 .. Navg){
-                signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
-                _distorter(testTX, disted);
-
-                // 非線形送信信号を周波数領域に変換
-                foreach(p; 0 .. _distorter.outputDim){
-                    foreach(k; 0 .. _nFFT * _nOS)
-                        _fftw.inputs!float[k] = disted[_nCP * _nOS + k][p];
-
-                    _fftw.fft!float();
-
-                    foreach(k; 0 .. _nFFT * _nOS){
-                        if(i == 0) firstPowerOfSI[k][p] = _fftw.outputs!float[k].sqAbs;
-                        disted[k][p] = _fftw.outputs!float[k] * weight[k][p];
-                    }
-                }
-
-                // 受信信号の周波数成分
-                _fftw.inputs!float[] = testRX[_nCP * _nOS .. $];
-                _fftw.fft!float();
-                auto rxFFTed = _fftw.outputs!float();
-
-                // 電力に足し合わせる
-                foreach(f; 0 .. _nFFT * _nOS){
-                    foreach(p; 0 .. _distorter.outputDim){
-                        powerOfSI[f][p] += disted[f][p].sqAbs;
-                    }
-
-                    powerOfRCV[f] += rxFFTed[f].sqAbs;
-                }
-
-                if(i == 0)
-                    firstPowerOfRCV = powerOfRCV.dup;
+            else
+            {
+                // H_{p,q}[f] を取得する
+                weight = estimateCFR(model, genSignal, C(0, 0));
+                expectedPowers = calculateExpectedPower(model, genSignal, weight, C(0, 0));
             }
 
             if(testcase == 0){          // 重要度を計算する場合なら
-                _importance = powerOfSI;
+                _importance = expectedPowers[0];
                 foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
-                    _importance[f][p] /= powerOfRCV[f];
+                    _importance[f][p] /= expectedPowers[1][f];
                 }
             }else if(testcase == 1){    // _actualPowerを算出するだけなら
-                _actualPower = powerOfSI;
-                foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
+                _actualPower = expectedPowers[0];
+                // foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
                 _requiredBasisFuncs = new bool[][](_nFFT * _nOS, _distorter.outputDim);
                 foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim)
                     _requiredBasisFuncs[f][p] = (_actualPower[f][p] >= _noiseFloor);
             }
         }
+    }
+
+
+    C[][] estimateCFR(M, Signals)(M model, Signals delegate(M) genSignal, C iqRX = C(0, 0))
+    {
+        auto signals = genSignal(model);
+
+        // 次のようなフィルタを学習してみる
+        // + 適応アルゴリズム : 最小二乗法
+        // + 使用シンボル数：1024シンボル
+        auto testfilter = new FrequencyDomainHammersteinFilter!(Complex!float, Dist, FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float))))
+                            (_distorter,
+                            new FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float)))
+                                ((size_t i, bool b, MultiFIRState!C s) => makeLSAdapter(s, 1024), _scMap, _distorter.outputDim)
+                            ,
+                            _scMap, _nFFT, _nCP, _nOS, _sampFreq, false, false);
+
+        immutable spb = this.inputBlockLength / ((_nFFT + _nCP) * _nOS);    // 1ブロックあたりのシンボル数
+
+        C[] testTX = new C[this.inputBlockLength],
+            testRX = new C[this.inputBlockLength],
+            testER = new C[this.inputBlockLength];
+
+        // 1024シンボル使用して学習する
+        foreach(i; 0 .. 1024 / spb){
+            signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
+
+            // 受信信号から受信機IQインバランスの影響を抜く
+            foreach(ref e; testRX)
+                e = (e - iqRX * conj(e)) / (1 - iqRX.sqAbs);
+
+            testfilter.apply!(Yes.learning)(testTX, testRX, testER);
+        }
+
+        // 各周波数で，学習完了後の重みを得る
+        C[][] weight = new C[][](_nFFT * _nOS, _distorter.outputDim);
+        foreach(f; 0 .. _nFFT * _nOS)
+            foreach(p; 0 .. _distorter.outputDim)
+                weight[f][p] = testfilter._stateAdapter._states[f].weight[0][p];
+
+        return weight;
+    }
+
+
+    C[2] estimateIQCoefs(C[][] weights)
+    {
+        import std.experimental.ndslice;
+        import dffdd.utils.linalg;
+
+        Slice!(2, C*) mx = new C[2 * _nSC].sliced(2, _nSC);
+        C[] y = new C[_nSC];
+        size_t cnt;
+        foreach(f; 0 .. _nFFT * _nOS) if(_scMap[f]) {
+            mx[0, cnt] = weights[f][0];
+            mx[1, cnt] = weights[f == 0 ? 0 : $-f][0].conj;
+            y[cnt] = weights[f][1];
+            ++cnt;
+        }
+
+        auto h = leastSquareEstimate(mx, y);
+        return [h[0], h[1]];
+    }
+
+
+    Tuple!(real[][], real[]) calculateExpectedPower(M, Signals)(M model, Signals delegate(M) genSignal, in C[][] weight, C iqRX = C(0, 0))
+    {
+        auto signals = genSignal(model);
+        C[] testTX = new C[this.inputBlockLength],
+            testRX = new C[this.inputBlockLength],
+            testER = new C[this.inputBlockLength];
+
+        real[][] powerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
+        // real[][] firstPowerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
+        real[] powerOfRCV = new real[](_nFFT * _nOS);
+        // real[] firstPowerOfRCV = new real[](_nFFT * _nOS);
+        foreach(f; 0 .. _nFFT * _nOS){
+            powerOfRCV[f] = 0;
+            foreach(p; 0 .. _distorter.outputDim)
+                powerOfSI[f][p] = 0;
+        }
+
+        testTX = testTX[0 .. (_nFFT + _nCP) * _nOS];
+        testRX = testRX[0 .. (_nFFT + _nCP) * _nOS];
+        auto disted = new C[][]((_nFFT + _nCP) * _nOS, _distorter.outputDim);
+
+        // 重要度を計算する
+        enum size_t Navg = 1024;
+        foreach(i; 0 .. Navg){
+            signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
+            _distorter(testTX, disted);
+
+            // 非線形送信信号を周波数領域に変換
+            foreach(p; 0 .. _distorter.outputDim){
+                foreach(k; 0 .. _nFFT * _nOS)
+                    _fftw.inputs!float[k] = disted[_nCP * _nOS + k][p];
+
+                _fftw.fft!float();
+
+                foreach(k; 0 .. _nFFT * _nOS){
+                    // if(i == 0) firstPowerOfSI[k][p] = _fftw.outputs!float[k].sqAbs;
+                    disted[k][p] = _fftw.outputs!float[k] * weight[k][p];
+                }
+            }
+
+            // 受信信号の周波数成分
+            _fftw.inputs!float[] = testRX[_nCP * _nOS .. $];
+            _fftw.fft!float();
+            auto rxFFTed = _fftw.outputs!float();
+
+            // 電力に足し合わせる
+            foreach(f; 0 .. _nFFT * _nOS){
+                foreach(p; 0 .. _distorter.outputDim){
+                    powerOfSI[f][p] += disted[f][p].sqAbs;
+                }
+
+                powerOfRCV[f] += rxFFTed[f].sqAbs;
+            }
+
+            // if(i == 0)
+            //     firstPowerOfRCV = powerOfRCV.dup;
+        }
+
+        foreach(f; 0 .. _nFFT * _nOS){
+            foreach(p; 0 .. _distorter.outputDim)
+                powerOfSI[f][p] /= Navg;
+            
+            powerOfRCV[f] /= Navg;
+        }
+
+        return tuple(powerOfSI, powerOfRCV);
     }
 
 
@@ -829,11 +969,12 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     StateAdapter _stateAdapter;
     OverlapSaveRegenerator2!C _regenerator;
     immutable(bool[]) _scMap;
-    immutable size_t _nFFT, _nCP, _nOS;
+    immutable size_t _nFFT, _nCP, _nOS, _nSC;
     immutable real _sampFreq;
-    immutable bool _doSelect;
+    immutable bool _doSelect, _doComplexSelect;
     immutable size_t _nEstH;
     immutable Gain _limitIRR, _gainMargin;
+    C _iqRX;
     C[][] _distortedBuffer;
     C[][] _fftedBuffer;
 

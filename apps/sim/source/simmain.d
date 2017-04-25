@@ -176,13 +176,18 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     enum size_t type = filterOption.canFind('1') ? 1 : 2;
     enum Flag!"isParallel" isParallel = filterOption.canFind('P') ? Yes.isParallel : No.isParallel;
 
-    auto filter = makeFrequencyDCMHammersteinFilter2!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
+    static if(type == 2)
+        auto filter = makeFrequencyDCMHammersteinFilter2!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
+    else
+        auto filter = makeFrequencyDCMHammersteinFilter!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
   }
   else static if(filterStructure.endsWith("CFHF"))
     static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
   else static if(filterStructure.endsWith("FHF")){
     static assert(!isOrthogonalized);
-    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model, filterStructure.endsWith("SFHF"));
+    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model,
+        filterStructure.endsWith("SFHF") || filterStructure.endsWith("S1FHF") || filterStructure.endsWith("S2FHF"),
+        filterStructure.endsWith("S2FHF"));
   }else static if(filterStructure.endsWith("WL"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))

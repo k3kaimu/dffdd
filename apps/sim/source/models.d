@@ -901,7 +901,7 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
 }
 
 
-auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false)
+auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false, bool selectComplexBF = false)
 {
     import dffdd.filter.freqdomain;
     // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
@@ -944,6 +944,7 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
             model.ofdm.scaleOfUpSampling,
             model.samplingFreq,
             selectBF,
+            selectComplexBF,
             model.basisFuncsSelection.nEstH,
             (-model.basisFuncsSelection.imageMargin.dB).dB,
             model.basisFuncsSelection.noiseMargin
