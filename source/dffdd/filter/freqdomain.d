@@ -67,6 +67,8 @@ final class FrequencyDomainParallelHammersteinStateAdapter(C, Adapter)
     {
         foreach(f; 0 .. _nFFT){
             assert(distX[f].length == _states[f].numOfFIR);
+            if(distX[f].length == 0) continue;
+
             _states[f].update(distX[f]);
             C error = desired[f] - _states[f].output;
             _adapters[f].adapt(_states[f], error);
@@ -79,6 +81,8 @@ final class FrequencyDomainParallelHammersteinStateAdapter(C, Adapter)
         if(dst.length != _nFFT) dst.length = _nFFT;
 
         foreach(f; 0 .. _nFFT){
+            dst[f] = complexZero!C;
+
             foreach(i; 0 .. _states[f].numOfFIR)
                 dst[f] += _states[f].weight[0][i] * distX[f][i];
         }
@@ -415,23 +419,38 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                     foreach(f; 0 .. _nFFT * _nOS){
                         size_t cnt;
                         foreach(p; 0 .. Dist.outputDim){
-                            // 重要度と受信信号電力の積が，推定された干渉電力になる
-                            immutable float ipR = (){
-                                    real y = 0;
+                            // 受信信号電力E[|Y[f]|^2]
+                            immutable float pY0 = (){
+                                real y = 0;
                                     foreach(idxOfEstH; 0 .. _nEstH)
                                         y += freqY[idxOfEstH][f].sqAbs;
-                                    
-                                    return (y / _nEstH) * _importance[f][p];
-                                }();
+                                
+                                return y / _nEstH;
+                            }();
 
-                            immutable float ipI = (){
-                                    real y = 0;
+                            // 受信信号電力E[|Y[-f]|^2]
+                            immutable float pY1 = (){
+                                real y = 0;
                                     foreach(idxOfEstH; 0 .. _nEstH)
                                         y += freqY[idxOfEstH][f == 0 ? 0 : $-f].sqAbs;
-                                    
-                                    return (y / _nEstH) * _importance[f == 0 ? 0 : $-f][_distorter.indexOfConjugated(p)]
-                                                        * _iqRX.sqAbs;
-                                }();
+                                
+                                return y / _nEstH;
+                            }();
+
+                            immutable iqcoef = (1 / _limitIRR.gain)^^2;
+
+                            immutable float pY2 = (pY0 + iqcoef * pY1 + sqrt(pY0 * iqcoef * pY1)) / (1 - iqcoef)^^2;
+                            immutable float pY3 = (pY1 + iqcoef * pY0 + sqrt(pY1 * iqcoef * pY0)) / (1 - iqcoef)^^2;
+
+                            // 重要度と受信信号電力の積が，推定された干渉電力になる
+                            immutable float ipR = (){
+                                    return pY2 * _importance[f][p];
+                            }();
+
+                            immutable float ipI = (){
+                                    return pY3 * _importance[f == 0 ? 0 : $-f][_distorter.indexOfConjugated(p)]
+                                               * iqcoef;
+                            }();
 
                             _estimatedPower[f][p] = ipR + ipI + 2 * sqrt(ipR * ipI);
 
@@ -439,12 +458,6 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                                 _selectedBasisFuncs[f][p] = true;
                                 cnt += 1;
                             }
-                        }
-
-                        if(cnt == 0)
-                        {
-                            _selectedBasisFuncs[f][0] = true;
-                            cnt = 1;
                         }
 
                         _selectedBasisFuncsDim[f] = cnt;
@@ -734,7 +747,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             if(testcase == 0){          // 重要度を計算する場合なら
                 _importance = expectedPowers[0];
                 foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
-                    _importance[f][p] /= expectedPowers[1][f];
+                    _importance[f][p] /= expectedPowers[0][f][0];
                 }
             }else if(testcase == 1){    // _actualPowerを算出するだけなら
                 _actualPower = expectedPowers[0];

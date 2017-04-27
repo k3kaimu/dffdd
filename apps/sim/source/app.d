@@ -8,6 +8,8 @@ import std.meta;
 import std.path;
 import std.range;
 import std.stdio;
+import std.random;
+import std.range;
 
 import dffdd.utils.unit;
 
@@ -23,17 +25,17 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!(/*"IQISICFHF_X", "WLFHF_LS",*/ "SFHF_LS", "S2FHF_LS", /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
+    foreach(methodName; AliasSeq!(/*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ "SFHF_LS", "S2FHF_LS", /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
-        foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
+        foreach(learningSymbols; iota(20, 85, 5)) foreach(orthTrainingSymbols; [10000])
         {
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(20, 85, 5)) foreach(txp; iota(15, 20, 5))
+            foreach(inr; iota(60, 65, 5)) foreach(txp; iota(15, 20, 5))
             foreach(gamma; /*iota(0, 8, 2)*/ [6])
-            foreach(beta; /*iota(0, 30, 5)*/ [25])
+            foreach(beta; /*iota(0, 30, 5)*/ [20])
             {
                 Model model;
                 model.SNR = 11.dB;
@@ -121,6 +123,12 @@ void mainJob()
                         JSONValue[] selectingRatioList;
                         foreach(j; 0 .. K){
                             m.rndSeed += 100;   // seed値を100ずつ足していく
+                            Random rndGen;
+                            rndGen.seed(m.rndSeed);
+                            m.txIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
+                            m.rxIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
+                            writeln(m.txIQMixer.iqTheta);
+                            writeln(m.rxIQMixer.iqTheta);
                             auto res = mainImpl!methodName(m, null);
                             resList ~= res;
                             auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();

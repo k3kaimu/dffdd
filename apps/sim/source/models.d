@@ -197,6 +197,7 @@ struct Model
     struct TXIQMixer
     {
         Gain IIR = 25.dB;  // 25dB
+        real iqTheta = 0;
     }
     TXIQMixer txIQMixer;
 
@@ -204,6 +205,7 @@ struct Model
     struct RXIQMixer
     {
         Gain IIR = 25.dB;  // 25dB
+        real iqTheta = 0;
     }
     RXIQMixer rxIQMixer;
 
@@ -416,7 +418,7 @@ auto connectToAWGN(R)(R r, Model model)
 
 auto connectToTXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.IIR).toWrappedRange;
+    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.IIR, model.txIQMixer.iqTheta).toWrappedRange;
 }
 
 
@@ -428,7 +430,7 @@ auto connectToTXIQPhaseNoise(R)(R r, Model model)
 
 auto connectToRXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.IIR).toWrappedRange;
+    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.IIR, model.rxIQMixer.iqTheta).toWrappedRange;
 }
 
 

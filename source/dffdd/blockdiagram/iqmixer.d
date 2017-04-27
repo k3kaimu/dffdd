@@ -15,11 +15,11 @@ auto addIQImbalance(R)(R r, Gain gain, Gain irr)
 
 struct IQImbalance(R)
 {
-    this(R r, Gain gain, Gain irr)
+    this(R r, Gain gain, Gain irr, real theta)
     {
         _r = r;
         _g1V = gain.gain;
-        _g2V = gain.gain / irr.gain;
+        _g2V = gain.gain / irr.gain * std.complex.expi(theta);
     }
 
 
@@ -58,7 +58,7 @@ struct IQImbalance(R)
   private:
     R _r;
     real _g1V;      // 電圧系での真値のゲイン
-    real _g2V;      // 電圧計での真値のImageゲイン
+    Complex!real _g2V;      // 電圧計での真値のImageゲイン
 }
 
 
