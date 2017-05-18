@@ -439,8 +439,8 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
                             immutable iqcoef = (1 / _limitIRR.gain)^^2;
 
-                            immutable float pY2 = (pY0 + iqcoef * pY1 + sqrt(pY0 * iqcoef * pY1)) / (1 - iqcoef)^^2;
-                            immutable float pY3 = (pY1 + iqcoef * pY0 + sqrt(pY1 * iqcoef * pY0)) / (1 - iqcoef)^^2;
+                            immutable float pY2 = (pY0 + iqcoef * pY1 + 2 * sqrt(pY0 * iqcoef * pY1)) / (1 - iqcoef)^^2;
+                            immutable float pY3 = (pY1 + iqcoef * pY0 + 2 * sqrt(pY1 * iqcoef * pY0)) / (1 - iqcoef)^^2;
 
                             // 重要度と受信信号電力の積が，推定された干渉電力になる
                             immutable float ipR = (){
@@ -691,63 +691,39 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                 model.INR = model.lna.DR;
             }
 
-            // {
-            //     auto model4IRR = model;
-            //     model.ofdm.numOfSubcarrier = 1;
-            //     model.noImpairementsOnTX();
-            // }
-
-            /*
-            auto signals = genSignal(model);
-
-            // 次のようなフィルタを学習してみる
-            // + 適応アルゴリズム : 最小二乗法
-            // + 使用シンボル数：1024シンボル
-            auto testfilter = new FrequencyDomainHammersteinFilter!(Complex!float, Dist, FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float))))
-                                (_distorter,
-                                new FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float)))
-                                    ((size_t i, bool b, MultiFIRState!C s) => makeLSAdapter(s, 1024), _scMap, _distorter.outputDim)
-                                ,
-                                _scMap, _nFFT, _nCP, _nOS, _sampFreq, false);
-
-            immutable spb = this.inputBlockLength / ((_nFFT + _nCP) * _nOS);    // 1ブロックあたりのシンボル数
-
-            C[] testTX = new C[this.inputBlockLength],
-                testRX = new C[this.inputBlockLength],
-                testER = new C[this.inputBlockLength];
-
-            // 1024シンボル使用して学習する
-            foreach(i; 0 .. 1024 / spb){
-                signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
-                testfilter.apply!(Yes.learning)(testTX, testRX, testER);
-            }
-
-            // 各周波数で，学習完了後の重みを得る
-            C[][] weight = new C[][](_nFFT * _nOS, _distorter.outputDim);
-            foreach(f; 0 .. _nFFT * _nOS)
-                foreach(p; 0 .. _distorter.outputDim)
-                    weight[f][p] = testfilter._stateAdapter._states[f].weight[0][p];
-            */
-
             C[][] weight;
             Tuple!(real[][], real[]) expectedPowers;
+            real[][] psiPower;
+            real[] gnl = new real[_distorter.outputDim];
             if(_doComplexSelect && testcase == 0)
             {
                 _iqRX = estimateIQCoefs(estimateCFR(model, genSignal, C(0, 0)))[1];
                 weight = estimateCFR(model, genSignal, _iqRX);
-                expectedPowers = calculateExpectedPower(model, genSignal, weight, _iqRX);
+                foreach(p; 0 .. _distorter.outputDim)
+                {
+                    gnl[p] = 0;
+                    foreach(f; 0 .. _nFFT * _nOS)
+                        if(_scMap[f]) gnl[p] += weight[f][p].sqAbs / weight[f][0].sqAbs;
+                    
+                    gnl[p] = sqrt(gnl[p] / _nSC);
+                }
+
+                //expectedPowers = calculateExpectedPower(model, genSignal, weight, C(0, 0));
+                psiPower = calculateExpectedPower(model, genSignal, weight, C(0, 0))[2];
             }
             else
             {
                 // H_{p,q}[f] を取得する
                 weight = estimateCFR(model, genSignal, C(0, 0));
-                expectedPowers = calculateExpectedPower(model, genSignal, weight, C(0, 0));
+                expectedPowers[0 .. 2] = calculateExpectedPower(model, genSignal, weight, C(0, 0))[0 .. 2];
             }
 
             if(testcase == 0){          // 重要度を計算する場合なら
-                _importance = expectedPowers[0];
+                // _importance = psiPower.dup;
+                _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
                 foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
-                    _importance[f][p] /= expectedPowers[0][f][0];
+                    _importance[f][p] = psiPower[f][p] / psiPower[f][0];
+                    _importance[f][p] *= gnl[p]^^2;
                 }
             }else if(testcase == 1){    // _actualPowerを算出するだけなら
                 _actualPower = expectedPowers[0];
@@ -784,18 +760,18 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         foreach(i; 0 .. 1024 / spb){
             signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
 
-            // 受信信号から受信機IQインバランスの影響を抜く
-            foreach(ref e; testRX)
-                e = (e - iqRX * conj(e)) / (1 - iqRX.sqAbs);
-
             testfilter.apply!(Yes.learning)(testTX, testRX, testER);
         }
 
         // 各周波数で，学習完了後の重みを得る
         C[][] weight = new C[][](_nFFT * _nOS, _distorter.outputDim);
         foreach(f; 0 .. _nFFT * _nOS)
-            foreach(p; 0 .. _distorter.outputDim)
-                weight[f][p] = testfilter._stateAdapter._states[f].weight[0][p];
+            foreach(p; 0 .. _distorter.outputDim){
+                immutable w1 = testfilter._stateAdapter._states[f].weight[0][p];
+                immutable w2 = testfilter._stateAdapter._states[$-1-f].weight[0][_distorter.indexOfConjugated(p)];
+
+                weight[f][p] = (w1 - iqRX * w2.conj) / (1 - iqRX.sqAbs);
+            }
 
         return weight;
     }
@@ -821,21 +797,23 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     }
 
 
-    Tuple!(real[][], real[]) calculateExpectedPower(M, Signals)(M model, Signals delegate(M) genSignal, in C[][] weight, C iqRX = C(0, 0))
+    Tuple!(real[][], real[], real[][]) calculateExpectedPower(M, Signals)(M model, Signals delegate(M) genSignal, in C[][] weight, C iqRX = C(0, 0))
     {
         auto signals = genSignal(model);
         C[] testTX = new C[this.inputBlockLength],
             testRX = new C[this.inputBlockLength],
             testER = new C[this.inputBlockLength];
 
+        real[][] powerOfPsi = new real[][](_nFFT * _nOS, _distorter.outputDim);
         real[][] powerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
-        // real[][] firstPowerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
         real[] powerOfRCV = new real[](_nFFT * _nOS);
-        // real[] firstPowerOfRCV = new real[](_nFFT * _nOS);
+
         foreach(f; 0 .. _nFFT * _nOS){
             powerOfRCV[f] = 0;
-            foreach(p; 0 .. _distorter.outputDim)
+            foreach(p; 0 .. _distorter.outputDim){
                 powerOfSI[f][p] = 0;
+                powerOfPsi[f][p] = 0;
+            }
         }
 
         testTX = testTX[0 .. (_nFFT + _nCP) * _nOS];
@@ -857,6 +835,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
                 foreach(k; 0 .. _nFFT * _nOS){
                     // if(i == 0) firstPowerOfSI[k][p] = _fftw.outputs!float[k].sqAbs;
+                    powerOfPsi[k][p] += _fftw.outputs!float[k].sqAbs;
                     disted[k][p] = _fftw.outputs!float[k] * weight[k][p];
                 }
             }
@@ -880,13 +859,15 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         }
 
         foreach(f; 0 .. _nFFT * _nOS){
-            foreach(p; 0 .. _distorter.outputDim)
+            foreach(p; 0 .. _distorter.outputDim){
                 powerOfSI[f][p] /= Navg;
-            
+                powerOfPsi[f][p] /= Navg;
+            }
+
             powerOfRCV[f] /= Navg;
         }
 
-        return tuple(powerOfSI, powerOfRCV);
+        return tuple(powerOfSI, powerOfRCV, powerOfPsi);
     }
 
 
