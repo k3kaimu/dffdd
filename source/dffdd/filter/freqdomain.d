@@ -719,11 +719,18 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             }
 
             if(testcase == 0){          // 重要度を計算する場合なら
-                // _importance = psiPower.dup;
-                _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
-                foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
-                    _importance[f][p] = psiPower[f][p] / psiPower[f][0];
-                    _importance[f][p] *= gnl[p]^^2;
+                if(_doComplexSelect){
+                    // _importance = psiPower.dup;
+                    _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
+                    foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
+                        _importance[f][p] = psiPower[f][p] / psiPower[f][0];
+                        _importance[f][p] *= gnl[p]^^2;
+                    }
+                }else{
+                    _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
+                    foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
+                        _importance[f][p] = expectedPowers[0][f][p] / expectedPowers[0][f][0];
+                    }
                 }
             }else if(testcase == 1){    // _actualPowerを算出するだけなら
                 _actualPower = expectedPowers[0];
