@@ -63,6 +63,23 @@ auto makeCancellationProbe(C)(float* dst, string filename, string resultDir, siz
 }
 
 
+auto makeInBandCancellationProbe(C)(float* dst, string filename, string resultDir, size_t dropSize, Model model)
+{
+    alias Tup = Tuple!(C, C);
+
+    return makeInstrument!Tup(delegate void(FiberRange!Tup r){
+        auto rd = r.drop(dropSize);
+        auto ratio = rd.calculateInBandSIC(model.samplingFreq, 1024, model.ofdm.numOfFFT, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+        if(dst !is null) *dst = 10*log10(ratio);
+
+        if(resultDir !is null) {
+            auto file = File(buildPath(resultDir, filename), "w");
+            file.writefln("%s", 10*log10(ratio));
+        }
+    });
+}
+
+
 auto makeCancellationIterationProbe(C)(string filename, string resultDir, size_t dropSize, Model model)
 {
     alias Tup = Tuple!(C, C);
@@ -192,6 +209,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, true)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("TAYLOR"))
+    auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else
     static assert("Cannot identify filter model.");
 
@@ -280,6 +299,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model);
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model);
         auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model);
+        auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model);
 
         StopWatch sw;
         foreach(blockIdxo; 0 .. 1024)
@@ -299,6 +319,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
                 .put(psdAfterSIC, outps);
                 .put(foutPSD, refrs);
                 .put(sicValue, recvs.zip(outps));
+                .put(inbandSICValue, recvs.zip(outps));
             }
         }
 

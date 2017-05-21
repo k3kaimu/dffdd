@@ -37,6 +37,7 @@ import dffdd.filter.ph_dcm;
 import dffdd.filter.primitives;
 import dffdd.filter.rls;
 import dffdd.filter.state;
+import dffdd.filter.taylor;
 import dffdd.utils.fft;
 import dffdd.utils.unit;
 //import dffdd.utils.msgpackrpc;
@@ -1045,6 +1046,24 @@ if(type == 2)
             (-model.basisFuncsSelection.imageMargin.dB).dB,
             model.basisFuncsSelection.noiseMargin
         );
+}
+
+
+auto makeTaylorApproximationFilter(size_t distortionOrder = defaultDistortionOrder, size_t useWL = true)(Model model)
+{
+    alias C = Complex!float;
+
+  static if(useWL)
+    alias Dist = CompleteDistorter!(distortionOrder);
+  else
+  {
+    static assert(distortionOrder == 1);
+    alias Dist = Distorter!(C, x => x);
+  }
+
+    auto dist = new Dist();
+
+    return new TaylorApproximationSICanceller!(Complex!float, typeof(dist))(dist, model.learningSymbols * model.ofdm.numOfSamplesOf1Symbol);
 }
 
 

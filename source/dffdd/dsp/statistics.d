@@ -61,3 +61,31 @@ real calculateSIC(R)(ref R r, real samplingFreq, size_t res, size_t nFFT, size_t
 
     return sum1 / sum2;
 }
+
+
+real calculateInBandSIC(R)(ref R r, real samplingFreq, size_t res, size_t nFFT, size_t nSubCarrier, size_t nOversampling, size_t avg = 32)
+{
+    alias C = typeof(ElementType!R.init[0]);
+    C[] buf0 = new C[res * avg];
+    C[] buf1 = new C[res * avg];
+
+    foreach(i; 0 .. res * avg){
+        auto front = r.front;
+        buf0[i] = front[0];
+        buf1[i] = front[1];
+    }
+
+    auto spec0 = calculatePowerSpectralDensity(buf0, samplingFreq, res, avg, null);
+    auto spec1 = calculatePowerSpectralDensity(buf1, samplingFreq, res, avg, null);
+    swapHalf(spec0);
+    swapHalf(spec1);
+
+    real p0 = 0,
+         p1 = 0;
+    foreach(i; 0 .. res / nOversampling * nSubCarrier / nFFT){
+        p0 += spec0[i] + spec0[$-1-i];
+        p1 += spec1[i] + spec1[$-1-i];
+    }
+
+    return p0 / p1;
+}
