@@ -208,7 +208,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
   }else static if(filterStructure.endsWith("WL"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, true)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else
