@@ -237,55 +237,6 @@ final class VectorConverter(C)
     mixin ConverterOpCalls!(const(C[]), C[]);
 
 
-    // void opCall(in C[][] input, ref C[][] output)
-    // {
-    //     output.length = input.length;
-
-    //     foreach(i, ref e; input){
-    //         assert(e.length == _dim);
-    //         if(output[i].length != _dim)
-    //             output[i].length = _dim;
-
-    //         foreach(p; 0 .. _dim){
-    //             output[i][p] = 0;
-
-    //             foreach(q; 0 .. _dim)
-    //                 output[i][p] += input[i][q] * _m[p, q];
-    //         }
-    //     }
-    // }
-
-
-    // C[][] opCall(in C[][] input)
-    // {
-    //     C[][] output;
-    //     this.opCall(input, output);
-    //     return output;
-    // }
-
-
-    // C[] opCall(C[] input)
-    // {
-    //     C[][1] _stack_;
-    //     C[][1] _stack1_ = [input];
-    //     C[][] output = _stack_[];
-
-    //     this.opCall(_stack1_[], output);
-    //     return output[0];
-    // }
-
-
-    // void opCall(C[] input, ref C[] output)
-    // {
-    //     output.length = _dim;
-    //     C[][1] _stack1_ = [input];
-    //     C[][1] _stack2_ = [output];
-    //     C[][] output2 = _stack2_[];
-
-    //     this.opCall(_stack1_[], output2);
-    // }
-
-
   private:
     size_t _dim;
     Slice!(2, C*) _m;
@@ -324,46 +275,6 @@ unittest
 }
 
 
-//final class MultiVectorConverter(C, size_t Dim)
-//{
-//    this(size_t numOfFreq)
-//    {
-//        foreach(i; 0 .. numOfFreq)
-//            _cs ~= new BasisVectorConverter!(C, Dim)(new C[Dim * Dim].sliced(Dim, Dim));
-//    }
-
-
-//    this(Slice!(2, C*)[] convMatrics)
-//    {
-//        foreach(e; convMatrics)
-//            _cs ~= new BasisVectorConverter!(C, Dim)(e);
-//    }
-
-
-//    VectorConverter!(C, Dim) converter(size_t i) @property { return _cs[i]; }
-//    Slice!(2, C*) convertMatrix(size_t i) @property { return _cs[i].convertMatrix; }
-
-
-//    void opCall(in C[Dim][] input, ref C[Dim][] output)
-//    {
-//        output.length = input.length;
-//        foreach(k, ref e; input){
-//            auto dst = output[k .. k+1];
-//            _cs[k](input[k .. k+1], dst);
-//        }
-//    }
-
-
-//  private:
-//    VectorConverter!(C, Dim)[] _cs;
-//}
-
-//unittest
-//{
-//    assert(0);
-//}
-
-
 final class ConvertedVectorDistorter(C, Distorter, Converter)
 {
     // enum size_t dim = Distorter.dim;
@@ -388,28 +299,6 @@ final class ConvertedVectorDistorter(C, Distorter, Converter)
 
 
     mixin ConverterOpCalls!(const(C), C[]);
-
-
-    // void opCall(R, C)(R r, ref C[][] output)
-    // if(isInputRange!R)
-    // {
-    //     size_t i;
-    //     foreach(e; r){
-    //         output.length = (i + 1);
-    //         output[i] = this.opCall(e);
-    //         ++i;
-    //     }
-    // }
-
-
-    // C[][] opCall(R)(R r)
-    // if(isInputRange!R)
-    // {
-    //     C[][] dst;
-    //     this.opCall(r, dst);
-    //     return dst;
-    // }
-
 
   private:
     Distorter _distorter;
@@ -442,27 +331,14 @@ unittest
 }
 
 
-//final class MultiConvertedVectorDistorter(Distorter, MultiConverter)
-//{
-//    enum size_t dim = Distorter.dim;
-
-
-//    this(Distorter dist, MultiConverter conv)
-//}
-
-
 final class OrthogonalizedVectorDistorter(C, Distorter, Orthogonalizer)
 if(Distorter.inputBlockLength == 1)
 {
-    // enum size_t dim = Distorter.dim;
-
     this(Distorter distorter, Orthogonalizer orthogonalizer)
     {
         _dist = distorter;
         _orth = orthogonalizer;
         _conn = new typeof(_conn)(_dist, new VectorConverter!C(_dist.outputDim));
-        // _conn.converter.convertMatrix[] = complexZero!C;
-        // _conn.converter.convertMatrix.diagonal[] = 1;
     }
 
 
