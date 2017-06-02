@@ -472,7 +472,6 @@ if(isBlockConverter!(Dist, C, C[]))
 
 
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
-    if(isModelParameterSet!M)
     {
         // メンバーを持っているかどうかチェック
         static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
@@ -552,14 +551,13 @@ if(isBlockConverter!(Dist, C, C[]))
 
 
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
-    if(isModelParameterSet!M)
     {
         // メンバーを持っているかどうかチェック
         static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
 
         // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-            _distorter.learn(signalGenerator(model).txBaseband);
+            _distorter.learn(signalGenerator(model).txBaseband.map!(a => cast(C)a));
     }
 
 
