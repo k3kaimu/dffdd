@@ -175,7 +175,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
   else static if(filterStructure.endsWith("IQISICFHF"))
   {
     import dffdd.filter.freqdomain;
-    auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, 3, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
+    auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, 2, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
   }
   else static if(filterStructure.endsWith("WLFHF"))
   {
