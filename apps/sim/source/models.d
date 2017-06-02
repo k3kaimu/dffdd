@@ -872,7 +872,7 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
         immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
       static if(optimizer == "LMS")
-        return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
+        return makeLMSAdapter(state, 0.5).trainingLimit(model.learningSymbols);
       else static if(optimizer == "RLS")
         return makeRLSAdapter(state, 0.97, 1E-7).trainingLimit(model.learningSymbols);
       else static if(optimizer == "LS")

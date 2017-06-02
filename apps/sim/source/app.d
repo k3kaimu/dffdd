@@ -25,7 +25,7 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!(/*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ "SFHF_LS", "S2FHF_LS", /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
+    foreach(methodName; AliasSeq!("FHF_LMS", "S2FHF_LMS"/*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ /*"SFHF_LS",*/ /*"S2FHF_LS",*/ /*"L_LS", "WL_LS", "OPH_LS", "FHF_LS",*/ /*"IQISICFHF_X",*/ /*"TAYLOR_LS", "L_LS",*/ /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
         foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
@@ -33,8 +33,8 @@ void mainJob()
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(60, 65, 5)) foreach(txp; iota(15, 20, 5))
-            foreach(gamma; /*iota(0, 8, 2)*/ [6])
+            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 20, 5))
+            foreach(gamma; /*iota(0, 8, 2)*/ [0])
             foreach(beta; /*iota(0, 30, 5)*/ [20])
             {
                 Model model;
@@ -118,7 +118,7 @@ void mainJob()
                     static if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF"))
                     {
                         // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-                        enum K = 10;    // 試行回数
+                        enum K = 0;    // 試行回数
                         uint sumOfSuccFreq;
                         JSONValue[] selectingRatioList;
                         foreach(j; 0 .. K){
