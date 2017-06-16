@@ -1082,16 +1082,12 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
                 C[] ips = _inputs.dup;
                 C[] dss = _desired.dup;
 
+                C[][] freqX, freqY;
+                estimateIQCoefs(ips, dss, freqX, freqY);
+                toIQless(ips, dss, freqX, freqY);
                 foreach(iIter; 0 .. _nIter){
-                    import std.stdio;
-                    C[][] freqX, freqY;
-                    estimateIQCoefs(ips, dss, freqX, freqY);
-                    toIQless(ips, dss, freqX, freqY);
-                    // estimateCFR(freqX, freqY);
                     estimateCFR(ips, dss);
                     estimatePACoefs(ips, dss);
-                    ips[] = _inputs[];
-                    dss[] = _desired[];
                 }
             }
         }
@@ -1256,6 +1252,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
 
     void estimatePACoefs(in C[] input, in C[] desired)
     {
+        immutable nLearningSymbols = 2;
         immutable nSym = (_nFFT + _nCP) * _nOS;
 
         // 前後二つのSWAPシンボルを加算する
@@ -1263,7 +1260,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
         C[][] freqY;
         auto ips = _fftw.inputs!float;
         auto ops = _fftw.outputs!float;
-        foreach(i; 0 .. _nWLLearning){
+        foreach(i; 0 .. nLearningSymbols){
             foreach(p; 0 .. P){
                 _fftw.inputs!float[] = input[_nCP * _nOS + i * nSym .. (i+1) * nSym];
                 foreach(ref e; ips) e = e * e.sqAbs^^p;
@@ -1283,7 +1280,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
             Complex!real num = complexZero!C,
                          den = complexZero!C;
 
-            foreach(f; getSCIndex4PthAMPCoef(p)) foreach(i; 0 .. _nWLLearning / 2){
+            foreach(f; getSCIndex4PthAMPCoef(p)) foreach(i; 0 .. nLearningSymbols / 2){
                 auto x = freqX[p][i][f] * _channelFreqResponse[f];
                 auto y = freqY[i][f];
                 num += x.conj * y;
@@ -1293,7 +1290,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
             _paCoefs[p] = num / den;
 
             // 干渉除去する
-            foreach(f; 0 .. _nFFT * _nOS) foreach(i; 0 .. _nWLLearning / 2)
+            foreach(f; 0 .. _nFFT * _nOS) foreach(i; 0 .. nLearningSymbols / 2)
                 freqY[i][f] -= freqX[p][i][f] * _channelFreqResponse[f] * _paCoefs[p];
         }
     }
