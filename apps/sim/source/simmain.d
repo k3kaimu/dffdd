@@ -413,7 +413,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     }
 
     if(resultDir !is null)
-        std.file.write(buildPath(resultDir, "info.json"), infoResult.toPrettyString());
+        std.file.write(buildPath(resultDir, "info.json"), infoResult.toPrettyString(JSONOptions.specialFloatLiterals));
 
     return infoResult;
 }
