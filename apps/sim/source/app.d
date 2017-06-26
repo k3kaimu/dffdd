@@ -10,6 +10,7 @@ import std.range;
 import std.stdio;
 import std.random;
 import std.range;
+import std.file;
 
 import dffdd.utils.unit;
 
@@ -25,22 +26,28 @@ void mainJob()
     auto taskList = new MultiTaskList();
 
     // ADC&IQ&PA
-    foreach(methodName; AliasSeq!("FHF_LMS", "S2FHF_LMS"/*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ /*"SFHF_LS",*/ /*"S2FHF_LS",*/ /*"L_LS", "WL_LS", "OPH_LS", "FHF_LS",*/ /*"IQISICFHF_X",*/ /*"TAYLOR_LS", "L_LS",*/ /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
+    foreach(methodName; AliasSeq!(  "S2FHF_RLS",
+                                    "S2FHF_LS"
+                                    //"FHF_LS",
+                                    //"OPH_LS",
+                                    //"WL_LS",
+                                    //"L_LS",
+                /*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ /*"SFHF_LS",*/ /*"S2FHF_LS",*/ /*"L_LS", "WL_LS", "OPH_LS", "FHF_LS",*/ /*"IQISICFHF_X",*/ /*"TAYLOR_LS", "L_LS",*/ /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
-        foreach(learningSymbols; iota(60, 65, 5)) foreach(orthTrainingSymbols; [10000])
+        foreach(learningSymbols; iota(60, 61, 1)) foreach(orthTrainingSymbols; [10000])
         {
             Model[] models;
             string[] dirs;
 
-            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 20, 5))
-            foreach(gamma; /*iota(0, 8, 2)*/ [0])
-            foreach(beta; /*iota(0, 30, 5)*/ [20])
-            {
+            auto dg = (int inr, int txp, int gamma, int beta, int irr){
                 Model model;
                 model.SNR = 11.dB;
                 model.INR = inr.dB;
                 model.pa.TX_POWER = txp.dBm;
+
+                model.txIQMixer.IRR = irr.dB;
+                model.rxIQMixer.IRR = irr.dB;
 
                 // model.withSI = false;
                 // model.withSIC = false;
@@ -103,43 +110,51 @@ void mainJob()
                 model.numOfFilterTrainingSymbols = 100;
 
               static if(methodName.split("_")[0].endsWith("FHF"))
-                dirs ~= "TXP%s_inr%s_%s_B%s_G%s".format(model.pa.TX_POWER, model.INR, methodName, model.basisFuncsSelection.imageMargin, model.basisFuncsSelection.noiseMargin);
+                dirs ~= "TXP%s_inr%s_%s_B%s_G%s_IRR%s_%s".format(model.pa.TX_POWER, model.INR, methodName, model.basisFuncsSelection.imageMargin, model.basisFuncsSelection.noiseMargin, irr, learningSymbols);
               else
-                dirs ~= "TXP%s_inr%s_%s_orth%s".format(model.pa.TX_POWER, model.INR, methodName, model.orthogonalizer.numOfTrainingSymbols);
-            }
+                dirs ~= "TXP%s_inr%s_%s_IRR%s_%s".format(model.pa.TX_POWER, model.INR, methodName, irr, learningSymbols);
+            };
+
+            foreach(inr; iota(50, 55, 5)) foreach(txp; iota(15, 20, 5))
+            foreach(gamma; [0])
+            foreach(beta; iota(10, 43, 3))
+            foreach(irr; iota(20, 35, 5))
+                dg(inr, txp, gamma, beta, irr);
 
             foreach(i; 0 .. models.length)
                 taskList.append((Model m, string dir){
+                    //if(exists(buildPath(dir, "allResult.json"))) return;
+
                     JSONValue[] resList;
 
                     // 最初の一回は普通にやる
                     resList ~= mainImpl!methodName(m, dir);
 
-                    static if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF"))
-                    {
-                        // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-                        enum K = 0;    // 試行回数
-                        uint sumOfSuccFreq;
-                        JSONValue[] selectingRatioList;
-                        foreach(j; 0 .. K){
-                            m.rndSeed += 100;   // seed値を100ずつ足していく
-                            Random rndGen;
-                            rndGen.seed(m.rndSeed);
-                            m.txIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
-                            m.rxIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
-                            writeln(m.txIQMixer.iqTheta);
-                            writeln(m.rxIQMixer.iqTheta);
-                            auto res = mainImpl!methodName(m, null);
-                            resList ~= res;
+                    // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
+                    enum K = 100;    // 試行回数
+                    uint sumOfSuccFreq;
+                    JSONValue[] selectingRatioList;
+                    foreach(j; 0 .. K){
+                        m.rndSeed += 100;   // seed値を100ずつ足していく
+                        Random rndGen;
+                        rndGen.seed(m.rndSeed);
+                        m.txIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
+                        m.rxIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
+                        auto res = mainImpl!methodName(m, null);
+                        resList ~= res;
+
+                        if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF")){
                             auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();
                             sumOfSuccFreq += cnt;
                             selectingRatioList ~= JSONValue(cnt / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling));
                         }
+                    }
 
-                        JSONValue jv = cast(JSONValue[string])null;
+                    JSONValue jv = cast(JSONValue[string])null;
 
-                        jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
-                        
+                    jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
+                    
+                    if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF"))
                         jv["selecting"] = (){
                             JSONValue[string] vv;
                             vv["selectingRatio"] = sumOfSuccFreq / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * K);
@@ -222,10 +237,9 @@ void mainJob()
 
                             return vv;
                         }();
-                        
-                        auto file = File(buildPath(dir, "allResult.json"), "w");
-                        file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
-                    }
+                    
+                    auto file = File(buildPath(dir, "allResult.json"), "w");
+                    file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
 
                 }, models[i], buildPath("results", dirs[i]));
             // foreach(i; 0 .. models.length)
