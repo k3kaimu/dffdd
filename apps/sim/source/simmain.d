@@ -9,6 +9,7 @@ import std.mathspecial;
 import std.numeric;
 import std.path;
 import std.range;
+import std.random;
 
 import carbon.math : nextPowOf2;
 
@@ -224,6 +225,18 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
         filter.preLearning(model, (Model m){
             // m.rndSeed = 893;
+
+            Random rnd;
+            rnd.seed(m.rndSeed + 893);
+            foreach(i; 0 .. 893) rnd.popFront();
+            m.txIQMixer.IRR = (m.txIQMixer.IRR.dB + uniform(-1.0f, 1.0f, rnd) * m.txIQMixer.MAX_VAR_IRR.dB).dB;
+            m.rxIQMixer.IRR = (m.rxIQMixer.IRR.dB + uniform(-1.0f, 1.0f, rnd) * m.rxIQMixer.MAX_VAR_IRR.dB).dB;
+            m.pa.IIP3 = (m.pa.IIP3.dBm + uniform(-1.0f, 1.0f, rnd) * m.pa.MAX_VAR_IIP3.dB).dBm;
+
+            import std.stdio;
+            writefln("TXIQMixer_IRR: %s", m.txIQMixer.IRR);
+            writefln("RXIQMixer_IRR: %s", m.rxIQMixer.IRR);
+            writefln("PA_IIP3: %s", m.pa.IIP3);
 
             auto ss = makeSimulatedSignals(m);
             ss.trainAGC();

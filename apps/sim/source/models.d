@@ -199,6 +199,7 @@ struct Model
     {
         Gain IRR = 25.dB;  // 25dB
         real iqTheta = 0;
+        Gain MAX_VAR_IRR = 0.dB;    // IRRの最大変位，dB単位で一様分布
     }
     TXIQMixer txIQMixer;
 
@@ -207,6 +208,7 @@ struct Model
     {
         Gain IRR = 25.dB;  // 25dB
         real iqTheta = 0;
+        Gain MAX_VAR_IRR = 0.dB;    // IRRの最大変位，dB単位で一様分布
     }
     RXIQMixer rxIQMixer;
 
@@ -220,9 +222,12 @@ struct Model
 
     struct PA 
     {
-        Gain GAIN = 27.dB;
-        Voltage IIP3 = 13.dBm;
+        // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
+        // MAX2616
+        Gain GAIN = 18.dB;
+        Voltage IIP3 = (37.2 - 18.4).dBm;
         Voltage TX_POWER = 15.dBm;
+        Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
     }
     PA pa;
 
@@ -232,6 +237,7 @@ struct Model
         Gain NF = 4.dB;         // 4dB
         uint noiseSeedOffset = 123;
         Gain DR = 70.dB;        // Dynamic Range
+        Voltage IIP3 = (-3).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
     }
     LNA lna;
 
@@ -488,7 +494,7 @@ auto connectToLNA(R)(R r, Model model)
 {
     return r
     .add(thermalNoise(model, model.lna.noiseSeedOffset).connectTo!VGA(Gain.fromPowerGain(model.lna.NF.gain^^2 - 1)))
-    .connectTo!RappModel(model.lna.GAIN, 3, (17.7 - 36).dB.gain)
+    .connectTo!RappModel(model.lna.GAIN, 3, (model.lna.IIP3.dBm - 36).dB.gain)
     // .connectTo!VGA(model.lna.GAIN)
     .toWrappedRange;
 }

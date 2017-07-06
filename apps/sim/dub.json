@@ -12,15 +12,5 @@
     "license": "NYSL",
     "buildOptions": ["ignoreDeprecations"],
     "targetType": "executable",
-    "configurations": [
-        {
-            "name": "default"
-        },
-        {
-            "name": "mpi",
-            "subConfigurations": {
-                "tuthpc": "mpi"
-            }
-        }
-    ]
+    "dflags-ldc": ["-enable-cross-module-inlining", "-mcpu=native"]
 }
