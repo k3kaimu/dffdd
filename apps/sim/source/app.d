@@ -229,12 +229,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(j; 0 .. K){
-        writeln("start: ", j);
         m.rndSeed += 100;   // seed値を100ずつ足していく
-        Random rndGen;
-        rndGen.seed(m.rndSeed);
-        m.txIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
-        m.rxIQMixer.iqTheta = uniform01(rndGen) * 2 * PI;
         auto res = mainImpl!methodName(m, null);
         resList ~= res;
 

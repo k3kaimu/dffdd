@@ -228,6 +228,8 @@ struct Model
         Voltage IIP3 = (37.2 - 18.4).dBm;
         Voltage TX_POWER = 15.dBm;
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
+        Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
+        Gain MAX_VAR_GAIN = 0.dB;       // 利得の最大変異，dB単位で一様分布
     }
     PA pa;
 
@@ -432,7 +434,14 @@ auto connectToAWGN(R)(R r, Model model)
 
 auto connectToTXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.IRR, model.txIQMixer.iqTheta).toWrappedRange;
+    Random rnd;
+    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
+    foreach(i; 0 .. 1000) rnd.popFront();
+
+    auto irrdB = model.txIQMixer.IRR.dB + uniform(-1.0f, 1.0f, rnd) * model.txIQMixer.MAX_VAR_IRR.dB;
+    auto theta = uniform(0, 1.0f, rnd) * 2*PI;
+
+    return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
 }
 
 
@@ -444,17 +453,32 @@ auto connectToTXIQPhaseNoise(R)(R r, Model model)
 
 auto connectToRXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.IRR, model.rxIQMixer.iqTheta).toWrappedRange;
+    Random rnd;
+    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
+    foreach(i; 0 .. 1000) rnd.popFront();
+
+    auto irrdB = model.rxIQMixer.IRR.dB + uniform(-1.0f, 1.0f, rnd) * model.rxIQMixer.MAX_VAR_IRR.dB;
+    auto theta = uniform(0, 1.0f, rnd) * 2*PI;
+
+    return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
 }
 
 
 auto connectToPowerAmplifier(R)(R r, Model model)
 {
-    auto v = (model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm;
+    Random rnd;
+    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
+    foreach(i; 0 .. 1000) rnd.popFront();
+
+    auto iip3 = model.pa.IIP3.dBm + uniform(-1.0f, 1.0f, rnd) * model.pa.MAX_VAR_IIP3.dB;
+    auto txp = model.pa.TX_POWER.dBm + uniform(-1.0f, 1.0f, rnd) * model.pa.MAX_VAR_TXP.dB;
+    auto gain = model.pa.GAIN.dB + uniform(-1.0f, 1.0f, rnd) * model.pa.MAX_VAR_GAIN.dB;
+
+    auto v = (txp - model.pa.GAIN.dB).dBm;
 
     return r
     .connectTo!PowerControlAmplifier(v)
-    .connectTo!RappModel(model.pa.GAIN, 1, (model.pa.IIP3.dBm - 36).dB.gain)
+    .connectTo!RappModel(model.pa.GAIN, 1, (iip3 - 36).dB.gain)
     // .connectTo!RappPowerAmplifier(model.pa.GAIN, model.pa.IIP3)
     .toWrappedRange;
 }

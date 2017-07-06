@@ -648,7 +648,6 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         foreach(testcase; [1, 0])
         {
             import std.stdio;
-            writeln("testcase: ", testcase);
             auto model = originalModel;
 
             if(testcase == 0)
@@ -728,7 +727,6 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                         _importance[f][p] = psiPower[f][p] / psiPower[f][0];
                         _importance[f][p] *= gnl[p]^^2;
                     }
-                    writeln("GNL: ", gnl);
                 }else{
                     _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
                     foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
