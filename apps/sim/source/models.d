@@ -85,8 +85,8 @@ alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Comple
 
 struct Model
 {
-    size_t numOfModelTrainingSymbols = 1024;
-    size_t numOfFilterTrainingSymbols = 1000;
+    size_t numOfModelTrainingSymbols = 100;
+    size_t numOfFilterTrainingSymbols = 100;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
@@ -115,6 +115,18 @@ struct Model
     bool useSRXLN = true;
     bool useSRXIQ = true;
     bool useSRXQZ = true;
+
+    bool useDesiredBaseband = true;
+    bool useTxBaseband = true;
+    bool useTxBasebandSWP = true;
+    bool useDesiredPADirect = true;
+    bool usePADirect = true;
+    bool usePADirectSWP = true;
+    bool useReceivedDesired = true;
+    bool useReceivedSI = true;
+    bool useReceivedSISWP = true;
+    bool useReceived = true;
+    bool useNoise = true;
 
 /*
     struct QAM

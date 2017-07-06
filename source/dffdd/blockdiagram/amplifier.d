@@ -236,7 +236,7 @@ struct PowerControlAmplifier
             _sumPower += _front.re^^2 + _front.im^^2;
             ++_cnt;
             if(_cnt == _avgSize){
-                if(_avgCount < 100){
+                if(_avgCount < 30){
                     if(_sumPower == 0)
                         _alpha = _alpha;
                     else

@@ -93,11 +93,11 @@ final class SimulatedSignals
         foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
         {
             try{
-                assert(txBaseband.front == txBasebandSWP.front);
-                assert(paDirect.front == paDirectSWP.front);
+                if(txBaseband !is null && txBasebandSWP !is null)   assert(txBaseband.front == txBasebandSWP.front);
+                if(paDirect !is null && paDirectSWP !is null)       assert(paDirect.front == paDirectSWP.front);
 
-                assert(receivedSI.front == receivedSISWP.front);
-                assert(receivedSI.front == received.front);
+                if(receivedSI !is null && receivedSISWP !is null)   assert(receivedSI.front == receivedSISWP.front);
+                if(receivedSI !is null && received !is null)        assert(receivedSI.front == received.front);
             }catch(Throwable o){
                 import std.stdio;
                 writeln(i);
@@ -321,6 +321,18 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     if(doOutput)
         dst.noise = dst.noise.psdSaveTo("psd_thermal_noise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
+
+    if(!model.useDesiredBaseband) dst.desiredBaseband = null;
+    if(!model.useTxBaseband) dst.txBaseband = null;
+    if(!model.useTxBasebandSWP) dst.txBasebandSWP = null;
+    if(!model.useDesiredPADirect) dst.desiredPADirect = null;
+    if(!model.usePADirect) dst.paDirect = null;
+    if(!model.usePADirectSWP) dst.paDirectSWP  = null;
+    if(!model.useReceivedDesired) dst.receivedDesired = null;
+    if(!model.useReceivedSI) dst.receivedSI = null;
+    if(!model.useReceivedSISWP) dst.receivedSISWP = null;
+    if(!model.useReceived) dst.received = null;
+    if(!model.useNoise) dst.noise = null;
 
     return dst;
 }

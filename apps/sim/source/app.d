@@ -138,8 +138,8 @@ void mainJob()
     //writefln("%s tasks will be submitted.", taskList.length);
     JobEnvironment env;
 
-    tuthpc.taskqueue.run(taskList, env);
-    //foreach(i; 0 .. taskList.length) taskList[i]();
+    // tuthpc.taskqueue.run(taskList, env);
+    foreach(i; 0 .. taskList.length) taskList[i]();
 }
 
 
@@ -198,12 +198,10 @@ Tuple!(Model, string) makeModelAndDir(string methodName)(int learningSymbols, in
   static if(methodName.split("_")[0].endsWith("FHF"))
   {
     model.swappedSymbols = 100000;
-    model.numOfFilterTrainingSymbols = 1000;
   }
   else
   {
     model.swappedSymbols = 0;
-    model.numOfFilterTrainingSymbols = 1000;
   }
 
   static if(methodName.split("_")[0].endsWith("FHF"))
@@ -225,7 +223,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     resList ~= mainImpl!methodName(m, dir);
 
     // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-    enum K = 100;    // 試行回数
+    enum K = 10;    // 試行回数
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(j; 0 .. K){

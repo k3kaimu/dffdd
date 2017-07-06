@@ -650,6 +650,20 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             import std.stdio;
             auto model = originalModel;
 
+            with(model){
+                useDesiredBaseband = false;
+                useTxBaseband = false;
+                useTxBasebandSWP = true;        // 使う
+                useDesiredPADirect = false;
+                usePADirect = false;
+                usePADirectSWP = false;
+                useReceivedDesired = false;
+                useReceivedSI = false;
+                useReceivedSISWP = true;        // 使う
+                useReceived = false;
+                useNoise = true;                // 使う
+            }
+
             if(testcase == 0)
             {
                 // 同軸線路を使用するように設定する
@@ -659,7 +673,11 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
             // 最初にノイズ電力の計測
             {
+                model.useTxBasebandSWP = false;
+                model.useReceivedSISWP = false;
                 auto signals = genSignal(model);
+                model.useTxBasebandSWP = true;
+                model.useReceivedSISWP = true;
 
                 auto n = signals.noise.save;
                 // auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
@@ -669,7 +687,8 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                     e = 0;
 
                 // auto buf = new Complex!float[_nOS * _nFFT];
-                foreach(i; 0 .. 1024){
+                immutable size_t nSize = 64;
+                foreach(i; 0 .. nSize){
                     foreach(j; 0 .. _nOS * _nFFT){
                         _fftw.inputs!float[j] = cast(Complex!float)n.front;
                         n.popFront();
@@ -681,7 +700,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                 }
 
                 foreach(j; 0 .. _nOS * _nFFT)
-                    buf[j] /= 1024;
+                    buf[j] /= nSize;
 
                 _noiseFloor = buf.sum() / (_nFFT * _nOS);
             }
@@ -696,10 +715,11 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             Tuple!(real[][], real[]) expectedPowers;
             real[][] psiPower;
             real[] gnl = new real[_distorter.outputDim];
+            auto signals = genSignal(model);
             if(_doComplexSelect && testcase == 0)
             {
-                _iqRX = estimateIQCoefs(estimateCFR(model, genSignal, C(0, 0)))[1];
-                weight = estimateCFR(model, genSignal, _iqRX);
+                _iqRX = estimateIQCoefs(estimateCFR(signals.save(), C(0, 0)))[1];
+                weight = estimateCFR(signals.save(), _iqRX);
                 foreach(p; 0 .. _distorter.outputDim)
                 {
                     gnl[p] = 0;
@@ -709,14 +729,14 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                     gnl[p] = sqrt(gnl[p] / _nSC);
                 }
 
-                //expectedPowers = calculateExpectedPower(model, genSignal, weight, C(0, 0));
-                psiPower = calculateExpectedPower(model, genSignal, weight, C(0, 0))[2];
+                //expectedPowers = calculateExpectedPower(signals, weight, C(0, 0));
+                psiPower = calculateExpectedPower(signals.save(), weight, C(0, 0))[2];
             }
             else
             {
                 // H_{p,q}[f] を取得する
-                weight = estimateCFR(model, genSignal, C(0, 0));
-                expectedPowers[0 .. 2] = calculateExpectedPower(model, genSignal, weight, C(0, 0))[0 .. 2];
+                weight = estimateCFR(signals.save(), C(0, 0));
+                expectedPowers[0 .. 2] = calculateExpectedPower(signals.save(), weight, C(0, 0))[0 .. 2];
             }
 
             if(testcase == 0){          // 重要度を計算する場合なら
@@ -744,17 +764,15 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     }
 
 
-    C[][] estimateCFR(M, Signals)(M model, Signals delegate(M) genSignal, C iqRX = C(0, 0))
+    C[][] estimateCFR(Signals)(Signals signals, C iqRX = C(0, 0))
     {
-        auto signals = genSignal(model);
-
         // 次のようなフィルタを学習してみる
         // + 適応アルゴリズム : 最小二乗法
         // + 使用シンボル数：1024シンボル
         auto testfilter = new FrequencyDomainHammersteinFilter!(Complex!float, Dist, FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float))))
                             (_distorter,
                             new FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float)))
-                                ((size_t i, bool b, MultiFIRState!C s) => makeLSAdapter(s, 1024), _scMap, _distorter.outputDim)
+                                ((size_t i, bool b, MultiFIRState!C s) => makeLSAdapter(s, 64), _scMap, _distorter.outputDim)
                             ,
                             _scMap, _nFFT, _nCP, _nOS, _sampFreq, false, false);
 
@@ -764,8 +782,8 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             testRX = new C[this.inputBlockLength],
             testER = new C[this.inputBlockLength];
 
-        // 1024シンボル使用して学習する
-        foreach(i; 0 .. 1024 / spb){
+        // 64シンボル使用して学習する
+        foreach(i; 0 .. 64 / spb){
             signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
 
             testfilter.apply!(Yes.learning)(testTX, testRX, testER);
@@ -805,9 +823,8 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     }
 
 
-    Tuple!(real[][], real[], real[][]) calculateExpectedPower(M, Signals)(M model, Signals delegate(M) genSignal, in C[][] weight, C iqRX = C(0, 0))
+    Tuple!(real[][], real[], real[][]) calculateExpectedPower(Signals)(Signals signals, in C[][] weight, C iqRX = C(0, 0))
     {
-        auto signals = genSignal(model);
         C[] testTX = new C[this.inputBlockLength],
             testRX = new C[this.inputBlockLength],
             testER = new C[this.inputBlockLength];
@@ -829,7 +846,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         auto disted = new C[][]((_nFFT + _nCP) * _nOS, _distorter.outputDim);
 
         // 重要度を計算する
-        enum size_t Navg = 1024;
+        enum size_t Navg = 64;
         foreach(i; 0 .. Navg){
             signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
             _distorter(testTX, disted);

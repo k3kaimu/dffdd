@@ -10,6 +10,7 @@ import std.numeric;
 import std.path;
 import std.range;
 import std.random;
+import std.stdio;
 
 import carbon.math : nextPowOf2;
 
@@ -27,27 +28,29 @@ import sigsim;
 real qfunc(real x) { return 0.5 * erfc(x / SQRT2); }
 
 
-auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model)
+auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model, bool* endFlag = null)
 if(isForwardRange!R)
 {
     alias E = ElementType!R;
-    return r.loggingTo(makeSpectrumAnalyzer!E(filename, resultDir, dropSize, model)).toWrappedRange;
+    return r.loggingTo(makeSpectrumAnalyzer!E(filename, resultDir, dropSize, model, endFlag)).toWrappedRange;
 }
 
 
-auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize, Model model)
+auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize, Model model, bool* endFlag = null)
 {
     if(resultDir !is null) {
         return makeInstrument!C(delegate void(FiberRange!C r){
             r.drop(dropSize).writePSD(File(buildPath(resultDir, filename), "w"), model.samplingFreq, 1024);
+            if(endFlag) *endFlag = true;
         });
     }else{
+        if(endFlag) *endFlag = true;
         return makeInstrument!C(delegate void(FiberRange!C r){});
     }
 }
 
 
-auto makeCancellationProbe(C)(float* dst, string filename, string resultDir, size_t dropSize, Model model)
+auto makeCancellationProbe(C)(float* dst, string filename, string resultDir, size_t dropSize, Model model, bool* endFlag = null)
 {
     alias Tup = Tuple!(C, C);
 
@@ -60,11 +63,13 @@ auto makeCancellationProbe(C)(float* dst, string filename, string resultDir, siz
             auto file = File(buildPath(resultDir, filename), "w");
             file.writefln("%s", 10*log10(ratio));
         }
+
+        if(endFlag) *endFlag = true;
     });
 }
 
 
-auto makeInBandCancellationProbe(C)(float* dst, string filename, string resultDir, size_t dropSize, Model model)
+auto makeInBandCancellationProbe(C)(float* dst, string filename, string resultDir, size_t dropSize, Model model, bool* endFlag = null)
 {
     alias Tup = Tuple!(C, C);
 
@@ -77,6 +82,8 @@ auto makeInBandCancellationProbe(C)(float* dst, string filename, string resultDi
             auto file = File(buildPath(resultDir, filename), "w");
             file.writefln("%s", 10*log10(ratio));
         }
+
+        if(endFlag) *endFlag = true;
     });
 }
 
@@ -152,6 +159,20 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     if(resultDir !is null)
         mkdirRecurse(resultDir);
 
+    with(model){
+        useDesiredBaseband = false;
+        useTxBaseband = true;           // 使う
+        useTxBasebandSWP = true;        // 使う
+        useDesiredPADirect = false;
+        usePADirect = false;
+        usePADirectSWP = false;
+        useReceivedDesired = false;
+        useReceivedSI = true;           // 使う
+        useReceivedSISWP = true;        // 使う
+        useReceived = true;             // 使う
+        useNoise = true;                // 使う
+    }
+
     auto signals = makeSimulatedSignals(model, resultDir);
     signals.trainAGC();
 
@@ -221,10 +242,12 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
          outps = new Complex!float[model.blockSize];
 
     {
-        assert(model.rndSeed != 893);
+        
+        //assert(model.rndSeed != 893);
 
         filter.preLearning(model, (Model m){
             auto ss = makeSimulatedSignals(m);
+
             ss.trainAGC();
 
             return ss;
@@ -287,20 +310,22 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
             .put(sicIterValue, recvs.zip(outps));
         }
 
+
         infoResult["training_symbols_per_second"] = model.numOfFilterTrainingSymbols / ((cast(real)sw.peek.usecs) / 1_000_000);
     }
-
 
     {
         float sicv;
 
-        auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model);
-        auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model);
-        auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model);
-        auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model);
-        auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model);
+        bool*[] endFlags = iota(5).map!"new bool"().array();
+        auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
+        auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model, endFlags[1]);
+        auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model, endFlags[2]);
+        auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model, endFlags[3]);
+        auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[4]);
 
         StopWatch sw;
+        size_t cancCNT;
         foreach(blockIdxo; 0 .. 1024)
         {
             signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
@@ -320,9 +345,14 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
                 .put(sicValue, recvs.zip(outps));
                 .put(inbandSICValue, recvs.zip(outps));
             }
+
+            ++cancCNT;
+
+            if(endFlags[].fold!"a && *b"(true))
+                break;
         }
 
-        infoResult["canceling_symbols_per_second"] = 1024 * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
+        infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
         infoResult["cancellation_dB"] = sicv;
     }
 
@@ -398,7 +428,6 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     // ノイズ電力
     auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
     .put(noisePSD, signals.noise.save.map!(a => Complex!float(a)).take(64*1024));
-
 
     static if(is(typeof((){ filter.saveInfoToDir(""); })))
     {
