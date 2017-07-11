@@ -40,6 +40,7 @@ import dffdd.filter.state;
 import dffdd.filter.taylor;
 import dffdd.utils.fft;
 import dffdd.utils.unit;
+import dffdd.utils.distribution;
 //import dffdd.utils.msgpackrpc;
 
 
@@ -86,7 +87,7 @@ alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Comple
 struct Model
 {
     size_t numOfModelTrainingSymbols = 100;
-    size_t numOfFilterTrainingSymbols = 100;
+    size_t numOfFilterTrainingSymbols = 200;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
@@ -450,7 +451,7 @@ auto connectToTXIQMixer(R)(R r, Model model)
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
 
-    auto irrdB = model.txIQMixer.IRR.dB + uniform(-1.0f, 1.0f, rnd) * model.txIQMixer.MAX_VAR_IRR.dB;
+    auto irrdB = normalDist(model.txIQMixer.IRR.dB, model.txIQMixer.MAX_VAR_IRR.dB, rnd);
     auto theta = uniform(0, 1.0f, rnd) * 2*PI;
 
     return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
@@ -469,7 +470,7 @@ auto connectToRXIQMixer(R)(R r, Model model)
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
 
-    auto irrdB = model.rxIQMixer.IRR.dB + uniform(-1.0f, 1.0f, rnd) * model.rxIQMixer.MAX_VAR_IRR.dB;
+    auto irrdB = normalDist(model.rxIQMixer.IRR.dB, model.rxIQMixer.MAX_VAR_IRR.dB, rnd);
     auto theta = uniform(0, 1.0f, rnd) * 2*PI;
 
     return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
@@ -482,9 +483,9 @@ auto connectToPowerAmplifier(R)(R r, Model model)
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
 
-    auto iip3 = model.pa.IIP3.dBm + uniform(-1.0f, 1.0f, rnd) * model.pa.MAX_VAR_IIP3.dB;
-    auto txp = model.pa.TX_POWER.dBm + uniform(-1.0f, 1.0f, rnd) * model.pa.MAX_VAR_TXP.dB;
-    auto gain = model.pa.GAIN.dB + uniform(-1.0f, 1.0f, rnd) * model.pa.MAX_VAR_GAIN.dB;
+    auto iip3 = normalDist(model.pa.IIP3.dBm, model.pa.MAX_VAR_IIP3.dB, rnd);
+    auto txp = normalDist(model.pa.TX_POWER.dBm, model.pa.MAX_VAR_TXP.dB, rnd);
+    auto gain = normalDist(model.pa.GAIN.dB, model.pa.MAX_VAR_GAIN.dB, rnd);
 
     auto v = (txp - model.pa.GAIN.dB).dBm;
 
