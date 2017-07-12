@@ -175,9 +175,9 @@ unittest
 Voltage dBm(real dbm)
 {
     if(__ctfe)
-        return Voltage(expCTFE((dbm - 30)/20 * log(10.0)));
+        return Voltage(sqrt(50.0) * expCTFE((dbm - 30)/20 * log(10.0)));
     else
-        return Voltage(10.0^^((dbm - 30)/20));
+        return Voltage(sqrt(50.0) * 10^^((dbm - 30)/20));
 }
 
 
@@ -198,19 +198,18 @@ struct Voltage
 
   @property const
   {
-    deprecated
     real dBm() pure nothrow @safe @nogc
     {
-        // 1V => 1W == 30dBm
-        return 30 + 20*log10(_g1V);
+        auto w = _g1V^^2 / 50;
+        return 10*log10(w) + 30;
     }
 
 
-    deprecated
-    real dBW() pure nothrow @safe @nogc
-    {
-        return 20*log10(_g1V);
-    }
+    //deprecated
+    //real dBW() pure nothrow @safe @nogc
+    //{
+    //    return 20*log10(_g1V);
+    //}
 
 
     deprecated
@@ -220,17 +219,17 @@ struct Voltage
     }
 
 
-    deprecated
-    real W() pure nothrow @safe @nogc
-    {
-        return _g1V^^2;
-    }
+    //deprecated
+    //real W() pure nothrow @safe @nogc
+    //{
+    //    return _g1V^^2;
+    //}
   }
 
     string toString() const
     {
         import std.format;
-        return format("%sdBm", 30 + 20*log10(_g1V));
+        return format("%sdBm", this.dBm);
     }
 
 
@@ -240,14 +239,14 @@ struct Voltage
 
 unittest
 {
-    assert(approxEqual((-10).dBm.V, 0.01));
-    assert(approxEqual((10).dBm.V, 0.1));
+    assert(approxEqual((-10).dBm.V, sqrt(50.0)*0.01));
+    assert(approxEqual((10).dBm.V, sqrt(50.0)*0.1));
     assert(approxEqual((10).dBm.dBm, 10));
     assert(approxEqual((-10).dBm.dBm, -10));
 
     enum Voltage g1 = (-10).dBm;
-    assert(approxEqual(g1.V, 0.01));
+    assert(approxEqual(g1.V, sqrt(50.0)*0.01));
 
     enum Voltage g2 = 10.dBm;
-    assert(approxEqual(g2.V, 0.1));
+    assert(approxEqual(g2.V, sqrt(50.0)*0.1));
 }

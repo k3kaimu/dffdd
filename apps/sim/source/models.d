@@ -238,6 +238,7 @@ struct Model
         // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
         // MAX2616
         Gain GAIN = 18.dB;
+        Voltage Vsat = (IIP3.dBm - 36).dB.gain.Voltage;
         Voltage IIP3 = (37.2 - 18.4).dBm;
         Voltage TX_POWER = 15.dBm;
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
