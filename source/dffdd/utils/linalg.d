@@ -1,14 +1,15 @@
 module dffdd.utils.linalg;
 
+import cblas;
 import std.experimental.ndslice;
 import std.complex;
 
 
-enum Order
-{
-    RowMajor = 101,
-    ColMajor = 102,
-}
+// enum Order
+// {
+//     RowMajor = 101,
+//     ColMajor = 102,
+// }
 
 nothrow @trusted extern(C)
 {
@@ -199,7 +200,7 @@ body{
     return dot(x, y);
   else static if(is(typeof(E.init.re) == float))
   {
-    auto ret = cblas_cdotc(x.length, x.ptr, cast(_cfloat)x.stride!0, y.ptr, cast(_cfloat)y.stride!0);
+    auto ret = cblas_cdotc(cast(int)x.length, cast(_cfloat*)&(x[0]), cast(int)x.stride!0, cast(_cfloat*)&(y[0]), cast(int)y.stride!0);
 
     static if(is(E == cfloat))
         return ret.re + ret.im*1.0fi;
@@ -208,9 +209,9 @@ body{
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    auto ret = cblas_cdotc(x.length, x.ptr, cast(_cdouble)x.stride!0, y.ptr, cast(_cdouble)y.stride!0);
+    auto ret = cblas_cdotc(cast(int)x.length, cast(_cdouble*)&(x[0]), cast(int)x.stride!0, cast(_cdouble*)&(y[0]), cast(int)y.stride!0);
 
-    static if(is(E == cfloat))
+    static if(is(E == cdouble))
         return ret.re + ret.im*1.0i;
     else
         return E(ret.re, ret.im);
@@ -219,22 +220,35 @@ body{
     static assert(0);
 }
 
+unittest
+{
+    import std.complex;
+    import std.math;
+    
+    Slice!(1, Complex!float*) v1 = [Complex!float(1, 1), Complex!float(0, 1)].sliced(2),
+                             v2 = [Complex!float(1, 0), Complex!float(0, 1)].sliced(2);
+    
+    auto res = dotH(v1, v2);
+    assert(approxEqual(res.re, 2));
+    assert(approxEqual(res.im, -1));
+}
+
 
 template transposeValueImpl(string op)
 if(op == "" || op == "*" || op == "T" || op == "H")
 {
   static if(op == "")
-    enum transposeValue = Transpose.NoTrans;
+    enum transposeValueImpl = Transpose.NoTrans;
   else static if(op == "*")
-    enum transposeValue = Transpose.ConjNoTrans;
+    enum transposeValueImpl = Transpose.ConjNoTrans;
   else static if(op == "T")
-    enum transposeValue = Transpose.Trans;
+    enum transposeValueImpl = Transpose.Trans;
   else static if(op == "H")
-    enum transposeValue = Transpose.ConjTrans;
+    enum transposeValueImpl = Transpose.ConjTrans;
 }
 
 
-Transpose transposeValue(string op)(Transpose value, bool isTransposed)
+Transpose transposeValue(string op)(bool isTransposed)
 {
     if(!isTransposed)
         return transposeValueImpl!op;
@@ -258,18 +272,26 @@ void gemv(string opA = "", E)(E alpha, Slice!(2, E*) matA, Slice!(1, E*) x, E be
     immutable isTA = matA.isTransposed;
 
     if(isTA)
-        matA = matA.trasnposed;
+        matA = matA.transposed;
 
   static if(is(E == float))
-    cblas_sgemv(Order.RowMajor, transposeValue!opA(isTA), matA.length!0, matA.length!1, alpha, matA.ptr, matA.stride!0, x.ptr, x.stride!0, beta, y.ptr, y.stride!0);
+    cblas_sgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA.stride!0, &(x[0]), cast(int)x.stride!0, beta, &(y[0]), cast(int)y.stride!0);
   else static if(is(E == double))
-    cblas_dgemv(Order.RowMajor, transposeValue!opA(isTA), matA.length!0, matA.length!1, alpha, matA.ptr, matA.stride!0, x.ptr, x.stride!0, beta, y.ptr, y.stride!0);
+    cblas_dgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA.stride!0, &(x[0]), cast(int)x.stride!0, beta, &(y[0]), cast(int)y.stride!0);
   else static if(is(typeof(E.init.re) == float))
-    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), matA.length!0, matA.length!1, alpha, cast(_cfloat*)matA.ptr, matA.stride!0, cast(_cfloat*)x.ptr, x.stride!0, beta, cast(_cfloat*)y.ptr, y.stride!0);
+  {
+    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cfloat*)&alpha, cast(_cfloat*)(&matA[0, 0]), cast(int)matA.stride!0, cast(_cfloat*)&(x[0]), cast(int)x.stride!0, cast(_cfloat*)&beta, cast(_cfloat*)&(y[0]), cast(int)y.stride!0);
+  }
   else static if(is(typeof(E.init.re) == double))
-    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), matA.length!0, matA.length!1, alpha, cast(_cdouble*)matA.ptr, matA.stride!0, cast(_cdouble*)x.ptr, x.stride!0, beta, cast(_cdouble*)y.ptr, y.stride!0);
+  {
+    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA.stride!0, cast(_cdouble*)&(x[0]), cast(int)x.stride!0, cast(_cfloat*)&beta, cast(_cdouble*)&(y[0]), cast(int)y.stride!0);
+  }
   else
     static assert(0);
+}
+
+unittest
+{
 }
 
 

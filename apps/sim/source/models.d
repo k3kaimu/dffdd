@@ -235,11 +235,17 @@ struct Model
 
     struct PA 
     {
+        // // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
+        // // MAX2616
+        // Gain GAIN = 18.dB;
+        // Voltage Vsat = (IIP3.dBm - 36).dB.gain.Voltage;
+        // Voltage IIP3 = (37.2 - 18.4).dBm;
+        // Voltage TX_POWER = 15.dBm;
         // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
         // MAX2616
-        Gain GAIN = 18.dB;
-        Voltage Vsat = (IIP3.dBm - 36).dB.gain.Voltage;
-        Voltage IIP3 = (37.2 - 18.4).dBm;
+        Gain GAIN = 28.5.dB;
+        Voltage Vsat = Voltage(21.8.dBm.V / 2);
+        Voltage IIP3 = 21.8.dBm;
         Voltage TX_POWER = 15.dBm;
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
         Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
@@ -484,7 +490,7 @@ auto connectToPowerAmplifier(R)(R r, Model model)
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
 
-    auto iip3 = normalDist(model.pa.IIP3.dBm, model.pa.MAX_VAR_IIP3.dB, rnd);
+    auto iip3 = normalDist(model.pa.IIP3.dBm, model.pa.MAX_VAR_IIP3.dB, rnd).dBm;
     auto txp = normalDist(model.pa.TX_POWER.dBm, model.pa.MAX_VAR_TXP.dB, rnd);
     auto gain = normalDist(model.pa.GAIN.dB, model.pa.MAX_VAR_GAIN.dB, rnd);
 
@@ -492,7 +498,7 @@ auto connectToPowerAmplifier(R)(R r, Model model)
 
     return r
     .connectTo!PowerControlAmplifier(v)
-    .connectTo!RappModel(model.pa.GAIN, 1, (iip3 - 36).dB.gain)
+    .connectTo!RappModel(model.pa.GAIN, 1, iip3.V / 2)
     // .connectTo!RappPowerAmplifier(model.pa.GAIN, model.pa.IIP3)
     .toWrappedRange;
 }

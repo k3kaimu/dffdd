@@ -52,11 +52,11 @@ void mainJob()
         }
 
         // gamma_vs_rinr, canc, cmops
-        static if(0)
+        //static if(0)
         static if(methodName == "S2FHF_RLS")
         foreach(learningSymbols; [60])
         foreach(inr; [50])
-        foreach(txp; [15])
+        foreach(txp; [23])
         foreach(gamma; iota(-10, 12, 2))
         foreach(beta; iota(20, 35, 5))
         foreach(irr; [25])
@@ -68,11 +68,11 @@ void mainJob()
 
 
         // beta_vs_rinr, canc, cmops
-        static if(0)
+        //static if(0)
         static if(methodName == "S2FHF_RLS")
         foreach(learningSymbols; [60])
         foreach(inr; [50])
-        foreach(txp; [15])
+        foreach(txp; [23])
         foreach(gamma; [2])
         foreach(beta; iota(10, 43, 3))
         foreach(irr; iota(20, 35, 5))
@@ -85,11 +85,11 @@ void mainJob()
 
         /// inr_vs_canc, rinr, cmops
         //static if(methodName == "S2FHF_LS")
-        static if(0)
+        //static if(0)
         static if(methodName == "S2FHF_LS" || methodName == "FHF_LS" || methodName == "OPH_LS" || methodName == "WL_LS" || methodName == "L_LS")
         foreach(learningSymbols; [60])
         foreach(inr; iota(20, 68, 3))
-        foreach(txp; [15])
+        foreach(txp; [23])
         foreach(gamma; [2])
         foreach(beta; [20])
         foreach(irr; [25])
@@ -101,11 +101,11 @@ void mainJob()
 
 
         /// iteration
-        static if(0)
+        //static if(0)
         static if(methodName.startsWith("S2FHF") || methodName.startsWith("FHF") || methodName.startsWith("OPH"))
         foreach(learningSymbols; iota(1, 21, 1))
         foreach(inr; [50])
-        foreach(txp; [15])
+        foreach(txp; [23])
         foreach(gamma; [2])
         foreach(beta; [20])
         foreach(irr; [25])
@@ -116,10 +116,11 @@ void mainJob()
         }
 
 
+        //static if(0)
         static if(methodName == "S2FHF_LS")
         foreach(learningSymbols; [60])
         foreach(inr; [50])
-        foreach(txp; [15])
+        foreach(txp; [23])
         foreach(gamma; [2])
         foreach(beta; [20])
         foreach(irr; [25])
@@ -128,7 +129,7 @@ void mainJob()
             auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, gamma, beta, irr);
             md[0].txIQMixer.MAX_VAR_IRR = mvar.dB;
             md[0].rxIQMixer.MAX_VAR_IRR = mvar.dB;
-            md[0].pa.MAX_VAR_IIP3 = mvar.dB;
+            md[0].pa.MAX_VAR_GAIN = mvar.dB;
             md[1] ~= "_mvar%s".format(cast(int)round(mvar * 10));
             appender.append(md[0], buildPath("results", md[1]));
             dirset[md[1]] = true;
@@ -223,7 +224,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     resList ~= mainImpl!methodName(m, dir);
 
     // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-    enum K = 10;    // 試行回数
+    enum K = 0;    // 試行回数
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(j; 0 .. K){

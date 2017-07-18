@@ -6,6 +6,7 @@ import std.stdio;
 import std.math;
 import std.complex;
 import std.experimental.ndslice;
+import dffdd.utils.linalg;
 
 
 final class RLSAdapter(State)
@@ -100,31 +101,36 @@ RLSAdapter!State makeRLSAdapter(State)(State state, real lambda, real delta = 1E
 private
 void matop_M_mul_V(C)(Slice!(2, C*) mat, Slice!(1, C*) v, Slice!(1, C*) dst)
 {
-    foreach(i; 0 .. dst.length){
-        dst[i] = complexZero!C;
-        foreach(j; 0 .. mat.length!1)
-            dst[i] += mat[i, j] * v[j];
-    }
+    // foreach(i; 0 .. dst.length){
+    //     dst[i] = complexZero!C;
+    //     foreach(j; 0 .. mat.length!1)
+    //         dst[i] += mat[i, j] * v[j];
+    // }
+    gemv(C(1, 0), mat, v, C(0, 0), dst);
 }
 
 
 private
 void matop_Vh_mul_M(C)(Slice!(1, C*) v, Slice!(2, C*) mat, Slice!(1, C*) dst)
 {
-    foreach(i; 0 .. dst.length){
-        dst[i] = complexZero!C;
-        foreach(j; 0 .. mat.length!0)
-            dst[i] += v[j].conj * mat[j, i];
-    }
+    // foreach(i; 0 .. dst.length){
+    //     dst[i] = complexZero!C;
+    //     foreach(j; 0 .. mat.length!0)
+    //         dst[i] += v[j].conj * mat[j, i];
+    // }
+    gemv!"H"(C(1, 0), mat, v, C(0, 0), dst);
+    foreach(i; 0 .. dst.length)
+        dst[i] = dst[i].conj;
 }
 
 
 private
 C matop_Vh_dot_V(C)(Slice!(1, C*) a, Slice!(1, C*) b)
 {
-    C c = complexZero!C;
-    foreach(i; 0 .. a.length)
-        c += a[i].conj * b[i];
+    // C c = complexZero!C;
+    // foreach(i; 0 .. a.length)
+    //     c += a[i].conj * b[i];
 
-    return c;
+    // return c;
+    return dotH(a, b);
 }
