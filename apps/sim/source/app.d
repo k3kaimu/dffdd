@@ -20,6 +20,16 @@ import models;
 import simmain;
 
 
+extern(C) void openblas_set_num_threads(int num_threads);
+extern(C) int openblas_get_num_threads();
+
+
+shared static this()
+{
+    openblas_set_num_threads(1);
+}
+
+
 void mainJob()
 {
     //import tuthpc.mpi;
@@ -53,7 +63,7 @@ void mainJob()
 
         // gamma_vs_rinr, canc, cmops
         //static if(0)
-        static if(methodName == "S2FHF_RLS")
+        static if(methodName == "S2FHF_RLS" || methodName == "S2FHF_LS")
         foreach(learningSymbols; [60])
         foreach(inr; [50])
         foreach(txp; [23])
@@ -69,7 +79,7 @@ void mainJob()
 
         // beta_vs_rinr, canc, cmops
         //static if(0)
-        static if(methodName == "S2FHF_RLS")
+        static if(methodName == "S2FHF_RLS" || methodName == "S2FHF_LS")
         foreach(learningSymbols; [60])
         foreach(inr; [50])
         foreach(txp; [23])
@@ -102,6 +112,7 @@ void mainJob()
 
         /// iteration
         //static if(0)
+        //static if(methodName.endsWith("LMS"))
         static if(methodName.startsWith("S2FHF") || methodName.startsWith("FHF") || methodName.startsWith("OPH"))
         foreach(learningSymbols; iota(1, 21, 1))
         foreach(inr; [50])
@@ -121,26 +132,48 @@ void mainJob()
         foreach(learningSymbols; [60])
         foreach(inr; [50])
         foreach(txp; [23])
-        foreach(gamma; [2])
+        foreach(gamma; [0, 2, 4])
         foreach(beta; [20])
         foreach(irr; [25])
-        foreach(mvar; iota(0, 11, 1))
+        foreach(mvar_; iota(0, 101, 1))
         {
+            float mvar = mvar_ * 0.1;
             auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, gamma, beta, irr);
             md[0].txIQMixer.MAX_VAR_IRR = mvar.dB;
             md[0].rxIQMixer.MAX_VAR_IRR = mvar.dB;
             md[0].pa.MAX_VAR_GAIN = mvar.dB;
-            md[1] ~= "_mvar%s".format(cast(int)round(mvar * 10));
+            md[0].pa.MAX_VAR_IIP3 = mvar.dB;
+            md[0].pa.MAX_VAR_TXP = mvar.dB;
+            md[1] ~= "_mvar%s".format(mvar_);
             appender.append(md[0], buildPath("results", md[1]));
             dirset[md[1]] = true;
         }
+
+        /+
+        static if(0)
+        static if(methodName == "OPH_LMS" || methodName == "FHF_LMS")
+        foreach(deltaExp; iota(-4, 1, 1))
+        foreach(deltaCoe; iota(1, 10, 1))
+        {
+            float muval = deltaCoe * 10.0^^deltaExp;
+            auto md = makeModelAndDir!methodName(20, 50, 23, 2, 20, 25);
+            md[0].lmsParams.mu = muval;
+            if(deltaExp < 0)
+                md[1] ~= "_mu%sEm%s".format(deltaCoe, -deltaExp);
+            else
+                md[1] ~= "_mu%sE%s".format(deltaCoe, deltaExp);
+
+            appender.append(md[0], buildPath("results", md[1]));
+            dirset[md[1]] = true;
+        }
+        +/
     }
 
     //writefln("%s tasks will be submitted.", taskList.length);
     JobEnvironment env;
 
-    // tuthpc.taskqueue.run(taskList, env);
-    foreach(i; 0 .. taskList.length) taskList[i]();
+     tuthpc.taskqueue.run(taskList, env);
+    //foreach(i; 0 .. taskList.length) taskList[i]();
 }
 
 
@@ -224,7 +257,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     resList ~= mainImpl!methodName(m, dir);
 
     // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-    enum K = 0;    // 試行回数
+    enum K = 100;    // 試行回数
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(j; 0 .. K){

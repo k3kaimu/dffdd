@@ -310,6 +310,21 @@ struct Model
     }
     BasisFunctionSelection basisFuncsSelection;
 
+/*
+    struct RLSParameters
+    {
+        real lambda = 1;
+        real delta = 1E-3;
+    }
+    RLSParameters rlsParams;
+*/
+/*
+    struct LMSParams
+    {
+        real mu = 1E-2;
+    }
+    LMSParams lmsParams;
+*/
 
     void txPower(Voltage p) @property
     {
@@ -880,9 +895,9 @@ auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = de
         immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
         static if(optimizer == "LMS")
-            return makeLMSAdapter(state, 0.02).trainingLimit(samplesOfOnePeriod);
+            return makeNLMSAdapter(state, 0.2).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "RLS")
-            return makeRLSAdapter(state, 1 - 1E-4, 1E-7).trainingLimit(samplesOfOnePeriod);
+            return makeRLSAdapter(state, 1, 3E-3).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "LS")
         {
             // immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
@@ -908,7 +923,7 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = def
         static if(optimizer == "LMS")
             return makeLMSAdapter(state, 0.02).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "RLS")
-            return makeRLSAdapter(state, 1 - 1E-4, 1E-7).trainingLimit(samplesOfOnePeriod);
+            return makeRLSAdapter(state, 1, 1E-7).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "LS")
         {
             return makeLSAdapter(state, 80 * 4 * model.learningSymbols).trainingLimit(samplesOfOnePeriod).ignoreHeadSamples(samplesOfOnePeriod * i);
@@ -919,6 +934,7 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = def
 }
 
 
+/+
 auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false)
 {
     // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
@@ -959,6 +975,7 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
             model.basisFuncsSelection.noiseMargin
         );
 }
++/
 
 
 auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false, bool selectComplexBF = false)
@@ -972,9 +989,9 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
         immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
       static if(optimizer == "LMS")
-        return makeLMSAdapter(state, 0.30).trainingLimit(model.learningSymbols);
+        return makeNLMSAdapter(state, 0.8).trainingLimit(model.learningSymbols);
       else static if(optimizer == "RLS")
-        return makeRLSAdapter(state, 0.97, 1E-7).trainingLimit(model.learningSymbols);
+        return makeRLSAdapter(state, 1, 3E-7).trainingLimit(model.learningSymbols);
       else static if(optimizer == "LS")
         return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols);
     }
