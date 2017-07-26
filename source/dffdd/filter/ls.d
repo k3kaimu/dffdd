@@ -1,12 +1,12 @@
 module dffdd.filter.ls;
 
 import std.complex;
-import std.experimental.ndslice;
 import std.math;
-
 import std.stdio;
 
 import dffdd.utils.linalg;
+
+import mir.ndslice;
 
 
 LSAdapter!(State, NumOfADCBits) makeLSAdapter(size_t NumOfADCBits = 12, State)(State state, size_t L)
@@ -24,7 +24,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     alias C = State.StateElementType;
     alias F = typeof(C.init.re);
 
-    Slice!(2, C*) _mx;
+    Slice!(Contiguous, [2], C*) _mx;
     C[] _yv;
     immutable size_t _L;
     size_t _fillCNT;
@@ -42,7 +42,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
 
     void adapt()(ref State state, C error)
     {
-        _mx[0 .. $, _fillCNT] = state.state.byElement.sliced(state.state.elementsCount);
+        _mx[0 .. $, _fillCNT] = state.state.flattened;
         _yv[_fillCNT] = error;
         ++_fillCNT;
 

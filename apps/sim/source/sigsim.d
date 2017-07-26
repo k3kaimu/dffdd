@@ -92,20 +92,22 @@ final class SimulatedSignals
 
         foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
         {
-            try{
-                if(txBaseband !is null && txBasebandSWP !is null)   assert(txBaseband.front == txBasebandSWP.front);
-                if(paDirect !is null && paDirectSWP !is null)       assert(paDirect.front == paDirectSWP.front);
+            import dffdd.utils.linalg : approxEqualCpx;
 
-                if(receivedSI !is null && receivedSISWP !is null)   assert(receivedSI.front == receivedSISWP.front);
-                if(receivedSI !is null && received !is null)        assert(receivedSI.front == received.front);
+            try{
+                // if(txBaseband !is null && txBasebandSWP !is null)   assert(txBaseband.front == txBasebandSWP.front);
+                // if(paDirect !is null && paDirectSWP !is null)       assert(paDirect.front == paDirectSWP.front);
+
+                // if(receivedSI !is null && receivedSISWP !is null)   assert(receivedSI.front == receivedSISWP.front);
+                // if(receivedSI !is null && received !is null)        assert(receivedSI.front == received.front);
             }catch(Throwable o){
                 import std.stdio;
                 writeln(i);
-                writeln(txBaseband.front - txBasebandSWP.front);
-                writeln(paDirect.front - paDirectSWP.front);
+                if(txBaseband !is null && txBasebandSWP !is null)   writefln("txBaseband - txBasebandSWP: %s",  txBaseband.front - txBasebandSWP.front);
+                if(paDirect !is null && paDirectSWP !is null)       writefln("paDirect - paDirectSWP:     %s",  paDirect.front - paDirectSWP.front);
 
-                writeln(receivedSI.front - receivedSISWP.front);
-                writeln(receivedSI.front - received.front);
+                if(receivedSI !is null && receivedSISWP !is null)   writefln("receivedSI - receivedSISWP: %s", receivedSI.front - receivedSISWP.front);
+                if(receivedSI !is null && received !is null)        writefln("receivedSI - received:      %s", receivedSI.front - received.front);
                 throw o;
             }
 

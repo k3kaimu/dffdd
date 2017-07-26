@@ -8,9 +8,10 @@ import dffdd.filter.traits;
 import std.math;
 import std.range;
 import std.complex;
-import std.experimental.ndslice;
 import std.traits;
 import std.meta;
+
+import mir.ndslice;
 
 final class DiagonalizationOBFFactory(C, basisFuncs...)
 {
@@ -80,7 +81,7 @@ final class DiagonalizationOBFFactory(C, basisFuncs...)
 
 
   private:
-    Slice!(2, C*) _covm;
+    Slice!(Contiguous, 2, C*) _covm;
     size_t _cnt;
 }
 
@@ -185,7 +186,7 @@ final class GramSchmidtOBFFactory(C)
     }
 
 
-    Slice!(2, C*) convertMatrix() @property
+    Slice!(Contiguous, [2], C*) convertMatrix() @property
     {
         return _m;
     }
@@ -193,7 +194,7 @@ final class GramSchmidtOBFFactory(C)
 
   private:
     size_t _dim;
-    Slice!(2, C*) _m;
+    Slice!(Contiguous, [2], C*) _m;
     immutable(C[])[] _xs;
 }
 
@@ -211,14 +212,14 @@ final class VectorConverter(C)
     }
 
 
-    this(Slice!(2, C*) convMatrix)
+    this(Slice!(Contiguous, [2], C*) convMatrix)
     {
         _m = convMatrix;
         _dim = convMatrix.length!0;
     }
 
 
-    Slice!(2, C*) convertMatrix() @property 
+    Slice!(Contiguous, [2], C*) convertMatrix() @property 
     {
         return _m;
     }
@@ -239,7 +240,7 @@ final class VectorConverter(C)
 
   private:
     size_t _dim;
-    Slice!(2, C*) _m;
+    Slice!(Contiguous, [2], C*) _m;
 }
 
 unittest
@@ -401,7 +402,7 @@ unittest
     static assert(isBlockConverter!(typeof(orth), C, C[]));
 
 
-    auto input = iota(4).map!(a => cast(C)std.complex.expi(PI_2 * a)).array();
+    auto input = std.range.iota(4).map!(a => cast(C)std.complex.expi(PI_2 * a)).array();
 
     orth.learn(input);
 

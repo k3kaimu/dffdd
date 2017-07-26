@@ -1,7 +1,7 @@
 module dffdd.filter.state;
 
 import std.complex;
-import std.experimental.ndslice;
+import mir.ndslice;
 
 import carbon.math;
 
@@ -11,32 +11,32 @@ struct MultiFIRState(C)
     alias StateElementType = C;
     alias R = typeof(C.init.re);
 
-    Slice!(2, C*) state, weight;
-    Slice!(1, R*) power;
+    Slice!(Universal, [2], C*) state, weight;
+    // Slice!(Universal, [1], R*) power;
 
     this(size_t numOfFIR, size_t nTaps)
     {
         this(numOfFIR, nTaps, 
-            new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR),
-            new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR),
-            new R[numOfFIR].sliced(numOfFIR));
+            new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR).universal,
+            new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR).universal,
+            /*new R[numOfFIR].sliced(numOfFIR).universal*/);
 
         this.state[] = complexZero!C;
         this.weight[] = complexZero!C;
-        this.power[] = 1;
+        // this.power[] = 1;
     }
 
 
-    this(size_t numOfFIR, size_t nTaps, Slice!(2, C*) state, Slice!(2, C*) weight, Slice!(1, R*) power)
+    this(size_t numOfFIR, size_t nTaps, Slice!(Universal, [2], C*) state, Slice!(Universal, [2], C*) weight/*, Slice!(Universal,[1], R*) power*/)
     in{
         assert(state.length!0 == nTaps && weight.length!0 == nTaps);
-        assert(state.length!1 == numOfFIR && weight.length!1 == numOfFIR && power.length == numOfFIR);
+        // assert(state.length!1 == numOfFIR && weight.length!1 == numOfFIR && power.length == numOfFIR);
     }
     body
     {
         this.state = state;
         this.weight = weight;
-        this.power = power;
+        // this.power = power;
     }
 
 
@@ -53,8 +53,8 @@ struct MultiFIRState(C)
             state[i][] = state[i-1][];
 
         state[0][] = x[];
-        foreach(i; 0 .. state.length!1)
-            power[i] = x[i].re ^^2 + x[i].im ^^ 2;
+        // foreach(i; 0 .. state.length!1)
+            // power[i] = x[i].re ^^2 + x[i].im ^^ 2;
     }
 
 
@@ -72,13 +72,13 @@ struct MultiFIRState(C)
 
     MultiFIRState!C subFIRState(size_t i)
     {
-        return MultiFIRState!C(1, this.numOfTaps, state[0 .. $, i .. i+1], weight[0 .. $, i .. i+1], power[i .. i+1]);
+        return MultiFIRState!C(1, this.numOfTaps, state[0 .. $, i .. i+1], weight[0 .. $, i .. i+1]/*, power[i .. i+1]*/);
     }
 
 
     MultiFIRState!C subFIRStates(size_t i, size_t j)
     {
-        return MultiFIRState!C(1, this.numOfTaps, state[0 .. $, i .. j], weight[0 .. $, i .. j], power[i .. j]);
+        return MultiFIRState!C(1, this.numOfTaps, state[0 .. $, i .. j], weight[0 .. $, i .. j]/*, power[i .. j]*/);
     }
 }
 
@@ -91,12 +91,12 @@ unittest
     assert(fir.state.shape == [1, 1]);
     assert(fir.state[0, 0] == 0);
     assert(fir.weight[0, 0] == 0);
-    assert(fir.power[0] == 1);
+    // assert(fir.power[0] == 1);
 
     fir.update(Complex!float(1, 1));
     assert(fir.state[0, 0] == Complex!float(1, 1));
     assert(fir.weight[0, 0] == 0);
-    assert(fir.power[0].approxEqual(2));
+    // assert(fir.power[0].approxEqual(2));
     assert(fir.output == 0);
 
     fir.weight[0, 0] = 1;
@@ -110,7 +110,7 @@ unittest
     foreach(i; 0 .. 3) foreach(j; 0 .. 2) {
         assert(fir.state[i, j] == 0);
         assert(fir.weight[i, j] == 0);
-        assert(fir.power[j] == 1);
+        // assert(fir.power[j] == 1);
     }
 
     fir.weight[0, 0] = 1;

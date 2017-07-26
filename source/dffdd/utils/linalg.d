@@ -1,9 +1,10 @@
 module dffdd.utils.linalg;
 
 import cblas;
-import std.experimental.ndslice;
 import std.complex;
+import std.range;
 
+import mir.ndslice;
 
 // enum Order
 // {
@@ -63,10 +64,18 @@ nothrow @trusted extern(C)
 }
 
 
-private
-bool checkMatrixStride(E)(in ref Slice!(2, E*) mat)
+bool approxEqualCpx(F)(Complex!F a, Complex!F b)
 {
-    return mat.stride!0 == 1 || mat.stride!1 == 1;
+    import std.math;
+    return std.math.approxEqual(a.re, b.re) && std.math.approxEqual(a.im, b.im);
+}
+
+
+private
+bool checkMatrixStride(E, SliceKind kind)(in ref Slice!(kind, [2], E*) mat)
+if(kind == Contiguous || kind == Canonical)
+{
+    return mat._stride!0 == 1 || mat._stride!1 == 1;
 }
 
 
@@ -81,9 +90,9 @@ unittest
 
 
 private
-bool isTransposed(E)(in ref Slice!(2, E*) mat)
+bool isTransposed(E, SliceKind kind)(in ref Slice!(kind, [2], E*) mat)
 {
-    return mat.stride!0 == 1;
+    return mat._stride!0 == 1;
 }
 
 unittest
@@ -91,17 +100,19 @@ unittest
     auto mat33 = new int[9].sliced(3, 3);
     assert(!mat33.isTransposed);
 
-    mat33 = mat33.transposed;
+    auto tmat33 = mat33.universal.transposed;
+    assert(tmat33.isTransposed);
 }
 
 
 private
-size_t leadingDimension(E)(in ref Slice!(2, E*) mat)
+size_t leadingDimension(E, SliceKind kind)(in ref Slice!(kind, [2], E*) mat)
+if(kind == Contiguous || kind == Canonical)
 {
     if(mat.isTransposed)
-        return mat.stride!1;
+        return mat._stride!1;
     else
-        return mat.stride!0;
+        return mat._stride!0;
 }
 
 
@@ -120,7 +131,7 @@ int heev(size_t N, float[2]* A, float* eigenValues)
 }*/
 
 
-int heev(C, R)(Slice!(2, C*) matA, R[] ev)
+int heev(C, R)(Slice!(Contiguous, [2], C*) matA, R[] ev)
 if(is(typeof(C.init.re) == R))
 in{
     assert(matA.checkMatrixStride);
@@ -135,8 +146,8 @@ body{
 }
 
 
-int gelss(C, R)(Slice!(2, C*) matA, Slice!(1, C*) b, R[] sv, int* rank = null)
-if(is(typeof(C.init.re) == R))
+int gelss(C, R)(Slice!(Contiguous, [2], C*) matA, Slice!(Contiguous, [1], C*) b, R[] sv, int* rank = null)
+if(is(typeof(C.init.re) == R) && (kind == Contiguous || kind == Canonical))
 in{
     assert(matA.checkMatrixStride);
     assert(!matA.isTransposed);
@@ -157,18 +168,18 @@ body{
 }
 
 
-E dot(E)(Slice!(1, E*) x, Slice!(1, E*) y)
+E dot(E)(Slice!(Contiguous, [1], E*) x, Slice!(Contiguous, [1], E*) y)
 in{
     assert(x.length == y.length);
 }
 body{
   static if(is(E == float))
-    return cblas_sdot(x.length, x.ptr, x.stride!0, y.ptr, y.stride!0);
+    return cblas_sdot(x.length, x.ptr, x._stride!0, y.ptr, y._stride!0);
   else static if(is(E == double))
-    return cblas_ddot(x.length, x.ptr, x.stride!0, y.ptr, y.stride!0);
+    return cblas_ddot(x.length, x.ptr, x._stride!0, y.ptr, y._stride!0);
   else static if(is(typeof(E.init.re) == float))
   {
-    auto ret = cblas_cdotu(x.length, x.ptr, cast(_cfloat)x.stride!0, y.ptr, cast(_cfloat)y.stride!0);
+    auto ret = cblas_cdotu(x.length, x.ptr, cast(_cfloat)x._stride!0, y.ptr, cast(_cfloat)y._stride!0);
 
     static if(is(E == cfloat))
         return ret.re + ret.im*1.0fi;
@@ -177,7 +188,7 @@ body{
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    auto ret = cblas_cdotu(x.length, x.ptr, cast(_cdouble)x.stride!0, y.ptr, cast(_cdouble)y.stride!0);
+    auto ret = cblas_cdotu(x.length, x.ptr, cast(_cdouble)x._stride!0, y.ptr, cast(_cdouble)y._stride!0);
 
     static if(is(E == cfloat))
         return ret.re + ret.im*1.0i;
@@ -191,7 +202,7 @@ body{
 
 alias dotT = dot;
 
-E dotH(E)(Slice!(1, E*) x, Slice!(1, E*) y)
+E dotH(E)(Slice!(Contiguous, [1], E*) x, Slice!(Contiguous, [1], E*) y)
 in{
     assert(x.length == y.length);
 }
@@ -200,7 +211,7 @@ body{
     return dot(x, y);
   else static if(is(typeof(E.init.re) == float))
   {
-    auto ret = cblas_cdotc(cast(int)x.length, cast(_cfloat*)&(x[0]), cast(int)x.stride!0, cast(_cfloat*)&(y[0]), cast(int)y.stride!0);
+    auto ret = cblas_cdotc(cast(int)x.length, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&(y[0]), cast(int)y._stride!0);
 
     static if(is(E == cfloat))
         return ret.re + ret.im*1.0fi;
@@ -209,7 +220,7 @@ body{
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    auto ret = cblas_cdotc(cast(int)x.length, cast(_cdouble*)&(x[0]), cast(int)x.stride!0, cast(_cdouble*)&(y[0]), cast(int)y.stride!0);
+    auto ret = cblas_cdotc(cast(int)x.length, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
 
     static if(is(E == cdouble))
         return ret.re + ret.im*1.0i;
@@ -225,12 +236,12 @@ unittest
     import std.complex;
     import std.math;
     
-    Slice!(1, Complex!float*) v1 = [Complex!float(1, 1), Complex!float(0, 1)].sliced(2),
-                             v2 = [Complex!float(1, 0), Complex!float(0, 1)].sliced(2);
+    auto v1 = [Complex!float(1, 1), Complex!float(0, 1)].sliced(2),
+         v2 = [Complex!float(1, 0), Complex!float(0, 1)].sliced(2);
     
     auto res = dotH(v1, v2);
     assert(approxEqual(res.re, 2));
-    assert(approxEqual(res.im, -1));
+    assert(approxEqual(res.im, 1));
 }
 
 
@@ -267,24 +278,22 @@ Transpose transposeValue(string op)(bool isTransposed)
 }
 
 
-void gemv(string opA = "", E)(E alpha, Slice!(2, E*) matA, Slice!(1, E*) x, E beta, Slice!(1, E*) y)
+void gemv(string opA = "", E)(E alpha, Slice!(Contiguous, [2], E*) matA, Slice!(Contiguous, [1], E*) x, E beta, Slice!(Contiguous, [1], E*) y)
 {
-    immutable isTA = matA.isTransposed;
-
-    if(isTA)
-        matA = matA.transposed;
-
+    // assert(!matA.isTransposed);
+    // immutable isTA = false;
+    immutable isTA = false;
   static if(is(E == float))
-    cblas_sgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA.stride!0, &(x[0]), cast(int)x.stride!0, beta, &(y[0]), cast(int)y.stride!0);
+    cblas_sgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA._stride!0, &(x[0]), cast(int)x._stride!0, beta, &(y[0]), cast(int)y._stride!0);
   else static if(is(E == double))
-    cblas_dgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA.stride!0, &(x[0]), cast(int)x.stride!0, beta, &(y[0]), cast(int)y.stride!0);
+    cblas_dgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA._stride!0, &(x[0]), cast(int)x._stride!0, beta, &(y[0]), cast(int)y._stride!0);
   else static if(is(typeof(E.init.re) == float))
   {
-    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cfloat*)&alpha, cast(_cfloat*)(&matA[0, 0]), cast(int)matA.stride!0, cast(_cfloat*)&(x[0]), cast(int)x.stride!0, cast(_cfloat*)&beta, cast(_cfloat*)&(y[0]), cast(int)y.stride!0);
+    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cfloat*)&alpha, cast(_cfloat*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&beta, cast(_cfloat*)&(y[0]), cast(int)y._stride!0);
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA.stride!0, cast(_cdouble*)&(x[0]), cast(int)x.stride!0, cast(_cfloat*)&beta, cast(_cdouble*)&(y[0]), cast(int)y.stride!0);
+    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&beta, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
   }
   else
     static assert(0);
@@ -298,7 +307,7 @@ unittest
 /**
 逆行列
 */
-void gemi(E)(Slice!(2, E*) matA)
+void gemi(E)(Slice!(Contiguous, [2], E*) matA)
 in{
     assert(!matA.isTransposed);
     assert(matA.length!0 == matA.length!1);
@@ -307,17 +316,17 @@ body{
     auto ipiv = new int[matA.length!0];
 
     immutable n = matA.length!0;
-    immutable lda = matA.stride!0;
+    immutable lda = matA._stride!0;
 
   static if(is(typeof(E.init.re) == float))
   {
-    LAPACKE_cgetrf(Order.RowMajor, cast(uint)n, cast(uint)n, cast(float[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
-    LAPACKE_cgetri(Order.RowMajor, cast(uint)n, cast(float[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
+    LAPACKE_cgetrf(Order.RowMajor, cast(uint)n, cast(uint)n, cast(float[2]*)&(matA[0, 0]), cast(uint)lda, ipiv.ptr);
+    LAPACKE_cgetri(Order.RowMajor, cast(uint)n, cast(float[2]*)&(matA[0, 0]), cast(uint)lda, ipiv.ptr);
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    LAPACKE_zgetrf(Order.RowMajor, cast(uint)n, cast(uint)n, cast(double[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
-    LAPACKE_zgetri(Order.RowMajor, cast(uint)n, cast(double[2]*)matA.ptr, cast(uint)lda, ipiv.ptr);
+    LAPACKE_zgetrf(Order.RowMajor, cast(uint)n, cast(uint)n, cast(double[2]*)&(matA[0, 0]), cast(uint)lda, ipiv.ptr);
+    LAPACKE_zgetri(Order.RowMajor, cast(uint)n, cast(double[2]*)&(matA[0, 0]), cast(uint)lda, ipiv.ptr);
   }
   else static assert(0);
 }
@@ -359,7 +368,7 @@ unittest
 y[j] = sum_i mx[i, j] * a[i] のa[i]を最小二乗法で求める．
 結果は，y[0 .. P]に上書きされる．(P: mx.length!0)
 */
-Complex!float[] leastSquareEstimate(Slice!(2, Complex!float*) mx, Complex!float[] y)
+Complex!float[] leastSquareEstimate(Slice!(Contiguous, [2], Complex!float*) mx, Complex!float[] y)
 {
     import std.algorithm : min, max;
 
@@ -375,6 +384,51 @@ Complex!float[] leastSquareEstimate(Slice!(2, Complex!float*) mx, Complex!float[
     LAPACKE_cgelss(102, cast(int)L, cast(int)P, 1, cast(float[2]*)&(mx[0, 0]), cast(int)L, cast(float[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
 
     return y[0 .. P];
+}
+
+
+/**
+パラメータ数2個の最小二乗問題をときます
+*/
+Complex!float[2] leastSquareEstimate2(R1, R2, R3)(R1 x1, R2 x2, R3 y)
+if(isInputRange!R1 && isInputRange!R2 && isInputRange!R3
+    && is(ElementType!R1 : Complex!float)
+    && is(ElementType!R2 : Complex!float)
+    && is(ElementType!R3 : Complex!float))
+{
+    Complex!real xx11 = Complex!real(0, 0),
+                 xx12 = Complex!real(0, 0),
+                 xx22 = Complex!real(0, 0),
+                 xy1 = Complex!real(0, 0),
+                 xy2 = Complex!real(0, 0);
+
+    while(!x1.empty && !x2.empty && !y.empty){
+        auto xe1 = x1.front;
+        auto xe2 = x2.front;
+        auto ye = y.front;
+
+        xx11 += xe1.sqAbs;
+        xx22 += xe2.sqAbs;
+        xx12 += xe1.conj * xe2;
+        xy1 += xe1.conj * ye;
+        xy2 += xe2.conj * ye;
+
+        x1.popFront();
+        x2.popFront();
+        y.popFront();
+    }
+
+    immutable xx21 = xx12.conj;
+
+    alias a = xx11;
+    alias b = xx12;
+    alias c = xx21;
+    alias d = xx22;
+    alias e = xy1;
+    alias f = xy2;
+
+    immutable Complex!real det = a * d - b * c;
+    return [cast(Complex!float)((d*e - b*f) / det), cast(Complex!float)((a*f - c*e) / det)];
 }
 
 

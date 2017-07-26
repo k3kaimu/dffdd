@@ -6,7 +6,6 @@ import std.math;
 import std.typetuple;
 import std.range;
 import std.traits;
-import std.experimental.ndslice;
 import std.numeric;
 import std.typecons;
 import std.json;
@@ -202,8 +201,8 @@ unittest
 
     // FIRフィルタとLMSアルゴリズムでフィルタを構成
     auto filter = parallelFilter(
-        state1, makeLMSAdapter(state1, 0.1),
-        state2, makeLMSAdapter(state2, 0.1)
+        state1, makeNLMSAdapter(state1, 0.1),
+        state2, makeNLMSAdapter(state2, 0.1)
     );
 }
 

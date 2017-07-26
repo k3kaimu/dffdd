@@ -5,9 +5,10 @@ import carbon.linear;
 import std.stdio;
 import std.math;
 import std.complex;
-import std.experimental.ndslice;
 import dffdd.utils.linalg;
 
+import mir.ndslice;
+//import glas.ndslice;
 
 final class RLSAdapter(State)
 {
@@ -74,11 +75,11 @@ final class RLSAdapter(State)
 
   private:
     real _lambdaInv;
-    Slice!(1, C*) _u;
-    Slice!(2, C*) _p;
-    Slice!(1, C*) _pu;
-    Slice!(1, C*) _uhp;
-    Slice!(1, C*) _k;
+    Slice!(Contiguous, [1], C*) _u;
+    Slice!(Contiguous, [2], C*) _p;
+    Slice!(Contiguous, [1], C*) _pu;
+    Slice!(Contiguous, [1], C*) _uhp;
+    Slice!(Contiguous, [1], C*) _k;
 }
 
 
@@ -88,18 +89,19 @@ RLSAdapter!State makeRLSAdapter(State)(State state, real lambda, real delta = 1E
 }
 
 
-//unittest
-//{
-//    import dffdd.filter.mempoly;
+unittest
+{
+   import dffdd.filter.state;
 
-//    auto state = new PowerState!(cfloat, 8, 1)(1);
-//    auto rlsAdapter = makeRLSAdapter(state, 0.5);
-//}
+   auto state = MultiFIRState!(Complex!float)(1, 1);
+   auto rlsAdapter = makeRLSAdapter(state, 0.5);
+   rlsAdapter.adapt(state, Complex!float(0, 0));
+}
 
 
 
 private
-void matop_M_mul_V(C)(Slice!(2, C*) mat, Slice!(1, C*) v, Slice!(1, C*) dst)
+void matop_M_mul_V(C)(Slice!(Contiguous, [2], C*) mat, Slice!(Contiguous, [1], C*) v, Slice!(Contiguous, [1], C*) dst)
 {
     // foreach(i; 0 .. dst.length){
     //     dst[i] = complexZero!C;
@@ -109,9 +111,26 @@ void matop_M_mul_V(C)(Slice!(2, C*) mat, Slice!(1, C*) v, Slice!(1, C*) dst)
     gemv(C(1, 0), mat, v, C(0, 0), dst);
 }
 
+unittest
+{
+    alias C = Complex!float;
+
+    auto mat = new C[2*2].sliced(2, 2);
+    auto v1 = new C[2].sliced(2);
+
+    mat[0, 0] = C(1, 0); mat[0, 1] = C(0, 1);
+    mat[1, 0] = C(2, 1); mat[1, 1] = C(2, 2);
+    v1[0] = C(0, -1); v1[1] = C(1, -1);
+
+    auto dst = new C[2].sliced(2);
+    matop_M_mul_V(mat, v1, dst);
+    assert(approxEqualCpx(dst[0], C(1, 0)));
+    assert(approxEqualCpx(dst[1], C(5, -2)));
+}
+
 
 private
-void matop_Vh_mul_M(C)(Slice!(1, C*) v, Slice!(2, C*) mat, Slice!(1, C*) dst)
+void matop_Vh_mul_M(C)(Slice!(Contiguous, [1], C*) v, Slice!(Contiguous, [2], C*) mat, Slice!(Contiguous, [1], C*) dst)
 {
     // foreach(i; 0 .. dst.length){
     //     dst[i] = complexZero!C;
@@ -125,12 +144,13 @@ void matop_Vh_mul_M(C)(Slice!(1, C*) v, Slice!(2, C*) mat, Slice!(1, C*) dst)
 
 
 private
-C matop_Vh_dot_V(C)(Slice!(1, C*) a, Slice!(1, C*) b)
+C matop_Vh_dot_V(C)(Slice!(Contiguous, [1], C*) a, Slice!(Contiguous, [1], C*) b)
 {
     // C c = complexZero!C;
     // foreach(i; 0 .. a.length)
     //     c += a[i].conj * b[i];
 
     // return c;
-    return dotH(a, b);
+    auto d = dotH(a, b);
+    return d;
 }

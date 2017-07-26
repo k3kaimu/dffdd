@@ -2,9 +2,10 @@ module dffdd.filter.regenerator;
 
 import std.algorithm;
 import std.complex;
-import std.experimental.ndslice;
 import std.math;
 import std.stdio;
+
+import mir.ndslice;
 
 import carbon.math : complexZero;
 

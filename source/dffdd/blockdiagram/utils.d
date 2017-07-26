@@ -5,6 +5,7 @@ import core.thread;
 import std.range;
 import std.typecons;
 import std.concurrency;
+import std.container;
 
 import carbon.channel;
 
@@ -213,17 +214,18 @@ static final class FiberRange(E)
 
     void popFront()
     {
-        while(_ch.queue!E.empty){
+        // while(_ch.empty){
             if(*_emptyFlag) return;
             Fiber.yield();
-        }
+        // }
 
-        _front = *_ch.pop!E;
+        _front = *_ch;
+        // _ch.removeFront();
     }
 
 
   private:
-    shared(Channel!E.Receiver) _ch;
+    E* _ch;
     bool* _emptyFlag;
     E _front;
 }
@@ -231,9 +233,10 @@ static final class FiberRange(E)
 
 static struct FiberBuffer(E)
 {
-    this(shared(Channel!E.Sender) ch, Fiber fiber, bool* emptyFlag)
+    this(E* ch,Fiber fiber, bool* emptyFlag)
     {
         _ch = ch;
+        // _ch = new E;
         _fiber = fiber;
         _emptyFlag = emptyFlag;
     }
@@ -256,13 +259,14 @@ static struct FiberBuffer(E)
     {
         if(_fiber.state != Fiber.State.TERM)
         {
-            _ch.put(e);
+            // (*_ch).insertBack(e);
+            *_ch = e;
             _fiber.call();
         }
     }
 
   private:
-    shared(Channel!E.Sender) _ch;
+    E* _ch;
     Fiber _fiber;
     bool* _emptyFlag;
 }
@@ -278,14 +282,16 @@ auto makeInstrument(E, alias func)()
 auto makeInstrument(E)(void delegate(FiberRange!E) dg)
 //if(canMakeInstrument!(E, func))
 {
-    auto ch = channel!E;
+    // auto ch = channel!E;
+    // DList!E* buffer = new DList!E();
+    E* buffer = new E;
     auto emptyFlag = new bool;
 
 
     void consumer()
     {
         FiberRange!E r = new FiberRange!E;
-        r._ch = ch.receiver;
+        r._ch = buffer;
         r._emptyFlag = emptyFlag;
         r.popFront();
 
@@ -295,7 +301,7 @@ auto makeInstrument(E)(void delegate(FiberRange!E) dg)
 
     Fiber fiber = new Fiber(&consumer);
 
-    return RefCounted!(FiberBuffer!E)(ch.sender, fiber, emptyFlag);
+    return RefCounted!(FiberBuffer!E)(buffer, fiber, emptyFlag);
 }
 
 unittest

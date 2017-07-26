@@ -129,6 +129,8 @@ struct Model
     bool useReceived = true;
     bool useNoise = true;
 
+    bool doNoiseElimination = false;
+
 /*
     struct QAM
     {
@@ -243,9 +245,9 @@ struct Model
         // Voltage TX_POWER = 15.dBm;
         // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
         // MAX2616
-        Gain GAIN = 28.5.dB;
-        Voltage Vsat = Voltage(21.8.dBm.V / 2);
-        Voltage IIP3 = 21.8.dBm;
+        Gain GAIN = 27.0.dB;
+        Voltage Vsat = Voltage(20.0.dBm.V / 2);
+        Voltage IIP3 = 20.0.dBm;
         Voltage TX_POWER = 15.dBm;
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
         Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
@@ -1024,7 +1026,8 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
             selectComplexBF,
             model.basisFuncsSelection.nEstH,
             (-model.basisFuncsSelection.imageMargin.dB).dB,
-            model.basisFuncsSelection.noiseMargin
+            model.basisFuncsSelection.noiseMargin,
+            model.doNoiseElimination
         );
 }
 
