@@ -293,7 +293,8 @@ auto makeInstrument(E)(void delegate(FiberRange!E) dg)
         FiberRange!E r = new FiberRange!E;
         r._ch = buffer;
         r._emptyFlag = emptyFlag;
-        r.popFront();
+        r._front = *buffer;
+        //r.popFront();
 
         dg(r);
     }
