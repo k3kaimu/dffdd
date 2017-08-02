@@ -6,6 +6,8 @@ import std.math;
 import std.complex;
 
 import dffdd.utils.unit;
+import dffdd.blockdiagram.utils;
+
 
 
 struct PowerAmplifier(R)
@@ -66,6 +68,75 @@ struct PowerAmplifier(R)
     real _g3V;
     real _g5V;
     //real _g7V;
+}
+
+
+struct PowerAmplifierConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+    this(Gain gain, Voltage iip3, Voltage iip5 = Voltage(0)) pure nothrow @safe @nogc
+    {
+        _g1V = gain.gain;
+        _g3V = iip3.V == 0 ? 0 : (gain.gain / iip3.V^^2);
+        _g5V = iip5.V == 0 ? 0 : (gain.gain / iip5.V^^4);
+    }
+
+
+    void opCall(in C input, ref C output) const pure nothrow @safe @nogc
+    {
+        auto x = input;
+        auto x1p = x.re^^2 + x.im^^2,
+                x3 = x * x1p,
+                x5 = x3 * x1p;
+
+        output = x * _g1V + x3 * _g3V + x5 * _g5V;
+    }
+
+
+    void opCall(in C[] input, ref C[] output) const pure nothrow @safe
+    {
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            this.opCall(input[i], output[i]);
+    }
+
+
+    PowerAmplifierConverter dup() const pure nothrow @safe @nogc @property
+    {
+        return this;
+    }
+
+
+    private:
+    real _g1V;
+    real _g3V;
+    real _g5V;
+}
+
+unittest 
+{
+    import std.complex;
+    import std.random;
+    import std.algorithm;
+    import dffdd.blockdiagram.utils;
+    import std.math;
+    import std.stdio : writeln;
+
+    alias C = Complex!float;
+
+    auto signal = new C[64];
+    foreach(ref e; signal)
+        e = C(uniform01(), uniform01);
+
+    auto r0 = PowerAmplifier!(C[])(signal, 30.dB, 30.dBm, 30.dBm).array();
+    auto r1 = signal.connectTo!(PowerAmplifierConverter!C)(30.dB, 30.dBm, 30.dBm);
+    auto r2 = signal.chunks(3).connectTo!(PowerAmplifierConverter!C)(30.dB, 30.dBm, 30.dBm).joiner;
+
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
 }
 
 
@@ -135,6 +206,83 @@ struct RappModel(R)
 }
 
 
+struct RappModelConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(Gain gain, real smoothFactor, real saturation)
+    {
+        _g = gain.gain;
+        _s = smoothFactor;
+        _o = saturation;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output) const pure nothrow @safe @nogc
+    {
+        auto x = input;
+        auto r = abs(x),
+             u = x / r;     // unit vector
+
+        // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
+        if(r <= 1E-6){
+            output = x;
+        }
+        else if(_s == 1){
+            r = (r * _g) / (sqrt( 1 + (r/_o)^^2 ));
+            output = r * u;
+        }
+        else{
+            r = (r * _g) / (( 1 + (r/_o)^^(2*_s) )^^(1/(2*_s)));
+            output = r * u;
+        }
+    }
+
+
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) const pure nothrow @trusted
+    {
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            this.opCall(input[i], output[i]);
+    }
+
+
+    RappModelConverter dup() const pure nothrow @safe @nogc @property
+    {
+        return this;
+    }
+
+
+  private:
+    real _g, _s, _o;
+}
+
+unittest 
+{
+    import std.complex;
+    import std.random;
+    import std.algorithm;
+    import dffdd.blockdiagram.utils;
+    import std.math;
+
+    alias C = Complex!float;
+
+    auto signal = new C[64];
+    foreach(ref e; signal)
+        e = C(uniform01(), uniform01);
+
+    auto r0 = RappModel!(C[])(signal, 30.dB, 1, 1).array;
+    auto r1 = signal.connectTo!(RappModelConverter!C)(30.dB, 1, 1);
+    auto r2 = signal.chunks(3).connectTo!(RappModelConverter!C)(30.dB, 1, 1).joiner;
+
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
+}
+
+
 struct VGA(R)
 {
     this(R r, Gain gain)
@@ -180,6 +328,65 @@ struct VGA(R)
     real _gain1V;
 }
 
+
+struct VGAConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(Gain gain)
+    {
+        _gain1V = gain.gain;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        output = input * _gain1V;
+    }
+
+
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    {
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            this.opCall(input[i], output[i]);
+    }
+
+
+    VGAConverter dup() const @property pure nothrow @safe @nogc
+    {
+        return this;
+    }
+
+
+  private:
+    real _gain1V;
+}
+
+unittest
+{
+    import std.complex;
+    import std.random;
+    import std.algorithm;
+    import dffdd.blockdiagram.utils;
+    import std.math;
+
+    alias C = Complex!float;
+
+    auto signal = new C[64];
+    foreach(ref e; signal)
+        e = C(uniform01(), uniform01);
+
+    auto r0 = VGA!(C[])(signal, 30.dB).array;
+    auto r1 = signal.connectTo!(VGAConverter!C)(30.dB);
+    auto r2 = signal.chunks(2).connectTo!(VGAConverter!C)(30.dB).joiner;
+
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
+}
 
 
 struct PowerControlAmplifier
@@ -284,4 +491,93 @@ struct PowerControlAmplifier
 unittest
 {
     auto pc = PowerControlAmplifier.makeBlock(repeat(Complex!real(0, 0)), 10.dBm);
+}
+
+
+struct PowerControlAmplifierConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(Voltage op, size_t avgSize)
+    {
+        _power = op.V^^2;
+        _alpha = 1;
+
+        _empty = false;
+        _cnt = 0;
+        _avgSize = avgSize;
+        _sumPower = 0;
+        _avgCount = 0;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output) pure nothrow @safe @nogc
+    {
+        _sumPower += input.re^^2 + input.im^^2;
+        ++_cnt;
+        if(_cnt == _avgSize){
+            if(_avgCount < 30){
+                if(_sumPower == 0)
+                    _alpha = _alpha;
+                else
+                    _alpha = _alpha / 2 + sqrt(_power / (_sumPower / _avgSize)) / 2;
+
+                ++_avgCount;
+            }
+
+            _sumPower = 0;
+            _cnt = 0;
+        }
+
+        output = input * _alpha;
+    }
+
+
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) pure nothrow @safe
+    {
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            this.opCall(input[i], output[i]);
+    }
+
+
+    PowerControlAmplifierConverter dup() const pure nothrow @safe @nogc @property
+    {
+        return this;
+    }
+
+
+  private:
+    real _power;
+    real _alpha;
+    bool _empty;
+    size_t _cnt;
+    size_t _avgSize;
+    size_t _avgCount;
+    real _sumPower;
+}
+
+unittest
+{
+    import std.complex;
+    import std.random;
+    import std.algorithm;
+    import dffdd.blockdiagram.utils;
+    import std.math;
+
+    alias C = Complex!float;
+
+    auto signal = new C[64];
+    foreach(ref e; signal)
+        e = C(uniform01(), uniform01);
+
+    auto r0 = PowerControlAmplifier.makeBlock(signal, 30.dBm, 512).array;
+    auto r1 = signal.connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 512);
+    auto r2 = signal.chunks(3).connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 512).joiner;
+
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
 }

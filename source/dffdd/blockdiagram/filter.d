@@ -4,6 +4,8 @@ module dffdd.blockdiagram.filter;
 import std.range;
 import std.traits;
 
+import carbon.math : nextPowOf2;
+
 
 struct FIRFilter
 {
@@ -151,6 +153,184 @@ unittest
 
     auto sig = FIRFilter.makeBlock([0, 1, 2, 3], [0, 1]);
     assert(equal(sig, [0, 0, 1, 2]));
+}
+
+
+struct FIRFilterConverter(C)
+{
+    import dffdd.utils.fft;
+    import std.complex;
+    import std.algorithm : min;
+
+    alias F = typeof(C.init.re);
+
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(in C[] coefs)
+    {
+        _coefs = coefs;
+        _inputs.length = coefs.length;
+
+        foreach(ref e; _inputs)
+            e = C(0);
+
+        immutable size = nextPowOf2(_coefs.length) * 4;
+
+        _fftw = makeFFTWObject!Complex(size);
+        _tempbuffer = new C[size];
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        foreach(i; 0 .. _inputs.length-1)
+            _inputs[i] = _inputs[i+1];
+
+        _inputs[$-1] = input;
+
+        output = C(0);
+        foreach(i; 0 .. _coefs.length)
+            output += _coefs[$-1-i] * _inputs[i];
+    }
+
+
+    void opCall(const(InputElementType)[] input, ref OutputElementType[] output)
+    {
+        import std.stdio : writeln;
+
+        immutable clen = _coefs.length;
+        immutable size = _tempbuffer.length;
+
+        output.length = input.length;
+
+        // 係数をFFT
+        _fftw.inputs!F[0 .. clen] = _coefs[];
+        _fftw.inputs!F[clen .. size] = C(0);
+        _fftw.fft!F();
+        _tempbuffer[] = _fftw.outputs!F[];
+
+        auto dst = output;
+
+        while(input.length != 0){
+            immutable ss = min(size - (clen-1), input.length);
+
+            // writeln(__LINE__);
+            _fftw.inputs!F[0 .. clen-1] = _inputs[1 .. $];
+            // writeln(__LINE__);
+            _fftw.inputs!F[clen-1 .. clen-1 + ss] = input[0 .. ss];
+            // writeln(__LINE__);
+            _fftw.inputs!F[clen-1 + ss .. $] = C(0);
+            _fftw.fft!F();
+
+            // 係数と入力信号の積
+            _fftw.inputs!F[] = _tempbuffer[] * _fftw.outputs!F[];
+            _fftw.ifft!F();
+
+            // writeln(__LINE__);
+            dst[0 .. ss] = _fftw.outputs!F[clen-1 .. clen-1 + ss];
+            
+            // 今回使用した入力信号の量がタップ数より多い場合
+            if(ss >= clen){
+                // 後ろからclen分だけコピー
+                // writeln(__LINE__);
+                _inputs[] = input[ss - clen .. ss];
+            }else{
+                // ss分だけ_inputを進める
+                foreach(i; 0 .. clen-ss)
+                    _inputs[i] = _inputs[i+ss];
+                // writeln(__LINE__);
+                _inputs[$-ss .. $] = input[0 .. ss];
+            }
+
+            // writeln(__LINE__);
+            input = input[ss .. $];
+            dst = dst[ss .. $];
+        }
+    }
+
+
+    FIRFilterConverter dup() const @property
+    {
+        typeof(return) dst;
+        dst._coefs = this._coefs;
+        dst._inputs = this._inputs.dup;
+        dst._fftw = makeFFTWObject!Complex(this._tempbuffer.length);
+        dst._tempbuffer = this._tempbuffer.dup;
+
+        return dst;
+    }
+
+
+  private:
+    const(C)[] _coefs;
+    C[] _inputs;
+    FFTWObject!Complex _fftw;
+    C[] _tempbuffer;
+}
+
+unittest
+{
+    import dffdd.blockdiagram.utils;
+    import std.algorithm;
+    import std.complex;
+    import std.math;
+    import std.range;
+    import std.stdio;
+
+    alias C = Complex!float;
+
+    auto sig = [C(0), C(1), C(2), C(3)].connectTo!(FIRFilterConverter!C)([C(0), C(1)]);
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(sig, [C(0), C(0), C(1), C(2)]));
+}
+
+unittest 
+{
+    import dffdd.blockdiagram.utils;
+    import std.algorithm;
+    import std.complex;
+    import std.random;
+    import std.range;
+
+    alias C = Complex!float;
+
+    // static assert(0, "You should write test code!!!!");
+    static
+    void testImpl(size_t ntap, size_t n)
+    {
+        import std.stdio : writefln, writeln;
+        import std.math;
+
+        C[] taps = new C[ntap];
+        foreach(i; 0 .. ntap)
+            taps[i] = C(uniform01(), uniform01());
+
+        auto conv1 = FIRFilterConverter!C(taps.dup);
+        auto conv2 = FIRFilterConverter!C(taps.dup);
+
+        C[] buffers = new C[n * 4];
+        foreach(i; 0 .. n * 4)
+            buffers[i] = C(uniform01(), uniform01());
+
+        auto r0 = FIRFilter.makeBlock(buffers, taps.dup).array();
+        auto r1 = buffers.chunks(n).connectTo!(FIRFilterConverter!C)(taps.dup).joiner;
+        auto r2 = buffers.connectTo!(FIRFilterConverter!C)(taps.dup);
+
+        assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
+        assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
+    }
+
+    testImpl(16, 64);
+    testImpl(15, 64);
+    testImpl(12, 64);
+    testImpl(16, 16);
+    testImpl(16, 17);
+    testImpl(16, 1);
+    testImpl(16, 2);
+    testImpl(16, 3);
+    testImpl(5, 3);
+    testImpl(5, 9);
 }
 
 

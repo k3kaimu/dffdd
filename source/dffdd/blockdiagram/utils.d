@@ -9,7 +9,7 @@ import std.container;
 
 import carbon.channel;
 
-
+/*
 template connectTo(alias Block)
 {
     auto connectTo(R, Params...)(R r, Params params)
@@ -26,7 +26,7 @@ template connectTo(alias Block)
         static assert(0);
         // return Block!R(r, params);
     }
-}
+}*/
 
 
 auto consume(R, X)(ref R range, X x)
@@ -242,7 +242,7 @@ static struct FiberBuffer(E)
     }
 
 
-    ~this()
+    ~this() @nogc nothrow
     {
         terminate();
     }
@@ -355,3 +355,805 @@ if(isForwardRange!R)
 //     R _r;
 // }
 
+
+enum isConverter(TImpl) = is(typeof((TImpl impl){
+    const(TImpl.InputElementType)[] input;
+    TImpl.OutputElementType[] output;
+    impl(input, output);
+}));
+
+
+enum bool isOneElementConverter(TImpl) = is(typeof((TImpl impl){
+    TImpl.InputElementType input;
+    TImpl.OutputElementType output;
+    impl(input, output);
+}));
+
+
+struct RxBlock(TImpl)
+{
+    import std.algorithm : min;
+    import std.functional : forward;
+    import rx;
+
+    alias InputElementType = TImpl.InputElementType;
+    alias OutputElementType = TImpl.OutputElementType;
+
+    alias ElementType = OutputElementType[];
+
+
+    this(X...)(auto ref X args)
+    {
+        _impl = TImpl(forward!args);
+        _subject = new SubjectObject!(ElementType);
+    }
+
+
+    // @disable
+    // this(this);
+
+
+    void put(const(InputElementType)[] input)
+    {
+        _impl(input, _buffer);
+        .put(_subject, _buffer);
+    }
+
+
+    auto subscribe(TObserver)(TObserver observer)
+    {
+        return doSubscribe(_subject, observer);
+    }
+
+
+  static if(isDuplicableConverter!TImpl)
+  {
+    auto dup() const @property
+    {
+        RxBlock dst;
+        dst._impl = _impl.dup;
+        dst._buffer = _buffer.dup;
+        dst._subject = new SubjectObject!ElementType;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    TImpl _impl;
+    OutputElementType[] _buffer;
+    SubjectObject!ElementType _subject;
+}
+
+unittest
+{
+    import rx;
+    import std.typecons;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        {
+            import std.algorithm : sum;
+
+            *_sum += input.sum();
+        }
+
+
+      private:
+        long* _sum;
+    }
+
+
+    {
+        long* ptr = new long;
+        alias Block = RxBlock!Impl;
+        auto block = Block(ptr);
+        
+        auto disp = iota(1024).array.chunks(24).asObservable().doSubscribe(block);
+        scope(exit) disp.dispose();
+
+        assert(*ptr == 1023*512);
+    }
+    {
+        long* ptr1 = new long;
+        long* ptr2 = new long;
+
+        alias Block = RxBlock!Impl;
+        auto block1 = Block(ptr1);
+        auto block2 = Block(ptr2);
+
+        block1.doSubscribe(block2);
+    }
+}
+
+
+template RxAdapter(TImpl)
+{
+    import rx;
+
+    struct ObserverAdapter(TObserver)
+    {
+        mixin SimpleObserverImpl!(TObserver, const(TImpl.InputElementType)[]);
+
+
+        static if(hasCompleted!TObserver || hasFailure!TObserver)
+        {
+            this(Args...)(TObserver observer, Disposable disposable, Args args)
+            {
+                _observer = observer;
+                _disposable = disposable;
+                _impl = TImpl(args);
+            }
+        }
+        else
+        {
+            this(Args...)(TObserver observer, Args args)
+            {
+                _observer = observer;
+                _impl = TImpl(args);
+            }
+        }
+
+      private:
+        void putImpl(const(TImpl.InputElementType)[] input)
+        {
+            _impl(input, _buffer);
+            .put(_observer, _buffer);
+        }
+
+
+      private:
+        TImpl _impl;
+        TImpl.OutputElementType[] _buffer;
+    }
+
+
+    struct ObservableAdapter(TObservable, Args...)
+    {
+        alias ElementType = const(TImpl.OutputElementType)[];
+
+        this(TObservable observable, Args args)
+        {
+            _observable = observable;
+            _args = args;
+        }
+
+
+        auto subscribe(TObserver)(TObserver observer)
+        {
+            alias ObserverType = ObserverAdapter!(TObserver);
+            static if(hasCompleted!TObserver || hasFailure!TObserver)
+            {
+                auto disposable = new SingleAssignmentDisposable;
+                disposable.setDisposable(disposableObject(doSubscribe(
+                        _observable,
+                        ObserverType(observer, disposable, _args))));
+                
+                return disposable;
+            }
+            else
+            {
+                return doSubscribe(_observable, ObserverType(observer, _args));
+            }
+        }
+
+
+      private:
+        TObservable _observable;
+        Args _args;
+    }
+}
+
+unittest
+{
+    import rx;
+    import std.typecons;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        {
+            import std.algorithm : sum;
+
+            *_sum += input.sum();
+            output.length = input.length;
+            output[] = input[];
+        }
+
+
+      private:
+        long* _sum;
+    }
+
+
+    static
+    auto applyImpl(TObservable)(TObservable observable, long* ptr)
+    {
+        return RxAdapter!(Impl).ObservableAdapter!(TObservable, long*)(observable, ptr);
+    }
+
+
+    long* ptr = new long;
+
+    long* ptr2 = new long;
+    alias Block = RxBlock!Impl;
+    auto block = Block(ptr2);
+    auto disp = applyImpl(iota(1024).asObservable(), ptr).doSubscribe(block);
+    scope(exit) disp.dispose();
+
+    assert(*ptr == 1023*512);
+    assert(*ptr2 == 1023*512);
+}
+
+
+struct RangeAdapter(TImpl, R)
+if(is(ElementType!R : const(TImpl.InputElementType)[]))
+{
+    this(X...)(R range, auto ref X args)
+    {
+        static if(X.length > 0) _impl = TImpl(args);
+        _range = range;
+    }
+
+
+    // @disable
+    // this(this);
+
+
+    const(OutputElementType)[] front() @property
+    {
+        if(_frontIsComputed) return _buffer;
+
+        auto input = _range.front;
+        _impl(input, _buffer);
+        _frontIsComputed = true;
+
+        return _buffer;
+    }
+
+
+    void popFront()
+    {
+        _range.popFront();
+        _frontIsComputed = false;
+    }
+
+
+  static if(isInfinite!R)
+  {
+    enum bool empty = false;
+  }
+  else
+  {
+    bool empty() @property
+    {
+        return _range.empty;
+    }
+  }
+
+
+  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  {
+    typeof(this) save() @property
+    {
+        typeof(this) dst = this;
+        dst._buffer = dst._buffer.dup;
+        dst._range = dst._range.save;
+        dst._impl = dst._impl.dup;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    alias InputElementType = TImpl.InputElementType;
+    alias OutputElementType = TImpl.OutputElementType;
+
+    OutputElementType[] _buffer;
+    bool _frontIsComputed;
+    R _range;
+    TImpl _impl;
+}
+
+unittest
+{
+    import rx;
+    import std.typecons;
+    import std.algorithm;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        {
+            import std.algorithm : sum;
+
+            *_sum += input.sum();
+            output.length = input.length;
+            output[] = input[];
+        }
+
+
+      private:
+        long* _sum;
+    }
+
+
+    static
+    auto applyImpl(R)(R range, long* ptr)
+    {
+        return RangeAdapter!(Impl, R)(range, ptr);
+    }
+
+
+    long* ptr = new long;
+    auto r = applyImpl(iota(1024).array.chunks(32), ptr).joiner;
+    assert(equal(r, iota(1024)));
+    assert(*ptr == 1023*512);
+}
+
+
+struct RangeAdapter(TImpl, R)
+if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
+{
+    this(X...)(R range, auto ref X args)
+    {
+        static if(X.length > 0)
+            _impl = TImpl(args);
+        // else
+        //     _impl = TImpl.init;
+        _range = range;
+    }
+
+
+    // @disable
+    // this(this);
+
+
+    OutputElementType front() @property
+    {
+        if(!_frontIsComputed){
+            auto input = _range.front;
+            _impl(input, _output);
+            _frontIsComputed = true;
+        }
+        
+        return _output;
+    }
+
+
+    void popFront()
+    {
+        _range.popFront();
+        _frontIsComputed = false;
+    }
+
+
+  static if(isInfinite!R)
+  {
+    enum bool empty = false;
+  }
+  else
+  {
+    bool empty() @property
+    {
+        return _range.empty;
+    }
+  }
+
+
+  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  {
+    typeof(this) save() @property
+    {
+        typeof(this) dst = this;
+        dst._range = dst._range.save;
+        dst._impl = dst._impl.dup;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    alias InputElementType = TImpl.InputElementType;
+    alias OutputElementType = TImpl.OutputElementType;
+
+    R _range;
+    TImpl _impl;
+    OutputElementType _output;
+    bool _frontIsComputed;
+}
+
+unittest
+{
+    import rx;
+    import std.typecons;
+    import std.algorithm;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType input, ref OutputElementType output)
+        {
+            *_sum += input;
+            output = input;
+        }
+
+
+      private:
+        long* _sum;
+    }
+
+    static assert(isOneElementConverter!Impl);
+
+
+    static
+    auto applyImpl(R)(R range, long* ptr)
+    {
+        return RangeAdapter!(Impl, R)(range, ptr);
+    }
+
+
+    long* ptr = new long;
+    auto r = applyImpl(iota(1024), ptr);
+    assert(equal(r, iota(1024)));
+    assert(*ptr == 1023*512);
+}
+
+
+struct RangeAdapter(TImpl, R)
+if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
+{
+    this(X...)(R range, auto ref X args)
+    {
+        _impl = TImpl(args);
+        _range = range;
+        _buffer = new OutputElementType[1];
+    }
+
+
+    // @disable
+    // this(this);
+
+
+    const(OutputElementType)[] front() @property
+    {
+        if(!_frontIsComputed){
+            auto input = _range.front;
+            TImpl.InputElementType[1] inputBuffer;
+            inputBuffer[0] = input;
+            _impl(inputBuffer[0 .. 1], _buffer);
+            _frontIsComputed = true;
+        }
+        
+        return _buffer;
+    }
+
+
+    void popFront()
+    {
+        _range.popFront();
+        _frontIsComputed = false;
+    }
+
+
+  static if(isInfinite!R)
+  {
+    enum bool empty = false;
+  }
+  else
+  {
+    bool empty() @property
+    {
+        return _range.empty;
+    }
+  }
+
+
+  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  {
+    typeof(this) save() @property
+    {
+        typeof(this) dst = this;
+        dst._range = dst._range.save;
+        dst._impl = dst._impl.dup;
+        dst._buffer = dst._buffer.dup;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    alias InputElementType = TImpl.InputElementType;
+    alias OutputElementType = TImpl.OutputElementType;
+
+    R _range;
+    TImpl _impl;
+    OutputElementType[] _buffer;
+    bool _frontIsComputed;
+}
+
+unittest
+{
+    import rx;
+    import std.typecons;
+    import std.algorithm;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        {
+            import std.algorithm;
+
+            *_sum += input.sum;
+            output.length = input.length;
+            output[] = input[];
+        }
+
+      private:
+        long* _sum;
+    }
+
+
+    static
+    auto applyImpl(R)(R range, long* ptr)
+    {
+        return RangeAdapter!(Impl, R)(range, ptr);
+    }
+
+
+    long* ptr = new long;
+    auto r = applyImpl(iota(1024), ptr).joiner;
+    assert(equal(r, iota(1024)));
+    import std.stdio;
+    assert(*ptr == 1023*512);
+}
+
+
+template connectTo(TImpl)
+{
+    import rx : isObservable;
+
+    auto connectTo(S, X...)(S self, X args)
+    {
+      static if(isInputRange!S)
+        return RangeAdapter!(TImpl, S)(self, args);
+      else static if(isObservable!(S, const(TImpl.InputElementType)[]))
+        return RxAdapter!(TImpl).ObservableAdapter!(S, X)(self, args);
+      else
+        static assert(0, S.stringof ~" is not supported by \"connectTo(self, args).\"");
+    }
+}
+
+unittest 
+{
+    import std.range;
+    import std.algorithm;
+
+    auto nums = iota(1024);
+    auto convd = nums.connectTo!(ArrayConverterOf!(function(int a){ return a + 1; }, int))();
+    assert(equal(convd, iota(1, 1025)));
+}
+
+unittest 
+{
+    import std.range;
+    import std.algorithm;
+
+    auto nums = iota(1024);
+    auto convd = nums.connectTo!(ArrayConverterOf!(function(int s, int a){ return a + s; }, int, int))(5);
+    assert(equal(convd, iota(5, 1029)));
+}
+
+
+// copy from rx: https://github.com/lempiji/rx/blob/master/source/rx/observer.d
+mixin template SimpleObserverImpl(TObserver, E)
+{
+    import rx;
+
+public:
+    void put(E obj)
+    {
+        static if (hasFailure!TObserver)
+        {
+            try
+            {
+                putImpl(obj);
+            }
+            catch (Exception e)
+            {
+                _observer.failure(e);
+                _disposable.dispose();
+            }
+        }
+        else
+        {
+            putImpl(obj);
+        }
+    }
+
+    static if (hasCompleted!TObserver)
+    {
+        void completed()
+        {
+            _observer.completed();
+            _disposable.dispose();
+        }
+    }
+    static if (hasFailure!TObserver)
+    {
+        void failure(Exception e)
+        {
+            _observer.failure(e);
+            _disposable.dispose();
+        }
+    }
+private:
+    TObserver _observer;
+    static if (hasCompleted!TObserver || hasFailure!TObserver)
+    {
+        Disposable _disposable;
+    }
+}
+
+
+enum isDuplicableConverter(Conv) = isConverter!Conv && is(typeof((const Conv conv){
+    Conv other = conv.dup;
+}));
+
+
+/**
+1要素を変換するコンバータを配列コンバータへ変換します
+*/
+struct ArrayConverterOf(Conv)
+if(isOneElementConverter!Conv)
+{
+    alias InputElementType = Conv.InputElementType;
+    alias OutputElementType = Conv.OutputElementType;
+
+
+    this(Conv conv)
+    {
+        _impl = conv;
+    }
+
+
+    this(X...)(X args)
+    if(is(typeof(Conv(args))))
+    {
+        _impl = Conv(args);
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        _impl(input, output);
+    }
+
+
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    {
+        output.length = input.length;
+        foreach(i; 0 .. input.length)
+            _impl(input[i], output[i]);
+    }
+
+
+  static if(is(typeof((const Conv  conv){ Conv other = conv.dup; })))
+  {
+    auto dup() const
+    {
+        return _impl.dup;
+    }
+  }
+
+
+  private:
+    Conv _impl;
+}
+
+unittest 
+{
+    static struct AddConst
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(int c) { _c = c; }
+
+        void opCall(InputElementType input, ref OutputElementType output)
+        {
+            output = input + _c;
+        }
+
+      private:
+        int _c;
+    }
+
+    auto conv = ArrayConverterOf!AddConst(AddConst(2));
+    auto input = new int[10];
+    int[] output;
+    conv(input, output);
+    assert(output.length == 10);
+    foreach(e; output) assert(e == 2);
+}
+
+
+/**
+1要素を変換する関数を配列コンバータへ変換します
+*/
+struct ArrayConverterOf(alias fn, E, State...)
+if(is(typeof(fn(State.init, E.init))))
+{
+    alias InputElementType = E;
+    alias OutputElementType = typeof(fn(State.init, E.init));
+
+
+  static if(State.length >= 1)
+  {
+    this(State state)
+    {
+        _state = state;
+    }
+  }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        output = fn(_state, input);
+    }
+
+
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    {
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            output[i] = fn(_state, input[i]);
+    }
+
+
+  private:
+    State _state;
+}
+
+unittest 
+{
+    alias TypeOfInput = int;
+    alias State = int;
+
+    auto conv = ArrayConverterOf!((state, input) => input + state, TypeOfInput, State)(2);
+    auto input = new int[10];
+    int[] output;
+    conv(input, output);
+    assert(output.length == 10);
+    foreach(e; output) assert(e == 2);
+}
