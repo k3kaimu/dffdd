@@ -143,11 +143,11 @@ void realisticBenchmarkRange()
     foreach(i; 0 .. 64)
         taps ~= C(0.01, 0.01);
 
-    auto txiq = signal.connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject;
-    auto txamp = txiq.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
-    auto recv = txamp.connectTo!(FIRFilterConverter!C)(taps).inputRangeObject;
-    auto lna = recv.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
-    auto rxiq = lna.connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject;
+    InputRange!C txiq = signal.connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject;
+    InputRange!C txamp = txiq.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
+    InputRange!C recv = txamp.connectTo!(FIRFilterConverter!C)(taps).inputRangeObject;
+    InputRange!C lna = recv.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
+    InputRange!C rxiq = lna.connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject;
 
     StopWatch sw;
     sw.start();

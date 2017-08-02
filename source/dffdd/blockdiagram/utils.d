@@ -9,6 +9,8 @@ import std.container;
 
 import carbon.channel;
 
+import rx;
+
 /*
 template connectTo(alias Block)
 {
@@ -382,10 +384,17 @@ struct RxBlock(TImpl)
     alias ElementType = OutputElementType[];
 
 
-    this(X...)(auto ref X args)
+    this(TImpl impl)
     {
-        _impl = TImpl(forward!args);
+        _impl = impl;
         _subject = new SubjectObject!(ElementType);
+    }
+
+
+    this(X...)(auto ref X args)
+    if(is(typeof(TImpl(args))))
+    {
+        this(TImpl(args));
     }
 
 
@@ -426,6 +435,23 @@ struct RxBlock(TImpl)
     SubjectObject!ElementType _subject;
 }
 
+template makeRxBlock(TImpl)
+if(isConverter!TImpl)
+{
+    auto makeRxBlock(TImpl impl)
+    {
+        return RxBlock!TImpl(impl);
+    }
+
+
+    auto makeRxBlock(Args...)(Args args)
+    if(is(typeof(TImpl(args))))
+    {
+        return RxBlock!TImpl(args);
+    }
+}
+
+
 unittest
 {
     import rx;
@@ -453,8 +479,7 @@ unittest
 
     {
         long* ptr = new long;
-        alias Block = RxBlock!Impl;
-        auto block = Block(ptr);
+        auto block = makeRxBlock!Impl(ptr);
         
         auto disp = iota(1024).array.chunks(24).asObservable().doSubscribe(block);
         scope(exit) disp.dispose();
@@ -464,10 +489,8 @@ unittest
     {
         long* ptr1 = new long;
         long* ptr2 = new long;
-
-        alias Block = RxBlock!Impl;
-        auto block1 = Block(ptr1);
-        auto block2 = Block(ptr2);
+        auto block1 = makeRxBlock!Impl(ptr1);
+        auto block2 = makeRxBlock!Impl(ptr2);
 
         block1.doSubscribe(block2);
     }
@@ -485,19 +508,33 @@ template RxAdapter(TImpl)
 
         static if(hasCompleted!TObserver || hasFailure!TObserver)
         {
-            this(Args...)(TObserver observer, Disposable disposable, Args args)
+            this(TObserver observer, Disposable disposable, TImpl impl)
             {
                 _observer = observer;
                 _disposable = disposable;
-                _impl = TImpl(args);
+                _impl = impl;
+            }
+
+
+            this(Args...)(TObserver observer, Disposable disposable, Args args)
+            if(is(typeof(TImpl(args))))
+            {
+                this(observer, disposable, TImpl(args));
             }
         }
         else
         {
-            this(Args...)(TObserver observer, Args args)
+            this(TObserver observer, TImpl impl)
             {
                 _observer = observer;
-                _impl = TImpl(args);
+                _impl = impl;
+            }
+
+
+            this(Args...)(TObserver observer, Args args)
+            if(is(typeof(TImpl(args))))
+            {
+                this(observer, TImpl(args));
             }
         }
 
@@ -601,7 +638,15 @@ unittest
 struct RangeAdapter(TImpl, R)
 if(is(ElementType!R : const(TImpl.InputElementType)[]))
 {
+    this(R range, TImpl impl)
+    {
+        _range = range;
+        _impl = impl;
+    }
+
+
     this(X...)(R range, auto ref X args)
+    if(X.length == 0 || is(typeof(TImpl(args))))
     {
         static if(X.length > 0) _impl = TImpl(args);
         _range = range;
@@ -713,12 +758,19 @@ unittest
 struct RangeAdapter(TImpl, R)
 if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
 {
+    this(R range, TImpl impl)
+    {
+        _range = range;
+        _impl = impl;
+    }
+
+
     this(X...)(R range, auto ref X args)
+    if(X.length == 0 || is(typeof(TImpl(args))))
     {
         static if(X.length > 0)
             _impl = TImpl(args);
-        // else
-        //     _impl = TImpl.init;
+
         _range = range;
     }
 
@@ -826,9 +878,17 @@ unittest
 struct RangeAdapter(TImpl, R)
 if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
 {
-    this(X...)(R range, auto ref X args)
+    this(R range, TImpl impl)
     {
-        _impl = TImpl(args);
+        _range = range;
+        _impl = impl;
+    }
+
+
+    this(X...)(R range, auto ref X args)
+    if(X.length == 0 || is(typeof(TImpl(args))))
+    {
+        if(X.length != 0) _impl = TImpl(args);
         _range = range;
         _buffer = new OutputElementType[1];
     }
@@ -953,6 +1013,23 @@ template connectTo(TImpl)
     }
 }
 
+
+auto connectTo(S, TImpl)(S self, TImpl impl)
+if(isConverter!TImpl)
+{
+    return connectTo!TImpl(self, impl);
+}
+
+
+auto connectTo(S, Block)(S self, Block block, ref Disposable disposable)
+if(is(typeof(self.doSubscribe(block)) : Disposable))
+{
+    disposable = self.doSubscribe(block);
+    return block;
+}
+
+
+
 unittest 
 {
     import std.range;
@@ -968,9 +1045,56 @@ unittest
     import std.range;
     import std.algorithm;
 
+    ArrayConverterOf!(function(int a){ return a + 1; }, int) conv;
+
+    auto nums = iota(1024);
+    auto convd = nums.connectTo(conv);
+    assert(equal(convd, iota(1, 1025)));
+}
+
+unittest 
+{
+    import std.range;
+    import std.algorithm;
+
     auto nums = iota(1024);
     auto convd = nums.connectTo!(ArrayConverterOf!(function(int s, int a){ return a + s; }, int, int))(5);
     assert(equal(convd, iota(5, 1029)));
+}
+
+unittest 
+{
+    import std.range;
+    import std.algorithm;
+
+    auto conv = ArrayConverterOf!(function(int s, int a){ return a + s; }, int, int)(5);
+
+    auto nums = iota(1024);
+    auto convd = nums.connectTo(conv);
+    assert(equal(convd, iota(5, 1029)));
+}
+
+unittest 
+{
+    import std.range;
+    import std.algorithm;
+
+    auto conv = ArrayConverterOf!(function(int s, int a){ return a + s; }, int, int)(5);
+    
+    auto subject = new SubjectObject!int;
+    auto block = makeRxBlock(conv);
+
+    int[] results;
+    auto nums = iota(1024);
+    Disposable[2] disposable;
+    disposable[1] = subject.connectTo(block, disposable[0]).doSubscribe!((a){ results ~= a; });
+    scope(exit) disposable[0].dispose();
+    scope(exit) disposable[1].dispose();
+
+    .put(subject, nums.chunks(64));
+
+    import std.stdio;
+    assert(equal(results, iota(5, 1029)));
 }
 
 
