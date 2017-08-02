@@ -211,21 +211,17 @@ body{
     return dot(x, y);
   else static if(is(typeof(E.init.re) == float))
   {
-    auto ret = cblas_cdotc(cast(int)x.length, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&(y[0]), cast(int)y._stride!0);
+    E ret;
+    cblas_cdotc_sub(cast(int)x.length, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&(y[0]), cast(int)y._stride!0, cast(_cfloat*)&ret);
 
-    static if(is(E == cfloat))
-        return ret.re + ret.im*1.0fi;
-    else
-        return E(ret.re, ret.im);
+    return ret;
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    auto ret = cblas_cdotc(cast(int)x.length, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
+    E ret;
+    cblas_zdotc_sub(cast(int)x.length, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, cast(_cdouble*)&(y[0]), cast(int)y._stride!0, cast(_cdouble*)&ret);
 
-    static if(is(E == cdouble))
-        return ret.re + ret.im*1.0i;
-    else
-        return E(ret.re, ret.im);
+    return ret;
   }
   else
     static assert(0);
@@ -235,13 +231,14 @@ unittest
 {
     import std.complex;
     import std.math;
-    
-    auto v1 = [Complex!float(1, 1), Complex!float(0, 1)].sliced(2),
-         v2 = [Complex!float(1, 0), Complex!float(0, 1)].sliced(2);
+    import std.stdio;
+
+    auto v1 = [Complex!float(1, 0), Complex!float(1, 1)].sliced(2),
+         v2 = [Complex!float(0, 0), Complex!float(2, 0)].sliced(2);
     
     auto res = dotH(v1, v2);
     assert(approxEqual(res.re, 2));
-    assert(approxEqual(res.im, 1));
+    assert(approxEqual(res.im, -2));
 }
 
 

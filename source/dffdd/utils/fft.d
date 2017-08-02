@@ -873,7 +873,13 @@ final class FFTObjectBank(alias makeFFTObj)
     グローバルなインスタンスを返します
     */
     static
-    typeof(this) instance() @property { return _instance; }
+    typeof(this) instance() @property
+    {
+        if(_instance is null)
+            _instance = new FFTObjectBank();
+
+        return _instance;
+    }
 
 
   private:
@@ -951,10 +957,10 @@ final class FFTObjectBank(alias makeFFTObj)
 
     static FFTObjectBank _instance;
 
-    static this()
-    {
-        _instance = new FFTObjectBank();
-    }
+    // static this()
+    // {
+    //     _instance = new FFTObjectBank();
+    // }
 }
 
 ///
