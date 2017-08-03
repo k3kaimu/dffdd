@@ -270,6 +270,13 @@ struct FIRFilterConverter(C)
     C[] _tempbuffer;
 }
 
+
+auto makeFIRFilter(C)(in C[] taps)
+{
+    return FIRFilterConverter!C(taps);
+}
+
+
 unittest
 {
     import dffdd.blockdiagram.utils;
@@ -281,7 +288,7 @@ unittest
 
     alias C = Complex!float;
 
-    auto sig = [C(0), C(1), C(2), C(3)].connectTo!(FIRFilterConverter!C)([C(0), C(1)]);
+    auto sig = [C(0), C(1), C(2), C(3)].connectTo(makeFIRFilter([C(0), C(1)]));
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(sig, [C(0), C(0), C(1), C(2)]));
 }
 

@@ -1,6 +1,7 @@
 module dffdd.blockdiagram.lna;
 
 
+deprecated
 struct LNA(R)
 {
     this(R r, Gain gain, Gain nf, SamplingFrequency sampFreq)

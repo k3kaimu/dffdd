@@ -3,8 +3,11 @@ module dffdd.blockdiagram.adder;
 import std.algorithm;
 import std.range;
 
+import rx;
+import dffdd.blockdiagram.utils;
 
 auto add(R1, R2)(R1 r1, R2 r2)
+if(isInputRange!R1 && isInputRange!R2)
 {
     static struct AdderResult
     {
@@ -47,4 +50,66 @@ auto add(R1, R2)(R1 r1, R2 r2)
         assert(r2 !is null);
 
     return AdderResult(r1, r2);
+}
+
+
+struct AdderConverterImpl(C, R)
+if(isInfinite!R)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(R range)
+    {
+        _range = range;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        output = input + _range.front;
+        _range.popFront();
+    }
+
+
+  static if(isForwardRange!R)
+  {
+    auto dup()
+    {
+        return typeof(this)(_range.save);
+    }
+  }
+
+
+  private:
+    R _range;
+}
+
+
+alias AdderConverter(C, R) = ArrayConverterOf!(AdderConverterImpl!(C, R));
+
+
+AdderConverter!(C, R) makeAdder(C, R)(R r)
+if(isInfinite!R)
+{
+    return AdderConverter!(C, R)(r);
+}
+
+
+AdderConverter!(ElementType!R, R) makeAdder(R)(R r)
+{
+    return makeAdder!(ElementType!R, R)(r);
+}
+
+
+unittest
+{
+    import dffdd.blockdiagram.utils;
+
+    auto r1 = iota(10);
+    auto r2 = repeat(5);
+
+    auto r3 = r1.connectTo(makeAdder(r2));
+    assert(equal(iota(5, 15), r3));
 }

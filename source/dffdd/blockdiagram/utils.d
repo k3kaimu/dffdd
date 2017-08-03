@@ -367,7 +367,7 @@ if(isForwardRange!R)
 // }
 
 
-enum isConverter(TImpl) = is(typeof((TImpl impl){
+enum bool isConverter(TImpl) = is(typeof((TImpl impl){
     const(TImpl.InputElementType)[] input;
     TImpl.OutputElementType[] output;
     impl(input, output);
@@ -381,7 +381,24 @@ enum bool isOneElementConverter(TImpl) = is(typeof((TImpl impl){
 }));
 
 
+enum bool isHighOrderConverter(TImpl) = is(typeof((TImpl impl){
+    const(TImpl.InputElementType)[] input;
+    TImpl.OutputElementType[] output;
+    void delegate() flusher;
+    impl(input, output, flusher);
+}));
+
+
+enum bool isHighOrderOneElementConverter(TImpl) = is(typeof((TImpl impl){
+    const(TImpl.InputElementType) input;
+    TImpl.OutputElementType output;
+    void delegate() flusher;
+    impl(input, output, flusher);
+}));
+
+
 struct RxBlock(TImpl)
+if(isConverter!TImpl || isHighOrderConverter!TImpl)
 {
     import std.algorithm : min;
     import std.functional : forward;
@@ -413,8 +430,15 @@ struct RxBlock(TImpl)
 
     void put(const(InputElementType)[] input)
     {
-        _impl(input, _buffer);
-        .put(_subject, _buffer);
+        static if(isHighOrderConverter!TImpl)
+        {
+            _impl(input, _buffer, (){ .put(_subject, _buffer); });
+        }
+        else
+        {
+            _impl(input, _buffer);
+            .put(_subject, _buffer);
+        }
     }
 
 
@@ -424,7 +448,7 @@ struct RxBlock(TImpl)
     }
 
 
-  static if(isDuplicableConverter!TImpl)
+  static if(isDuplicable!TImpl)
   {
     auto dup() const @property
     {
@@ -440,12 +464,12 @@ struct RxBlock(TImpl)
 
   private:
     TImpl _impl;
-    OutputElementType[] _buffer;
     SubjectObject!ElementType _subject;
+    OutputElementType[] _buffer;
 }
 
 template makeRxBlock(TImpl)
-if(isConverter!TImpl)
+if(isConverter!TImpl || isHighOrderConverter!TImpl)
 {
     auto makeRxBlock(TImpl impl)
     {
@@ -505,8 +529,58 @@ unittest
     }
 }
 
+unittest
+{
+    import rx;
+    import std.typecons;
+    import std.algorithm;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType[] input, ref OutputElementType[] output, scope void delegate() flusher)
+        {
+            foreach(i; 0 .. 2){
+                output.length = input.length;
+                output[] = input[];
+                *_sum += input.sum;
+                flusher();
+            }
+        }
+
+
+      private:
+        long* _sum;
+    }
+
+    static assert(isHighOrderConverter!Impl);
+
+    {
+        long* ptr = new long;
+        auto block = makeRxBlock!Impl(ptr);
+        
+        auto disp = iota(1024).array.chunks(24).asObservable().doSubscribe(block);
+        scope(exit) disp.dispose();
+
+        assert(*ptr == 1023*512*2);
+    }
+    {
+        long* ptr1 = new long;
+        long* ptr2 = new long;
+        auto block1 = makeRxBlock!Impl(ptr1);
+        auto block2 = makeRxBlock!Impl(ptr2);
+
+        block1.doSubscribe(block2);
+    }
+}
+
 
 template RxAdapter(TImpl)
+if(isConverter!TImpl || isHighOrderConverter!TImpl)
 {
     import rx;
 
@@ -550,8 +624,15 @@ template RxAdapter(TImpl)
       private:
         void putImpl(const(TImpl.InputElementType)[] input)
         {
-            _impl(input, _buffer);
-            .put(_observer, _buffer);
+            static if(isHighOrderConverter!TImpl)
+            {
+                _impl(input, _buffer, (){ .put(_observer, _buffer); });
+            }
+            else
+            {
+                _impl(input, _buffer);
+                .put(_observer, _buffer);
+            }
         }
 
 
@@ -698,7 +779,7 @@ if(is(ElementType!R : const(TImpl.InputElementType)[]))
   }
 
 
-  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  static if(isForwardRange!R && isDuplicable!TImpl)
   {
     typeof(this) save() @property
     {
@@ -820,7 +901,7 @@ if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
   }
 
 
-  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  static if(isForwardRange!R && isDuplicable!TImpl)
   {
     typeof(this) save() @property
     {
@@ -941,7 +1022,7 @@ if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
   }
 
 
-  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  static if(isForwardRange!R && isDuplicable!TImpl)
   {
     typeof(this) save() @property
     {
@@ -1025,7 +1106,7 @@ template connectTo(TImpl)
 
 
 auto connectTo(S, TImpl)(S self, TImpl impl)
-if(isConverter!TImpl)
+if(isConverter!TImpl || isHighOrderConverter!TImpl)
 {
     return connectTo!TImpl(self, impl);
 }
@@ -1037,7 +1118,6 @@ if(is(typeof(self.doSubscribe(block)) : Disposable))
     disposable = self.doSubscribe(block);
     return block;
 }
-
 
 
 unittest 
@@ -1159,7 +1239,7 @@ private:
 }
 
 
-enum isDuplicableConverter(Conv) = isConverter!Conv && is(typeof((const Conv conv){
+enum isDuplicable(Conv) = is(typeof((Conv conv){
     Conv other = conv.dup;
 }));
 
@@ -1201,11 +1281,30 @@ if(isOneElementConverter!Conv)
     }
 
 
+    void opCall(R)(R input, ref OutputElementType[] output)
+    if(isInputRange!R && !hasLength!R && is(ElementType!R : InputElementType))
+    {
+        size_t i;
+        while(!input.empty){
+            if(output.length < i + 1) output.length = i + 1;
+            _impl(input.front, output[i]);
+            input.popFront();
+        }
+    }
+
+
   static if(is(typeof((const Conv  conv){ Conv other = conv.dup; })))
   {
-    auto dup() const
+    ArrayConverterOf dup() const
     {
-        return _impl.dup;
+        return ArrayConverterOf(_impl.dup);
+    }
+  }
+  else static if(isDuplicable!Conv)
+  {
+    ArrayConverterOf dup()
+    {
+        return ArrayConverterOf(_impl.dup);
     }
   }
 
@@ -1266,12 +1365,25 @@ if(is(typeof(fn(State.init, E.init))))
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    void opCall(R)(R input, ref OutputElementType[] output)
+    if(isInputRange!R && hasLength!R && is(ElementType!R : InputElementType))
     {
         output.length = input.length;
 
         foreach(i; 0 .. input.length)
             output[i] = fn(_state, input[i]);
+    }
+
+
+    void opCall(R)(R input, ref OutputElementType[] output)
+    if(isInputRange!R && !hasLength!R && is(ElementType!R : InputElementType))
+    {
+        size_t i;
+        while(!input.empty){
+            if(output.length < i + 1) output.length = i + 1;
+            output[i] = fn(_state, input.front);
+            input.popFront();
+        }
     }
 
 
@@ -1290,4 +1402,106 @@ unittest
     conv(input, output);
     assert(output.length == 10);
     foreach(e; output) assert(e == 2);
+}
+
+
+struct Rechunker(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(size_t size)
+    {
+        _buffer.length = size;
+    }
+
+
+    void opCall(const(C)[] input, ref C[] output, scope void delegate() flusher)
+    {
+        immutable len = _buffer.length;
+
+        if(_pos + input.length >= len)
+        {
+            output.length = len;
+            output[0 .. _pos] = _buffer[0 .. _pos];
+            output[_pos .. $] = input[0 .. len - _pos];
+            flusher();
+
+            input = input[len - _pos .. $];
+            while(input.length >= len){
+                output[] = input[0 .. len];
+                flusher();
+                input = input[len .. $];
+            }
+
+            _buffer[0 .. input.length] = input[];
+            _pos = input.length;
+        }
+        else
+        {
+            _buffer[_pos .. _pos + input.length] = input[];
+            _pos += input.length;
+        }
+    }
+
+
+  private:
+    C[] _buffer;
+    size_t _pos;
+}
+
+unittest 
+{
+    import std.algorithm : map;
+    import rx;
+    auto rechunker32 = Rechunker!int(32);
+
+    bool ok = false;
+    iota(1024).chain(iota(1024).retro).map!(n => new int[n])
+    .asObservable.connectTo(rechunker32).doSubscribe!((a){ assert(a.length == 32); ok = true; });
+
+    assert(ok);
+}
+
+
+struct Dropper(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(size_t size)
+    {
+        _rem = size;
+    }
+
+
+    void opCall(const(C)[] input, ref C[] output)
+    {
+        if(_rem >= input.length){
+            _rem -= input.length;
+            input.length = 0;
+        }else if(_rem > 0){
+            input = input[_rem .. $];
+            _rem = 0;
+        }
+
+        output.length = input.length;
+        output[] = input[];
+    }
+
+
+  private:
+    size_t _rem;
+}
+
+unittest 
+{
+    import std.range;
+    import std.algorithm;
+
+    bool ok = false;
+    auto r = iota(2048).array.chunks(32).connectTo(Dropper!int(1024)).joiner;
+    assert(equal(r, iota(1024, 2048)));
 }

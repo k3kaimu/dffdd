@@ -71,7 +71,7 @@ struct PowerAmplifier(R)
 }
 
 
-struct PowerAmplifierConverter(C)
+struct PowerAmplifierConverterImpl(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
@@ -95,16 +95,20 @@ struct PowerAmplifierConverter(C)
     }
 
 
-    void opCall(in C[] input, ref C[] output) const pure nothrow @safe
-    {
-        output.length = input.length;
+    // void opCall(R)(R input, ref C[] output) const pure nothrow @safe
+    // if(isInputRange!R && hasLength!R && is(ElementType!R : C))
+    // {
+    //     immutable len = input.length;
+    //     output.length = len;
 
-        foreach(i; 0 .. input.length)
-            this.opCall(input[i], output[i]);
-    }
+    //     foreach(i; 0 .. len){
+    //         this.opCall(input.front, output[i]);
+    //         input.popFront();
+    //     }
+    // }
 
 
-    PowerAmplifierConverter dup() const pure nothrow @safe @nogc @property
+    PowerAmplifierConverterImpl dup() const pure nothrow @safe @nogc @property
     {
         return this;
     }
@@ -114,6 +118,15 @@ struct PowerAmplifierConverter(C)
     real _g1V;
     real _g3V;
     real _g5V;
+}
+
+
+alias PowerAmplifierConverter(C) = ArrayConverterOf!(PowerAmplifierConverterImpl!C);
+
+
+PowerAmplifierConverter!C makePowerAmplifier(C)(Gain gain, Voltage iip3, Voltage iip5 = Voltage(0))
+{
+    return PowerAmplifierConverter!C(gain, iip3, iip5);
 }
 
 unittest 
@@ -132,8 +145,8 @@ unittest
         e = C(uniform01(), uniform01);
 
     auto r0 = PowerAmplifier!(C[])(signal, 30.dB, 30.dBm, 30.dBm).array();
-    auto r1 = signal.connectTo!(PowerAmplifierConverter!C)(30.dB, 30.dBm, 30.dBm);
-    auto r2 = signal.chunks(3).connectTo!(PowerAmplifierConverter!C)(30.dB, 30.dBm, 30.dBm).joiner;
+    auto r1 = signal.connectTo(makePowerAmplifier!C(30.dB, 30.dBm, 30.dBm));
+    auto r2 = signal.chunks(3).connectTo(makePowerAmplifier!C(30.dB, 30.dBm, 30.dBm)).joiner;
 
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
@@ -206,7 +219,7 @@ struct RappModel(R)
 }
 
 
-struct RappModelConverter(C)
+struct RappModelConverterImpl(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
@@ -241,16 +254,19 @@ struct RappModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output) const pure nothrow @trusted
+    void opCall(R)(R input, ref OutputElementType[] output) const pure nothrow @trusted
+    if(isInputRange!R && hasLength!R && is(ElementType!R : InputElementType))
     {
         output.length = input.length;
 
-        foreach(i; 0 .. input.length)
-            this.opCall(input[i], output[i]);
+        foreach(i; 0 .. input.length){
+            this.opCall(input.front, output[i]);
+            input.popFront();
+        }
     }
 
 
-    RappModelConverter dup() const pure nothrow @safe @nogc @property
+    RappModelConverterImpl dup() const pure nothrow @safe @nogc @property
     {
         return this;
     }
@@ -259,6 +275,16 @@ struct RappModelConverter(C)
   private:
     real _g, _s, _o;
 }
+
+
+alias RappModelConverter(C) = ArrayConverterOf!(RappModelConverterImpl!C);
+
+
+RappModelConverter!C makeRappModel(C)(Gain gain, real smoothFactor, real saturation)
+{
+    return RappModelConverter!C(gain, smoothFactor, saturation);
+}
+
 
 unittest 
 {
@@ -275,8 +301,8 @@ unittest
         e = C(uniform01(), uniform01);
 
     auto r0 = RappModel!(C[])(signal, 30.dB, 1, 1).array;
-    auto r1 = signal.connectTo!(RappModelConverter!C)(30.dB, 1, 1);
-    auto r2 = signal.chunks(3).connectTo!(RappModelConverter!C)(30.dB, 1, 1).joiner;
+    auto r1 = signal.connectTo(makeRappModel!C(30.dB, 1, 1));
+    auto r2 = signal.chunks(3).connectTo(makeRappModel!C(30.dB, 1, 1)).joiner;
 
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
@@ -329,7 +355,7 @@ struct VGA(R)
 }
 
 
-struct VGAConverter(C)
+struct LinearAmplifierConverterImpl(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
@@ -347,16 +373,7 @@ struct VGAConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
-    {
-        output.length = input.length;
-
-        foreach(i; 0 .. input.length)
-            this.opCall(input[i], output[i]);
-    }
-
-
-    VGAConverter dup() const @property pure nothrow @safe @nogc
+    LinearAmplifierConverterImpl dup() const @property pure nothrow @safe @nogc
     {
         return this;
     }
@@ -364,6 +381,15 @@ struct VGAConverter(C)
 
   private:
     real _gain1V;
+}
+
+
+alias LinearAmplifierConverter(C) = ArrayConverterOf!(LinearAmplifierConverterImpl!C);
+
+
+LinearAmplifierConverter!C makeLinearAmplifier(C)(Gain gain)
+{
+    return LinearAmplifierConverter!C(gain);
 }
 
 unittest
@@ -381,8 +407,8 @@ unittest
         e = C(uniform01(), uniform01);
 
     auto r0 = VGA!(C[])(signal, 30.dB).array;
-    auto r1 = signal.connectTo!(VGAConverter!C)(30.dB);
-    auto r2 = signal.chunks(2).connectTo!(VGAConverter!C)(30.dB).joiner;
+    auto r1 = signal.connectTo(makeLinearAmplifier!C(30.dB));
+    auto r2 = signal.chunks(2).connectTo(makeLinearAmplifier!C(30.dB)).joiner;
 
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
@@ -494,7 +520,7 @@ unittest
 }
 
 
-struct PowerControlAmplifierConverter(C)
+struct PowerControlAmplifierConverterImpl(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
@@ -535,16 +561,7 @@ struct PowerControlAmplifierConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output) pure nothrow @safe
-    {
-        output.length = input.length;
-
-        foreach(i; 0 .. input.length)
-            this.opCall(input[i], output[i]);
-    }
-
-
-    PowerControlAmplifierConverter dup() const pure nothrow @safe @nogc @property
+    PowerControlAmplifierConverterImpl dup() const pure nothrow @safe @nogc @property
     {
         return this;
     }
@@ -558,6 +575,15 @@ struct PowerControlAmplifierConverter(C)
     size_t _avgSize;
     size_t _avgCount;
     real _sumPower;
+}
+
+
+alias PowerControlAmplifierConverter(C) = ArrayConverterOf!(PowerControlAmplifierConverterImpl!C);
+
+
+PowerControlAmplifierConverter!C makePowerControlAmplifier(C)(Voltage op, size_t avgSize = 512)
+{
+    return PowerControlAmplifierConverter!C(op, avgSize);
 }
 
 unittest
@@ -575,8 +601,8 @@ unittest
         e = C(uniform01(), uniform01);
 
     auto r0 = PowerControlAmplifier.makeBlock(signal, 30.dBm, 512).array;
-    auto r1 = signal.connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 512);
-    auto r2 = signal.chunks(3).connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 512).joiner;
+    auto r1 = signal.connectTo(makePowerControlAmplifier!C(30.dBm, 512));
+    auto r2 = signal.chunks(3).connectTo(makePowerControlAmplifier!C(30.dBm, 512)).joiner;
 
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
