@@ -436,7 +436,10 @@ auto thermalNoise(Model model, uint seedOffset = 123321)
 
 auto connectToAWGN(R)(R r, Model model)
 {
-    return r.add(thermalNoise(model)).toWrappedRange;
+    alias C = ElementType!R;
+
+    // return r.add(thermalNoise(model)).toWrappedRange;
+    return r.connectTo(makeAdder!C(thermalNoise(model))).toWrappedRange;
 }
 
 
@@ -471,6 +474,8 @@ auto connectToAWGN(R)(R r, Model model)
 
 auto connectToTXIQMixer(R)(R r, Model model)
 {
+    alias C = ElementType!R;
+
     Random rnd;
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
@@ -478,10 +483,12 @@ auto connectToTXIQMixer(R)(R r, Model model)
     auto irrdB = normalDist(model.txIQMixer.IRR.dB, model.txIQMixer.MAX_VAR_IRR.dB, rnd);
     auto theta = uniform(0, 1.0f, rnd) * 2*PI;
 
-    return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
+    // return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
+    return r.connectTo(makeIQImbalancer!C(0.dB, irrdB.dB, theta)).toWrappedRange;
 }
 
 
+deprecated
 auto connectToTXIQPhaseNoise(R)(R r, Model model)
 {
     return r.connectTo!(dffdd.blockdiagram.iqmixer.PhaseNoise)(model.carrFreq, model.samplingFreq, model.phaseNoise.paramC);
@@ -490,6 +497,8 @@ auto connectToTXIQPhaseNoise(R)(R r, Model model)
 
 auto connectToRXIQMixer(R)(R r, Model model)
 {
+    alias C = ElementType!R;
+
     Random rnd;
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
@@ -497,12 +506,15 @@ auto connectToRXIQMixer(R)(R r, Model model)
     auto irrdB = normalDist(model.rxIQMixer.IRR.dB, model.rxIQMixer.MAX_VAR_IRR.dB, rnd);
     auto theta = uniform(0, 1.0f, rnd) * 2*PI;
 
-    return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
+    // return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
+    return r.connectTo(makeIQImbalancer!C(0.dB, irrdB.dB, theta)).toWrappedRange;
 }
 
 
 auto connectToPowerAmplifier(R)(R r, Model model)
 {
+    alias C = ElementType!R;
+
     Random rnd;
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
@@ -513,16 +525,23 @@ auto connectToPowerAmplifier(R)(R r, Model model)
 
     auto v = (txp - model.pa.GAIN.dB).dBm;
 
-    return r
-    .connectTo!PowerControlAmplifier(v)
-    .connectTo!RappModel(model.pa.GAIN, 1, iip3.V / 2)
-    // .connectTo!RappPowerAmplifier(model.pa.GAIN, model.pa.IIP3)
-    .toWrappedRange;
+    // return r
+    // .connectTo!PowerControlAmplifier(v)
+    // .connectTo!RappModel(model.pa.GAIN, 1, iip3.V / 2)
+    // // .connectTo!RappPowerAmplifier(model.pa.GAIN, model.pa.IIP3)
+    // .toWrappedRange;
+    return
+        r
+        .connectTo(makePowerControlAmplifier!C(v))
+        .connectTo(makeRappModel!C(model.pa.GAIN, 1, iip3.V / 2))
+        .toWrappedRange;
 }
 
 
 auto connectToMultiPathChannel(R)(R r, Model model)
 {
+    alias C = ElementType!R;
+
     if(model.channel.isCoaxialCable)
     {
         Random rGen;
@@ -530,7 +549,8 @@ auto connectToMultiPathChannel(R)(R r, Model model)
 
         BoxMuller!Random gGen = BoxMuller!Random(rGen);
 
-        return r.connectTo!FIRFilter([Complex!float(0, 0), cast(Complex!float)gGen.front]).toWrappedRange;
+        // return r.connectTo!FIRFilter([C(0, 0), cast(C)gGen.front]).toWrappedRange;
+        return r.connectTo(makeFIRFilter([C(0, 0), cast(C)gGen.front])).toWrappedRange;
     }
     else
     {
@@ -539,34 +559,51 @@ auto connectToMultiPathChannel(R)(R r, Model model)
 
         BoxMuller!Random gGen = BoxMuller!Random(rGen);
 
-        Complex!float[] coefs;
+        C[] coefs;
         foreach(i; 0 .. model.channel.taps){
             auto db = -1 * model.channel.c.dB * i;
-            coefs ~= cast(Complex!float)(gGen.front * 10.0L ^^ (db/20));
+            coefs ~= cast(C)(gGen.front * 10.0L ^^ (db/20));
             gGen.popFront();
         }
 
-        return r.connectTo!FIRFilter(coefs).toWrappedRange;
+        // return r.connectTo!FIRFilter(coefs).toWrappedRange;
+        return r.connectTo(makeFIRFilter(coefs)).toWrappedRange;
     }
 }
 
 
 auto connectToLNA(R)(R r, Model model)
 {
+    alias C = ElementType!R;
+
+    // return r
+    // .add(thermalNoise(model, model.lna.noiseSeedOffset).connectTo!VGA(Gain.fromPowerGain(model.lna.NF.gain^^2 - 1)))
+    // .connectTo!RappModel(model.lna.GAIN, 3, (model.lna.IIP3.dBm - 36).dB.gain)
+    // // .connectTo!VGA(model.lna.GAIN)
+    // .toWrappedRange;
     return r
-    .add(thermalNoise(model, model.lna.noiseSeedOffset).connectTo!VGA(Gain.fromPowerGain(model.lna.NF.gain^^2 - 1)))
-    .connectTo!RappModel(model.lna.GAIN, 3, (model.lna.IIP3.dBm - 36).dB.gain)
-    // .connectTo!VGA(model.lna.GAIN)
-    .toWrappedRange;
+        .connectTo(makeAdder!C(
+                thermalNoise(model, model.lna.noiseSeedOffset)
+                .connectTo(makeLinearAmplifier!C(Gain.fromPowerGain(model.lna.NF.gain^^2 - 1)))
+        ))
+        .connectTo(makeRappModel!C(model.lna.GAIN, 3, (model.lna.IIP3.dBm - 36).dB.gain))
+        .toWrappedRange;
 }
 
 
 auto connectToQuantizer(R)(R r, Model model)
 {
-    return r
-    .connectTo!PowerControlAmplifier((30 - model.ofdm.PAPR.dB + 4.76).dBm)
-    .connectTo!SimpleQuantizer(model.quantizer.numOfBits)
-    .toWrappedRange;
+    alias C = ElementType!R;
+
+    // return r
+    // .connectTo!PowerControlAmplifier((30 - model.ofdm.PAPR.dB + 4.76).dBm)
+    // .connectTo!SimpleQuantizer(model.quantizer.numOfBits)
+    // .toWrappedRange;
+    return
+        r
+        .connectTo(makePowerControlAmplifier!C((30 - model.ofdm.PAPR.dB + 4.76).dBm))
+        .connectTo(makeSimpleQuantizer!C(model.quantizer.numOfBits))
+        .toWrappedRange;
 }
 
 

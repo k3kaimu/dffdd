@@ -761,6 +761,10 @@ if(is(ElementType!R : const(TImpl.InputElementType)[]))
 
     void popFront()
     {
+        if(!_frontIsComputed){
+            cast(void)this.front;
+        }
+
         _range.popFront();
         _frontIsComputed = false;
     }
@@ -883,6 +887,10 @@ if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
 
     void popFront()
     {
+        if(!_frontIsComputed){
+            cast(void)this.front;
+        }
+
         _range.popFront();
         _frontIsComputed = false;
     }
@@ -1004,6 +1012,10 @@ if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
 
     void popFront()
     {
+        if(!_frontIsComputed){
+            cast(void)this.front;
+        }
+
         _range.popFront();
         _frontIsComputed = false;
     }

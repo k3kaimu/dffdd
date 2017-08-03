@@ -531,7 +531,6 @@ struct PowerControlAmplifierConverterImpl(C)
         _power = op.V^^2;
         _alpha = 1;
 
-        _empty = false;
         _cnt = 0;
         _avgSize = avgSize;
         _sumPower = 0;
@@ -539,7 +538,7 @@ struct PowerControlAmplifierConverterImpl(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output) pure nothrow @safe @nogc
+    void opCall(InputElementType input, ref OutputElementType output)// pure nothrow @safe @nogc
     {
         _sumPower += input.re^^2 + input.im^^2;
         ++_cnt;
@@ -550,6 +549,7 @@ struct PowerControlAmplifierConverterImpl(C)
                 else
                     _alpha = _alpha / 2 + sqrt(_power / (_sumPower / _avgSize)) / 2;
 
+                // writefln("%s : %s : %s", _power, _alpha, _sumPower);
                 ++_avgCount;
             }
 
@@ -561,7 +561,7 @@ struct PowerControlAmplifierConverterImpl(C)
     }
 
 
-    PowerControlAmplifierConverterImpl dup() const pure nothrow @safe @nogc @property
+    PowerControlAmplifierConverterImpl dup() const // pure nothrow @safe @nogc @property
     {
         return this;
     }
@@ -570,7 +570,6 @@ struct PowerControlAmplifierConverterImpl(C)
   private:
     real _power;
     real _alpha;
-    bool _empty;
     size_t _cnt;
     size_t _avgSize;
     size_t _avgCount;

@@ -95,11 +95,11 @@ final class SimulatedSignals
             import dffdd.utils.linalg : approxEqualCpx;
 
             try{
-                // if(txBaseband !is null && txBasebandSWP !is null)   assert(txBaseband.front == txBasebandSWP.front);
-                // if(paDirect !is null && paDirectSWP !is null)       assert(paDirect.front == paDirectSWP.front);
+                if(txBaseband !is null && txBasebandSWP !is null)   assert(txBaseband.front == txBasebandSWP.front);
+                if(paDirect !is null && paDirectSWP !is null)       assert(paDirect.front == paDirectSWP.front);
 
-                // if(receivedSI !is null && receivedSISWP !is null)   assert(receivedSI.front == receivedSISWP.front);
-                // if(receivedSI !is null && received !is null)        assert(receivedSI.front == received.front);
+                if(receivedSI !is null && receivedSISWP !is null)   assert(receivedSI.front == receivedSISWP.front);
+                if(receivedSI !is null && received !is null)        assert(receivedSI.front == received.front);
             }catch(Throwable o){
                 import std.stdio;
                 writeln(i);
@@ -111,7 +111,7 @@ final class SimulatedSignals
                 throw o;
             }
 
-                this.popFront();
+            this.popFront();
         }
 
         *_swIsAGCTraining = false;
