@@ -9,7 +9,7 @@
     "libs": ["openblas"],
     "lflags-osx": ["-L/usr/local/opt/openblas/lib"],
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
-    "dflags-ldc":["-oq"],
+    "dflags-ldc":["-oq", "-enable-cross-module-inlining", "-mcpu=native"],
 
     "dependencies": {
         "carbon": {"path": "../carbon"},

@@ -1,6 +1,8 @@
 module dffdd.mod.qpsk;
 
+import std.bitmanip;
 import std.complex;
+
 
 struct QPSK
 {
@@ -31,6 +33,25 @@ struct QPSK
 
 
     static
+    ref OutputElementType[] modulate(const ref BitArray inputs, return ref OutputElementType[] outputs)
+    in{
+        assert(inputs.length % symInputLength == 0);
+    }
+    body{
+        import std.math;
+
+        if(outputs.length != inputs.length/2)
+            outputs.length = inputs.length/2;
+
+        foreach(i; 0 .. inputs.length/2)
+            outputs[i] = Complex!float(inputs[i*2+0] ? -SQRT1_2 : SQRT1_2,
+                                       inputs[i*2+1] ? -SQRT1_2 : SQRT1_2);
+
+        return outputs;
+    }
+
+
+    static
     ref InputElementType[] demodulate(in OutputElementType[] inputs, return ref InputElementType[] outputs)
     {
         if(outputs.length != inputs.length*2)
@@ -43,6 +64,40 @@ struct QPSK
 
         return outputs;
     }
+
+
+    static
+    ref BitArray demodulate(in OutputElementType[] inputs, return ref BitArray outputs)
+    {
+        if(outputs.length != inputs.length*2)
+            outputs.length = inputs.length*2;
+
+        foreach(i; 0 .. inputs.length){
+            outputs[i*2+0] = inputs[i].re < 0;
+            outputs[i*2+1] = inputs[i].im < 0;
+        }
+
+        return outputs;
+    }
+}
+
+unittest
+{
+    BitArray bits;
+    foreach(i; 0 .. 52)
+        bits ~= i % 3 == 0;
+
+    Complex!float[] signal;
+    BitArray copy = bits;
+    QPSK qpsk;
+    qpsk.modulate(bits, signal);
+    assert(signal.length == 26);
+    bits.length = 0;
+    qpsk.demodulate(signal, bits);
+
+    assert(bits.length == 52);
+    foreach(i; 0 .. 52)
+        assert(bits[i] == copy[i]);
 }
 
 
