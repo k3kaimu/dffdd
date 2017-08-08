@@ -11,7 +11,7 @@ import std.math;
 import dffdd.utils.unit;
 import dffdd.blockdiagram.utils;
 
-enum N = 2_000_000L;
+enum N = 1024*1024;
 
 
 alias C = Complex!float;
@@ -30,23 +30,26 @@ void main()
 
     // writeln("Fiber");
     // benchmarkFiber();
+    foreach(i; 0 .. 10){
+        realisticBenchmarkHandmade();
+    }
 
-    writeln("Range");
-    // benchmarkRange();
-    realisticBenchmarkRange();
-
-    writeln("Buffered Range");
-    realisticBenchmarkRangeBuffered();
-
-    writeln("Rx");
-    // benchmarkRx();
+    writeln("Handmade");
+    realisticBenchmarkHandmade();
 
     writeln("Buffered Rx");
     // benchmarkRxBuffered();
     realisticBenchmarkRxBuffered();
 
-    writeln("Handmade");
-    realisticBenchmarkHandmade();
+    writeln("Buffered Range");
+    realisticBenchmarkRangeBuffered();
+
+    writeln("Range");
+    // benchmarkRange();
+    realisticBenchmarkRange();
+
+    writeln("Rx");
+    // benchmarkRx();
 }
 
 
@@ -143,15 +146,14 @@ void realisticBenchmarkRange()
     foreach(i; 0 .. 64)
         taps ~= C(0.01, 0.01);
 
-    InputRange!C txiq = signal.connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject;
-    InputRange!C txamp = txiq.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    InputRange!C recv = txamp.connectTo(makeFIRFilter!C(taps)).inputRangeObject;
-    InputRange!C lna = recv.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    InputRange!C rxiq = lna.connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject;
-
     StopWatch sw;
     sw.start();
-    auto ss = rxiq.sum;
+    auto ss = signal
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0))
+        .connectTo(makeRappModel!C(0.dB, 1, 1))
+        .connectTo(makeFIRFilter!C(taps))
+        .connectTo(makeRappModel!C(0.dB, 3, 1))
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).sum();
     sw.stop();
 
     writefln("%s", ss);
@@ -171,15 +173,14 @@ void realisticBenchmarkRangeBuffered()
     foreach(i; 0 .. 64)
         taps ~= C(0.01, 0.01);
 
-    auto txiq = signal.chunks(320).connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject;
-    auto txamp = txiq.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    auto recv = txamp.connectTo(makeFIRFilter!C(taps)).inputRangeObject;
-    auto lna = recv.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    auto rxiq = lna.connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject.joiner;
-
     StopWatch sw;
     sw.start();
-    auto ss = rxiq.sum;
+    auto ss = signal.chunks(320)
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0))
+        .connectTo(makeRappModel!C(0.dB, 1, 1))
+        .connectTo(makeFIRFilter!C(taps))
+        .connectTo(makeRappModel!C(0.dB, 3, 1))
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).map!(a => a.sum()).sum();
     sw.stop();
 
     writefln("%s", ss);
@@ -201,30 +202,24 @@ void realisticBenchmarkRxBuffered()
     foreach(i; 0 .. 64)
         taps ~= C(0.01, 0.01);
 
-    auto txiq = makeRxBlock(makeIQImbalancer!C(0.dB, (20).dB, 0));
-    auto txamp = makeRxBlock(makeRappModel!C(0.dB, 1, 1));
-    auto recv = makeRxBlock(makeFIRFilter!C(taps));
-    auto lna = makeRxBlock(makeRappModel!C(0.dB, 1, 1));
-    auto rxiq = makeRxBlock(makeIQImbalancer!C(0.dB, (20).dB, 0));
-
-    // pragma(msg, typeof(sig).stringof);
-
     C ss = C(0, 0);
-    txiq.doSubscribe(txamp);
-    txamp.doSubscribe(recv);
-    recv.doSubscribe(lna);
-    lna.doSubscribe(rxiq);
-    rxiq.doSubscribe!((a){ ss += a.sum; });
 
     StopWatch sw;
     sw.start();
-    .put(txiq, signal.chunks(320));
+    signal.chunks(320).asObservable
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0))
+        .connectTo(makeRappModel!C(0.dB, 1, 1))
+        .connectTo(makeFIRFilter!C(taps))
+        .connectTo(makeRappModel!C(0.dB, 3, 1))
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0))
+        .doSubscribe!((a){ ss += a.sum(); });
     sw.stop();
 
     writefln("%s", ss);
     writefln("Time: %s[ms]", sw.peek.msecs);
     writefln("Rate: %s[k samples/sec]", N / (sw.peek.msecs));
 }
+
 
 
 void realisticBenchmarkHandmade()
@@ -236,56 +231,86 @@ void realisticBenchmarkHandmade()
         taps ~= C(0.01, 0.01);
 
 
-    auto input = signal.dup;
-
     StopWatch sw;
     sw.start();
+    auto input = signal.dup;
+
     foreach(ref e; input)
         e = e + e.conj * 0.1;
 
     
     foreach(ref e; input) {
         auto x = e;
-        auto r = abs(x),
-             u = x / r;     // unit vector
+        auto r = sqAbs(x);
 
-        // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
-        if(r <= 1E-6){
-            e = x;
-        }
-        else{
-            r = (r) / (sqrt( 1 + (r)^^2 ));
-            e = r * u;
+        r = 1.0 / (sqrt( 1 + r));
+        e = r * x;
+    }
+
+    // input = input.chunks(1024).connectTo(makeFIRFilter(taps)).joiner.map!(a => C(a.re, a.im)).array();
+    {
+        auto recv = input.chunks(320).connectTo(makeFIRFilter(taps));
+        auto dst = input;
+        while(!recv.empty){
+            auto front = recv.front;
+            recv.popFront();
+
+            dst[0 .. front.length] = front[];
+            dst = dst[front.length .. $];
         }
     }
 
-    input = input.chunks(1024).connectTo(makeFIRFilter(taps)).joiner.array().dup;
-
     foreach(ref e; input) {
         auto x = e;
-        auto r = abs(x),
-             u = x / r;     // unit vector
+        auto r = sqAbs(x);
 
-        // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
-        if(r <= 1E-6){
-            e = x;
-        }
-        else{
-            r = (r) / (sqrt( 1 + (r)^^2 ));
-            e = r * u;
-        }
+        e = x / (sqrt(1 + r^^3).cbrt);
     }
 
     foreach(ref e; input)
         e = e + e.conj * 0.1;
 
-    C ss = C(0, 0);
-    foreach(e; input)
-        ss += e;
+    C ss = input.sum();
 
     sw.stop();
 
     writefln("%s", ss);
     writefln("Time: %s[ms]", sw.peek.msecs);
     writefln("Rate: %s[k samples/sec]", N / (sw.peek.msecs));
+}
+
+
+unittest
+{
+    alias C = Complex!float;
+
+    auto source = new SubjectObject!C;
+    auto iqi = makeRxBlock(makeIQImbalancer!C(0.dB, (20).dB, 0));
+    auto rapp = makeRxBlock(makeRappModel!C(0.dB, 1, 1));
+    auto sink = new SubjectObject!C;
+
+    source.doSubscribe(iqi);
+    iqi.doSubscribe(rapp);
+    rapp.doSubscribe(sink);
+}
+
+unittest
+{
+    alias C = Complex!float;
+
+    C[] signal;
+    auto tx = signal.chunks(320)
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0))
+        .conenctTo(makeRappModel!C(0.dB, 1, 1));
+}
+
+unittest
+{
+    alias C = Complex!float;
+
+    auto subject = new SubjectObject!C;
+    auto tx = subject
+        .connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0))
+        .connectTo(makeRappModel!C(0.dB, 1, 1));
+
 }
