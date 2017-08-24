@@ -159,100 +159,35 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     if(resultDir !is null)
         mkdirRecurse(resultDir);
 
-    with(model){
-        useDesiredBaseband = false;
-        useTxBaseband = true;           // 使う
-        useTxBasebandSWP = true;        // 使う
-        useDesiredPADirect = false;
-        usePADirect = false;
-        usePADirectSWP = false;
-        useReceivedDesired = false;
-        useReceivedSI = true;           // 使う
-        useReceivedSISWP = true;        // 使う
-        useReceived = true;             // 使う
-        useNoise = true;                // 使う
-    }
+    // auto signals = makeSimulatedSignals(model, resultDir);
+    // signals.trainAGC();
+    auto simblock = makeSimulatedBlock(model);
+    noLoadRun(simblock, makeSTXSignal(model), makeDTXSignal(model), model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
 
-    auto signals = makeSimulatedSignals(model, resultDir);
-    signals.trainAGC();
+    // auto signals = makeSimulatedSignals(simblock, makeSTXSignal(model), makeDTXNullSignal(model));
 
     // フィルタの学習
-  enum string filterStructure = filterType.split("_")[0];
-  enum string filterOptimizer = filterType.split("_")[1];
+    auto filter = makeCancellationFilter!filterType(model);
 
-  enum bool isOrthogonalized = filterStructure[0] == 'O';
-
-  static if(filterStructure.endsWith("PHDCM"))
-    auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
-  else static if(filterStructure.endsWith("ARPH"))
-    auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("CH"))
-    auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
-//   else static if(filterStructure.endsWith("CWLH"))
-//     auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-//   else static if(filterStructure.endsWith("CWL1H"))
-//     auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("IQISICFHF"))
-  {
-    import dffdd.filter.freqdomain;
-    auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, 2, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
-  }
-  else static if(filterStructure.endsWith("WLFHF"))
-  {
-    static assert(!isOrthogonalized);
-    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer, 1)(model, filterStructure.endsWith("SWLFHF"));
-  }
-  else static if(filterStructure.endsWith("DCMFHF"))
-  {
-    static assert(!isOrthogonalized);
-    enum string filterOption = filterStructure[0 .. $-6];
-
-    static assert(filterOption.canFind('1') || filterOption.canFind('2'));
-    static assert(filterOption.canFind('P') || filterOption.canFind('C'));
-
-    enum size_t type = filterOption.canFind('1') ? 1 : 2;
-    enum Flag!"isParallel" isParallel = filterOption.canFind('P') ? Yes.isParallel : No.isParallel;
-
-    static if(type == 2)
-        auto filter = makeFrequencyDCMHammersteinFilter2!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
-    else
-        auto filter = makeFrequencyDCMHammersteinFilter!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
-  }
-  else static if(filterStructure.endsWith("CFHF"))
-    static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
-  else static if(filterStructure.endsWith("FHF")){
-    static assert(!isOrthogonalized);
-    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model,
-        filterStructure.endsWith("SFHF") || filterStructure.endsWith("S1FHF") || filterStructure.endsWith("S2FHF"),
-        filterStructure.endsWith("S2FHF"));
-  }else static if(filterStructure.endsWith("WL"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("L"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("TAYLOR"))
-    auto filter = makeTaylorApproximationFilter!(1, false)(model);
-  else
-    static assert("Cannot identify filter model.");
+    preLearning!filterType(filter, model);
 
     // フィルタの学習
     auto recvs = new Complex!float[model.blockSize],
          refrs = new Complex!float[model.blockSize],
          outps = new Complex!float[model.blockSize];
 
-    {
-        
-        //assert(model.rndSeed != 893);
 
-        filter.preLearning(model, (Model m){
-            auto ss = makeSimulatedSignals(m);
+    // {
+    //     filter.preLearning(model, (Model m){
+    //         // auto ss = makeSimulatedSignals(m);
 
-            ss.trainAGC();
-
-            return ss;
-        });
-    }
+    //         // ss.trainAGC();
+    //         auto simblock = makeSimulatedBlock(model);
+    //         noLoadRun(simblock, makeSTXSignal(model), makeDTXNullSignal(model), model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
+    //         auto signals = makeSimulatedSignals(simblock, makeSTXSignal(model), makeDTXNullSignal(model));
+    //         return signals;
+    //     });
+    // }
 
     {
         //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -267,9 +202,12 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         auto waveAfterSIC = makeWaveformProbe!(Complex!float)("waveform_afterSIC_init.csv", resultDir, 0, model);
         auto waveFilterOutput = makeWaveformProbe!(Complex!float)("waveform_filterOutput_init.csv", resultDir, 0, model);
 
+        auto signals = makeSimulatedSignals(simblock, makeTrainingSignal!filterType(model), makeDTXNullSignal(model));
+
         StopWatch sw;
         foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
+            /+
             static if(filterStructure.endsWith("FHF"))
             {
                 if(blockIdx >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
@@ -279,6 +217,20 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
             }
             else
                 signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
+            +/
+            signals.fillBuffer!(["sTXBB", "sRXQZ"])(refrs, recvs);
+            // writeln(refrs);
+            foreach(i, e; refrs)
+                if(e.re.isNaN || e.im.isNaN){
+                    writefln("refrs[%s] is nan", i);
+                    throw new Exception("");
+                }
+            
+            foreach(i, e; recvs)
+                if(e.re.isNaN || e.im.isNaN){
+                    writefln("recvs[%s] is nan", i);
+                    throw new Exception("");
+                }
 
             sw.start();
             filter.apply!(Yes.learning)(refrs, recvs, outps);
@@ -317,6 +269,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     {
         float sicv;
 
+        auto signals = makeSimulatedSignals(simblock, makeCancellationEvaluationSignal!filterType(model), makeDTXNullSignal(model));
+
         bool*[] endFlags = iota(5).map!"new bool"().array();
         auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
         auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model, endFlags[1]);
@@ -328,7 +282,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         size_t cancCNT;
         foreach(blockIdxo; 0 .. 1024)
         {
-            signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
+            signals.fillBuffer!(["sTXBB", "sRXQZ"])(refrs, recvs);
 
             sw.start();
             filter.apply!(No.learning)(refrs, recvs, outps);
@@ -360,6 +314,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
 
 
+    // assert(0);
+    /+
     if(model.outputBER)
     {
         size_t inpSize, outSize;
@@ -424,10 +380,18 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
         // writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR.dB, model.INR.dB, berResult);
     }
+    +/
 
     // ノイズ電力
-    auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
-    .put(noisePSD, signals.noise.save.map!(a => Complex!float(a)).take(64*1024));
+    // assert(0);
+    {
+        auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
+        auto buf = new Complex!float[64*1024];
+        auto signals = makeSimulatedSignals(simblock, makeDTXNullSignal(model), makeDTXNullSignal(model));
+        signals.fillBuffer!(["sRXQZ"])(buf);    //最初は捨てる
+        signals.fillBuffer!(["sRXQZ"])(buf);
+        .put(noisePSD, buf);
+    }
 
     static if(is(typeof((){ filter.saveInfoToDir(""); })))
     {
@@ -444,4 +408,108 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         std.file.write(buildPath(resultDir, "info.json"), infoResult.toPrettyString(JSONOptions.specialFloatLiterals));
 
     return infoResult;
+}
+
+
+
+auto makeCancellationFilter(string filterType)(Model model)
+{
+    enum string filterStructure = filterType.split("_")[0];
+    enum string filterOptimizer = filterType.split("_")[1];
+
+    enum bool isOrthogonalized = filterStructure[0] == 'O';
+
+  static if(filterStructure.endsWith("PHDCM"))
+    auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
+  else static if(filterStructure.endsWith("ARPH"))
+    auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("PH"))
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("CH"))
+    auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("IQISICFHF"))
+  {
+    import dffdd.filter.freqdomain;
+    auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, 2, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
+  }
+  else static if(filterStructure.endsWith("WLFHF"))
+  {
+    static assert(!isOrthogonalized);
+    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer, 1)(model, filterStructure.endsWith("SWLFHF"));
+  }
+  else static if(filterStructure.endsWith("DCMFHF"))
+  {
+    static assert(!isOrthogonalized);
+    enum string filterOption = filterStructure[0 .. $-6];
+
+    static assert(filterOption.canFind('1') || filterOption.canFind('2'));
+    static assert(filterOption.canFind('P') || filterOption.canFind('C'));
+
+    enum size_t type = filterOption.canFind('1') ? 1 : 2;
+    enum Flag!"isParallel" isParallel = filterOption.canFind('P') ? Yes.isParallel : No.isParallel;
+
+    static if(type == 2)
+        auto filter = makeFrequencyDCMHammersteinFilter2!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
+    else
+        auto filter = makeFrequencyDCMHammersteinFilter!(type, isParallel, filterOptimizer)(model, filterStructure.endsWith("SDCMFHF"));
+  }
+  else static if(filterStructure.endsWith("CFHF"))
+    static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
+  else static if(filterStructure.endsWith("FHF")){
+    static assert(!isOrthogonalized);
+    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model,
+        filterStructure.endsWith("SFHF") || filterStructure.endsWith("S1FHF") || filterStructure.endsWith("S2FHF"),
+        filterStructure.endsWith("S2FHF"));
+  }else static if(filterStructure.endsWith("WL"))
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("L"))
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false)(modOFDM(model), model);
+  else static if(filterStructure.endsWith("TAYLOR"))
+    auto filter = makeTaylorApproximationFilter!(1, false)(model);
+  else
+    static assert("Cannot identify filter model.");
+
+
+    return filter;
+}
+
+
+auto preLearning(string filterType, Filter)(ref Filter filter, Model model)
+{
+    // model.rndSeed += 114514;
+
+    static if(filterType.startsWith("O"))
+    {
+        filter.learningOrthogonalizer(makeSTXSignal(model));
+    }
+    else static if(filterType.startsWith("S2FHF"))
+    {
+        filter.learningOrthogonalizer(makeSTXSignal(model));
+        
+        {
+            auto block = makeSimulatedBlock(model);
+            noLoadRun(block, makeSTXSignal(model), makeDTXSignal(model), model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol);
+
+            auto noise = makeSimulatedSignals(block, makeDTXNullSignal(model), makeDTXNullSignal(model));
+            filter.noiseProfiling((a){ noise.fillBuffer!(["sRXQZ"])(a); });
+
+            auto signal = makeSimulatedSignals(block, makeTrainingSignal!filterType(model), makeDTXNullSignal(model));
+            filter.actualPSDProfiling((a, b){ signal.fillBuffer!(["sTXBB", "sRXQZ"])(a, b); });
+        }
+        {
+            Model profModel = model;
+            profModel.INR = profModel.lna.DR;
+            profModel.useCoaxialCableAsChannel();
+            profModel.rndSeed += 114514;
+
+            auto block = makeSimulatedBlock(profModel);
+            noLoadRun(block, makeSTXSignal(profModel), makeDTXSignal(profModel), profModel.numOfModelTrainingSymbols * profModel.ofdm.numOfSamplesOf1Symbol);
+
+            auto noise = makeSimulatedSignals(block, makeDTXNullSignal(profModel), makeDTXNullSignal(profModel));
+            filter.noiseProfiling((a){ noise.fillBuffer!(["sRXQZ"])(a); });
+
+            auto signal = makeSimulatedSignals(block, makeTrainingSignal!filterType(profModel), makeDTXNullSignal(profModel));
+            filter.psdProfiling((a, b){ signal.fillBuffer!(["sTXBB", "sRXQZ"])(a, b); });
+        }
+    }
 }

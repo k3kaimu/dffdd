@@ -39,11 +39,14 @@ void mainJob()
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
-                                    "IQISICFHF_X",
-                                    "FHF_LS",
-                                    "OPH_LS",
-                                    "WL_LS",
-                                    "L_LS",
+                                    // "IQISICFHF_X",
+                                    // "L_LS",
+                                    "S2FHF_LS",
+                                    // "PH_LS",
+                                    // "FHF_LS",
+                                    // "OPH_LS",
+                                    // "WL_LS",
+                                    // "L_LS",
                                     // "S2FHF_LS",
                 /*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ /*"SFHF_LS",*/ /*"S2FHF_LS",*/ /*"L_LS", "WL_LS", "OPH_LS", "FHF_LS",*/ /*"IQISICFHF_X",*/ /*"TAYLOR_LS", "L_LS",*/ /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
@@ -56,8 +59,8 @@ void mainJob()
             taskList ~= appender;
         }
 
-        foreach(learningSymbols; iota(10, 11, 1))
-        foreach(inr; iota(50, 55, 5))
+        foreach(learningSymbols; iota(60, 61, 1))
+        foreach(inr; iota(20, 25, 5))
         foreach(txp; [23])
         foreach(irr; [25])
         {
@@ -93,13 +96,13 @@ Tuple!(Model, string) makeModelAndDir(string methodName)(int learningSymbols, in
     model.useDTXIQ = false;
     model.useDTXPN = false;
     model.useDTXPA = false;
-    model.useSTXIQ = true;
+    model.useSTXIQ = true; //true;
     model.useSTXPN = false;
-    model.useSTXPA = true;
-    model.useSTXIQ2 = false;
-    model.useSRXLN = true;
-    model.useSRXIQ = true;
-    model.useSRXQZ = true;
+    model.useSTXPA = true; //true;
+    model.useSTXCH = true;
+    model.useSRXLN = true; //true;
+    model.useSRXIQ = true; //true;
+    model.useSRXQZ = true; //true;
 
     model.orthogonalizer.numOfTrainingSymbols = 10000;
 

@@ -64,13 +64,28 @@ final class FrequencyDomainParallelHammersteinStateAdapter(C, Adapter)
 
 
     void adapt(C[][] distX, C[] desired)
-    {
+    in{
+        foreach(es; distX) foreach(e; es)  assert(!e.re.isNaN && !e.im.isNaN);
+        foreach(e; desired) assert(!e.re.isNaN && !e.im.isNaN);
+        foreach(s; _states){
+            foreach(e; s.weight[0]) assert(!e.re.isNaN && !e.im.isNaN);
+            foreach(e; s.state[0]) assert(!e.re.isNaN && !e.im.isNaN);
+        }
+    }
+    out{
+        foreach(s; _states){
+            foreach(e; s.weight[0]) assert(!e.re.isNaN && !e.im.isNaN);
+            foreach(e; s.state[0]) assert(!e.re.isNaN && !e.im.isNaN);
+        }
+    }
+    body{
         foreach(f; 0 .. _nFFT){
             assert(distX[f].length == _states[f].numOfFIR);
             if(distX[f].length == 0) continue;
 
             _states[f].update(distX[f]);
             C error = desired[f] - _states[f].output;
+            assert(!error.re.isNaN && !error.im.isNaN);
             _adapters[f].adapt(_states[f], error);
         }
     }
@@ -356,10 +371,14 @@ final class OverlapSaveRegenerator2(C)
             }
         }
 
+        foreach(es; _distFFTBufSelected) foreach(e; es) assert(!e.re.isNaN && !e.im.isNaN);
+
         // XとHの積を計算する
         auto ips = _fftw.inputs!float;
         state.regenerate(_distFFTBufSelected, ips);
         assert(ips.ptr == _fftw.inputs!float.ptr);
+
+        foreach(e; ips) assert(!e.re.isNaN && !e.im.isNaN);
 
         // y = IFFT{XH}の計算
         // IFFT
@@ -735,11 +754,134 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     Dist distorter() @property { return _distorter; }
 
 
+    /**
+    送信ベースバンド信号を利用して，orthogonalizerを学習します
+    */
+    void learningOrthogonalizer(S)(S signal)
+    {
+        static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+        {
+            auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
+            foreach(i, ref e; buf){
+                assert(!signal.empty);
+                e = signal.front;
+                signal.popFront();
+            }
+            _distorter.learn(buf);
+        }
+    }
+
+
+    /**
+    雑音のプロファイルを取ります
+    */
+    void noiseProfiling(void delegate(C[]) chunker)
+    out{
+        assert(!_noiseFloor.isNaN);
+    }
+    body{
+        auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
+        float[] buf = new float[_nFFT * _nOS];
+        buf[] = 0;
+
+        foreach(i; 0 .. 1024){
+            chunker(fftw.inputs!float);
+
+            fftw.fft!float();
+            foreach(j; 0 .. _nOS * _nFFT)
+                buf[j] += fftw.outputs!float[j].sqAbs;
+        }
+
+        foreach(j; 0 .. _nOS * _nFFT)
+            buf[j] /= 1024;
+
+        _noiseFloor = buf.sum() / (_nFFT * _nOS);
+    }
+
+
+    /**
+    電力スペクトル密度のプロファイルを取ります
+    + chunker: chunker(buf1, buf2)で，buf1に送信ベースバンド信号，buf2に受信ベースバンド信号を格納する
+    */
+    void psdProfiling(void delegate(C[], C[]) chunker)
+    out{
+        foreach(es; _importance)
+            foreach(e; es) assert(!e.re.isNaN && !e.im.isNaN);
+    }
+    body{
+        C[][] weight;
+        Tuple!(real[][], real[]) expectedPowers;
+        real[][] psiPower;
+        real[] gnl = new real[_distorter.outputDim];
+        if(_doComplexSelect /*&& testcase == 0*/)
+        {
+            _iqRX = estimateIQCoefs(estimateCFR(chunker, C(0, 0)))[1];
+            weight = estimateCFR(chunker, _iqRX);
+            foreach(p; 0 .. _distorter.outputDim)
+            {
+                gnl[p] = 0;
+                foreach(f; 0 .. _nFFT * _nOS)
+                    if(_scMap[f]) gnl[p] += weight[f][p].sqAbs / weight[f][0].sqAbs;
+                
+                gnl[p] = sqrt(gnl[p] / _nSC);
+            }
+
+            //expectedPowers = calculateExpectedPower(signals, weight, C(0, 0));
+            psiPower = calculateExpectedPower(chunker, weight, C(0, 0))[2];
+        }
+        else
+        {
+            // H_{p,q}[f] を取得する
+            weight = estimateCFR(chunker, C(0, 0));
+            expectedPowers[0 .. 2] = calculateExpectedPower(chunker, weight, C(0, 0))[0 .. 2];
+        }
+
+        // if(testcase == 0){          // 重要度を計算する場合なら
+            if(_doComplexSelect){
+                // _importance = psiPower.dup;
+                _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
+                foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
+                    _importance[f][p] = psiPower[f][p] / psiPower[f][0];
+                    _importance[f][p] *= gnl[p]^^2;
+                }
+            }else{
+                _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
+                foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
+                    _importance[f][p] = expectedPowers[0][f][p] / expectedPowers[0][f][0];
+                }
+            }
+        // }
+        // else if(testcase == 1){    // _actualPowerを算出するだけなら
+        //     _actualPower = expectedPowers[0];
+        //     // foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
+        //     _requiredBasisFuncs = new bool[][](_nFFT * _nOS, _distorter.outputDim);
+        //     foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim)
+        //         _requiredBasisFuncs[f][p] = (_actualPower[f][p] >= _noiseFloor);
+        // }
+    }
+
+
+    void actualPSDProfiling(void delegate(C[], C[]) chunker)
+    {
+        C[][] weight;
+        Tuple!(real[][], real[]) expectedPowers;
+
+        weight = estimateCFR(chunker, C(0, 0));
+        expectedPowers[0 .. 2] = calculateExpectedPower(chunker, weight, C(0, 0))[0 .. 2];
+
+        _actualPower = expectedPowers[0];
+        // foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
+        _requiredBasisFuncs = new bool[][](_nFFT * _nOS, _distorter.outputDim);
+        foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim)
+            _requiredBasisFuncs[f][p] = (_actualPower[f][p] >= _noiseFloor);
+    }
+
+    /+
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     // if(isModelParameterSet!M)
     {
         // メンバーを持っているかどうかチェック
-        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband", "noise", "receivedSISWP"));
+        // static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband", "noise", "receivedSISWP"));
 
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
             _distorter.learn(signalGenerator(model).txBaseband);
@@ -747,8 +889,9 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         if(_doSelect)
             profiling(model, signalGenerator);
     }
+    +/
 
-
+    /+
     void profiling(M, Signals)(M originalModel, Signals delegate(M) genSignal)
     {
         import dffdd.filter.ls : LSAdapter, makeLSAdapter;
@@ -760,20 +903,6 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             import std.stdio;
             auto model = originalModel;
 
-            with(model){
-                useDesiredBaseband = false;
-                useTxBaseband = false;
-                useTxBasebandSWP = true;        // 使う
-                useDesiredPADirect = false;
-                usePADirect = false;
-                usePADirectSWP = false;
-                useReceivedDesired = false;
-                useReceivedSI = false;
-                useReceivedSISWP = true;        // 使う
-                useReceived = false;
-                useNoise = true;                // 使う
-            }
-
             if(testcase == 0)
             {
                 // 同軸線路を使用するように設定する
@@ -783,11 +912,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
             // 最初にノイズ電力の計測
             {
-                model.useTxBasebandSWP = false;
-                model.useReceivedSISWP = false;
                 auto signals = genSignal(model);
-                model.useTxBasebandSWP = true;
-                model.useReceivedSISWP = true;
 
                 auto n = signals.noise.save;
                 // auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
@@ -872,9 +997,10 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             }
         }
     }
+    +/
 
 
-    C[][] estimateCFR(Signals)(Signals signals, C iqRX = C(0, 0))
+    C[][] estimateCFR(void delegate(C[], C[]) chunker, C iqRX = C(0, 0))
     {
         // 次のようなフィルタを学習してみる
         // + 適応アルゴリズム : 最小二乗法
@@ -894,8 +1020,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
         // 64シンボル使用して学習する
         foreach(i; 0 .. 64 / spb){
-            signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
-
+            chunker(testTX, testRX);
             testfilter.apply!(Yes.learning)(testTX, testRX, testER);
         }
 
@@ -933,7 +1058,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     }
 
 
-    Tuple!(real[][], real[], real[][]) calculateExpectedPower(Signals)(Signals signals, in C[][] weight, C iqRX = C(0, 0))
+    Tuple!(real[][], real[], real[][]) calculateExpectedPower(void delegate(C[], C[]) chunker, in C[][] weight, C iqRX = C(0, 0))
     {
         C[] testTX = new C[this.inputBlockLength],
             testRX = new C[this.inputBlockLength],
@@ -958,7 +1083,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         // 重要度を計算する
         enum size_t Navg = 64;
         foreach(i; 0 .. Navg){
-            signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
+            chunker(testTX, testRX);
             _distorter(testTX, disted);
 
             // 非線形送信信号を周波数領域に変換

@@ -9,6 +9,9 @@ import std.meta;
 import std.path;
 import std.range;
 import std.traits;
+import std.typecons;
+import std.variant;
+import std.range;
 
 import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.amplifier;
@@ -18,6 +21,8 @@ import dffdd.utils.unit;
 import models;
 import simmain;
 import snippet;
+
+import rx : doSubscribe, Disposable;
 
 
 alias Signal = ForwardRange!(Complex!real);
@@ -30,6 +35,7 @@ if(isForwardRange!R)
 }
 
 
+/+
 final class SimulatedSignals
 {
     // this() {}
@@ -149,10 +155,326 @@ final class SimulatedSignals
            received,
            noise;
 }
++/
 
 
-SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
+class SimulatedBlock(C)
+    : IMNSPBlock!(
+        TGroup!(
+            C,  /* self interference */
+            C,  /* desired */
+        ),
+        TGroup!C, true)
 {
+    ISPBlock!(C, C, true) sTXBB, dTXBB;
+    ISPBlock!(C, C, true) sTXIQ, dTXIQ;
+    ISPBlock!(C, C, true) sTXPN, dTXPN;
+    ISPBlock!(C, C, true) sTXPA, dTXPA;
+    ISPBlock!(C, C, true) sTXCH, dTXCH;
+    IMNSPBlock!(TGroup!(C, C), TGroup!C, true) sRXANT;
+    ISPBlock!(C, C, true) sRXLN;
+    ISPBlock!(C, C, true) sRXIQ;
+    ISPBlock!(C, C, true) sRXQZ;
+    Disposable[Tuple!(string, string)] disposables;
+
+
+    this(Model model)
+    {
+        import std.string : toUpper;
+
+        sTXBB = makeNopBlock!C();
+        dTXBB = makeNopBlock!C();
+        sRXANT = makeZipAddBlock!(C, 2)();
+
+        foreach(block; AliasSeq!("sTXIQ", "dTXIQ", "sTXPN", "dTXPN", "sTXPA", "dTXPA",
+                                 "sTXCH", "dTXCH", "sRXLN", "sRXIQ", "sRXQZ"))
+        {
+            mixin(q{
+                if(model.use%2$s)
+                    this.%1$s = make%2$sBlock!C(model);
+                else
+                    this.%1$s = makeNopBlock!C();
+            }.format(block, block.toUpper));
+        }
+
+        fullConnect();
+    }
+
+
+    Sinks!(C, C) sinks() @property
+    {
+        Sinks!(C, C) dst;
+        dst[0] = sTXBB.sinks[0];
+        dst[1] = dTXBB.sinks[0];
+
+        return dst;
+    }
+
+
+    Sources!C sources() @property
+    {
+        Sources!C dst;
+        dst[0] = sRXQZ.sources[0];
+        return dst;
+    }
+
+
+    SimulatedBlock!C dup() @property
+    {
+        SimulatedBlock!C mod = new SimulatedBlock!C();
+        mod.sTXBB = cast(typeof(this.sTXBB))this.sTXBB.dup;
+        mod.dTXBB = cast(typeof(this.dTXBB))this.dTXBB.dup;
+        mod.sTXIQ = cast(typeof(this.sTXIQ))this.sTXIQ.dup;
+        mod.dTXIQ = cast(typeof(this.dTXIQ))this.dTXIQ.dup;
+        mod.sTXPN = cast(typeof(this.sTXPN))this.sTXPN.dup;
+        mod.dTXPN = cast(typeof(this.dTXPN))this.dTXPN.dup;
+        mod.sTXPA = cast(typeof(this.sTXPA))this.sTXPA.dup;
+        mod.dTXPA = cast(typeof(this.dTXPA))this.dTXPA.dup;
+        mod.sTXCH = cast(typeof(this.sTXCH))this.sTXCH.dup;
+        mod.dTXCH = cast(typeof(this.dTXCH))this.dTXCH.dup;
+        mod.sRXANT = cast(typeof(this.sRXANT))this.sRXANT.dup;
+        mod.sRXLN = cast(typeof(this.sRXLN))this.sRXLN.dup;
+        mod.sRXIQ = cast(typeof(this.sRXIQ))this.sRXIQ.dup;
+        mod.sRXQZ = cast(typeof(this.sRXQZ))this.sRXQZ.dup;
+
+        mod.fullConnect();
+        return mod;
+    }
+
+
+    void fullConnect()
+    {
+        // dispose all existing connection
+        foreach(k, d; disposables)
+            d.dispose();
+
+        // reconnect
+        disposables[tuple("sTXBB", "sTXIQ")]
+            = sTXBB.sources[0].doSubscribe(sTXIQ.sinks[0]);
+        disposables[tuple("sTXIQ", "sTXPN")]
+            = sTXIQ.sources[0].doSubscribe(sTXPN.sinks[0]);
+        disposables[tuple("sTXPN", "sTXPA")]
+            = sTXPN.sources[0].doSubscribe(sTXPA.sinks[0]);
+        disposables[tuple("sTXPA", "sTXCH")]
+            = sTXPA.sources[0].doSubscribe(sTXCH.sinks[0]);
+
+        disposables[tuple("dTXBB", "dTXIQ")]
+            = dTXBB.sources[0].doSubscribe(dTXIQ.sinks[0]);
+        disposables[tuple("dTXIQ", "dTXPN")]
+            = dTXIQ.sources[0].doSubscribe(dTXPN.sinks[0]);
+        disposables[tuple("dTXPN", "dTXPA")]
+            = dTXPN.sources[0].doSubscribe(dTXPA.sinks[0]);
+        disposables[tuple("dTXPA", "dTXCH")]
+            = dTXPA.sources[0].doSubscribe(dTXCH.sinks[0]);
+
+        disposables[tuple("sTXCH", "sRXANT")]
+            = sTXCH.sources[0].doSubscribe(sRXANT.sinks[0]);
+        disposables[tuple("dTXCH", "sRXANT")]
+            = dTXCH.sources[0].doSubscribe(sRXANT.sinks[1]);
+
+        disposables[tuple("sRXANT", "sRXLN")]
+            = sRXANT.sources[0].doSubscribe(sRXLN.sinks[0]);
+        disposables[tuple("sRXLN", "sRXIQ")]
+            = sRXLN.sources[0].doSubscribe(sRXIQ.sinks[0]);
+        disposables[tuple("sRXIQ", "sRXQZ")]
+            = sRXIQ.sources[0].doSubscribe(sRXQZ.sinks[0]);
+    }
+
+
+    bool hasGetter(string key)
+    {
+        // auto ns = key.findSplit(".");
+        // if(!ns[1].empty){
+        //     if(auto p = ns[0] in blocks){
+        //         return p.hasGetter(ns[2]);
+        //     }
+        // }
+
+        // return false;
+        return false;
+    }
+
+
+    bool hasSetter(string key)
+    {
+        return false;
+    }
+
+
+    void opIndexAssignImpl(Variant value, string key)
+    {
+        {
+            import core.exception;
+            onRangeError();
+        }
+    }
+
+
+    void opIndexAssign(T)(T value, string key)
+    {
+        this.opIndexAssignImpl(Variant(value), key);
+    }
+
+
+    Variant opIndex(string key)
+    {
+        {
+            import core.exception;
+            onRangeError();
+
+            Variant null_;
+            return null_;
+        }
+    }
+
+
+  private:
+    this() {}
+}
+
+
+class SimulatedSignals(C, R1, R2)
+{
+    alias C = Complex!real;
+
+
+    this(SimulatedBlock!C simblock, R1 siSignal, R2 desired)
+    {
+        _simblock = simblock;
+        _si = siSignal;
+        _desired = desired;
+    }
+
+
+    void fillBuffer(alias ms, X, size_t N)(X[][N] buffers...)
+    if(ms.length == N)
+    in{
+        auto s = buffers[0].length;
+        foreach(e; buffers) assert(e.length == s);
+    }
+    body{
+        import std.string : toUpper;
+        import rx : Disposable, doSubscribe;
+
+        Disposable[ms.length] disp;
+        foreach(i, m; aliasSeqOf!ms)
+            disp[i] = __traits(getMember, _simblock, m).sources[0].doSubscribe(buffers[i]);
+
+        scope(exit)
+            foreach(d; disp) d.dispose();
+
+        foreach(k, ref signal; AliasSeq!(_si, _desired)){
+            _inputbuffer.length = buffers[0].length;
+            foreach(i; 0 .. _inputbuffer.length){
+                assert(!signal.empty);
+                _inputbuffer[i] = signal.front;
+                signal.popFront();
+            }
+
+            // auto b = cast(ISPBlock!(C, C, true))_simblock.blocks[_simblock.txName[k]];
+            // b.put(_inputbuffer);
+            auto b = [_simblock.sTXBB, _simblock.dTXBB][k];
+            b.put(_inputbuffer);
+        }
+    }
+
+
+
+    void popFrontN(size_t n)
+    body{
+        if(_inputbuffer.length < 64)
+            _inputbuffer.length = 64;
+
+        foreach(ref j; 0 .. n){
+            foreach(k, signal; AliasSeq!(_si, _desired)){
+                foreach(i; 0 .. _inputbuffer.length){
+                    assert(!signal.empty);
+                    _inputbuffer[i] = signal.front;
+                    signal.popFront();
+                }
+
+                auto b = [_simblock.sTXBB, _simblock.dTXBB][k];
+                b.put(_inputbuffer);
+            }
+
+            j += _inputbuffer.length;
+        }
+    }
+
+
+  private:
+    SimulatedBlock!C _simblock;
+    R1 _si;
+    R2 _desired;
+    C[] _inputbuffer;
+}
+
+
+auto makeSimulatedSignals(C, R1, R2)(SimulatedBlock!C block, R1 si, R2 desired)
+{
+    return new SimulatedSignals!(C, R1, R2)(block, si, desired);
+}
+
+
+void noLoadRun(C, R1, R2)(SimulatedBlock!C block, R1 range1, R2 range2, size_t n, size_t chunkSize = 0)
+{
+    auto signals = makeSimulatedSignals(block, range1, range2);
+    signals._inputbuffer.length = chunkSize;
+    signals.popFrontN(n);
+}
+
+
+// auto makeSimulatedSignal(C, SimModel)()
+
+
+auto makeNopBlock(C)()
+{
+    NopConverter!C impl;
+    return makeRxBlock(impl);
+}
+
+
+auto makeSimulatedBlock(Model model)
+{
+    return new SimulatedBlock!(Complex!real)(model);
+}
+
+/+
+SimulatedBlock!(Complex!real) makeSimulatedBlock(Model model)
+{
+    import std.conv : to;
+
+    alias C = Complex!real;
+    SimulatedBlock!C dst = new SimulatedBlock!C;
+
+    foreach(sd; aliasSeqOf!(["S", "D"]))
+    {
+        string preBlock;
+        foreach(i, blockName; aliasSeqOf!([sd~":TX:IQ", sd~":TX:PN", sd~":TX:PA", sd~":TX:CH"])){
+            mixin(q{
+                if(model.use%1$s)
+                    dst.blocks[blockName] = make%1$sBlock!C(model);
+                else
+                    dst.blocks[blockName] = makeNopBlock!C();
+
+                if(!preBlock.empty)
+                    dst.connectAtoB(preBlock, blockName);
+            }.format(blockName.filter!"a != ':'".array.to!string));
+        }
+    }
+
+    {
+        auto rxAntenna = makeZipAddBlock!(C, 2)();
+        auto disp1 = (cast(ISPBlock!(C, C, true))dst.blocks["S:TX:CH"]).observableObject.doSubscribe(rxAntenna.sinks[0]);
+        auto disp2 = (cast(ISPBlock!(C, C, true))dst.blocks["D:TX:CH"]).observableObject.doSubscribe(rxAntenna.sinks[1]);
+    
+        dst.disposables[tuple("S:TX:CH", "S:RX:ANT")] = disp1;
+        dst.disposables[tuple("D:TX:CH", "S:RX:ANT")] = disp2;
+    }
+
+    return dst;
+
+    /*
     immutable doOutput = resultDir !is null;
 
     bool* swIsAGCTraining = new bool(true),
@@ -161,7 +483,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     immutable bool* alwaysFalsePointer = new bool(false);
     immutable bool* alwaysTruePointer = new bool(true);
 
-    SimulatedSignals dst = new SimulatedSignals;
+    SimulatedBlock!C dst = new SimulatedBlock!C;
     dst._model = model;
     dst._swIsAGCTraining = swIsAGCTraining;
     dst._swIsNotAGCTraining = swIsNotAGCTraining;
@@ -337,4 +659,6 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     if(!model.useNoise) dst.noise = null;
 
     return dst;
+    */
 }
++/

@@ -1,5 +1,6 @@
 module dffdd.mod.bpsk;
 
+import std.bitmanip;
 import std.complex;
 import std.mathspecial;
 import std.math;
@@ -22,7 +23,20 @@ struct BPSK
             outputs.length = inputs.length;
 
         foreach(i; 0 .. inputs.length)
-            outputs[i] = Complex!float(inputs[i] != 0 ? -1 : 1, 0);
+            outputs[i] = Complex!float(inputs[i] != 0 ? -1f : 1f, 0);
+
+        return outputs;
+    }
+
+
+    static
+    ref OutputElementType[] modulate(const ref BitArray inputs, return ref OutputElementType[] outputs)
+    {
+        if(outputs.length != inputs.length)
+            outputs.length = inputs.length;
+
+        foreach(i; 0 .. inputs.length)
+            outputs[i] = Complex!float(inputs[i] ? -1f : 1f, 0);
 
         return outputs;
     }
@@ -36,6 +50,19 @@ struct BPSK
 
         foreach(i; 0 .. inputs.length)
             outputs[i] = inputs[i].re > 0 ? 0 : 1;
+
+        return outputs;
+    }
+
+
+    static
+    ref BitArray demodulate(in OutputElementType[] inputs, return ref BitArray outputs)
+    {
+        if(outputs.length != inputs.length)
+            outputs.length = inputs.length;
+
+        foreach(i; 0 .. inputs.length)
+            outputs[i] = inputs[i].re < 0;
 
         return outputs;
     }
