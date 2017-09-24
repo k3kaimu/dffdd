@@ -1379,6 +1379,40 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
     }
 
 
+    static
+    void applyIQI(C[] input, Complex!real iqi)
+    {
+        foreach(ref e; input) e = e + iqi * e.conj;
+    }
+
+
+    static
+    void applyRevIQI(C[] input, Complex!real iqi)
+    {
+        foreach(ref e; input)
+            e = (e - iqi * e.conj) / (1 - iqi.sqAbs);
+    }
+
+
+    static
+    void applyPA(C[] input, Complex!real[] paCoefs)
+    {
+        foreach(ref e; input){
+            immutable x2 = e.sqAbs;
+            immutable x = e;
+            auto dst = typeof(e)(0);
+
+            // ホーナー法
+            foreach_reverse(p; 1 .. P){
+                dst += paCoefs[p];
+                dst *= x2;
+            }
+
+            e *= dst;
+        }
+    }
+
+
     void fftAndRemoveHighOrder(in C[] input, in C[] desired, C[] freqY)
     {
         enum bool isIQFree = false;
@@ -1393,22 +1427,8 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
 
         // 歪みを再現する
         fftIs[] = input[];
-        foreach(ref e; fftIs[]) e = e + _iqTX * e.conj;
-
-        // PAの歪みを再現する
-        foreach(ref e; fftIs[]){
-            immutable x2 = e.sqAbs;
-            immutable x = e;
-            auto dst = typeof(e)(0);
-
-            // ホーナー法
-            foreach_reverse(p; 1 .. P){
-                dst += _paCoefs[p];
-                dst *= x2;
-            }
-
-            e *= dst;
-        }
+        applyIQI(fftIs[], _iqTX);
+        applyPA(fftIs[], _paCoefs);
 
         _fftw.fft!float();
 
@@ -1505,12 +1525,8 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
 
     void toIQless(C[] input, C[] desired, C[][] freqX, C[][] freqY)
     {
-        // immutable nSym = (_nFFT + _nCP) * _nOS;
-
-        foreach(i; 0 .. input.length) {
-            input[i] = input[i] + _iqTX * input[i].conj;
-            desired[i] = (desired[i] - _iqRX * desired[i].conj) / (1 - _iqRX.sqAbs);
-        }
+        applyIQI(input, _iqTX);
+        applyRevIQI(desired, _iqRX);
 
         foreach(i; 0 .. freqX.length) foreach(f; 0 .. _nFFT * _nOS / 2) {
             immutable f1 = f;
@@ -1673,4 +1689,3 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
         }
     }
 }
-

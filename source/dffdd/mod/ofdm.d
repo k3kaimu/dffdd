@@ -109,6 +109,24 @@ final class OFDM(C)
     }
 
 
+    // auto symbolSplitter(R)(R range)
+    // {
+    //     return range.chunks((_nFFT + _nCp) * _nUpSampling);
+    // }
+
+
+    // auto cpRemover(R)(R range)
+    // {
+    //     return range.zip(repeat(_nCp * _nUpSampling)).map!"a[0][a[1] .. $]"();
+    // }
+
+
+    // auto convToSubcarrier(R)(R range)
+    // {
+    //     return 
+    // }
+
+
   private:
     FFTWObject!C _fftw;
     C[] _inpBuffer;
