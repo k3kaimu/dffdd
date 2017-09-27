@@ -1490,3 +1490,179 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
     }
 }
 
+
+final class PreIQInvertionCanceller(C, Canceller)
+{
+    import dffdd.utils.linalg;
+
+    this(size_t nTrIQI, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS, Canceller canceller)
+    {
+        _nTrIQI = nTrIQI;
+        _scMap = subcarrierMap.dup;
+        _nFFT = nFFT;
+        _nCP = nCP;
+        _nOS = nOS;
+        _canceller = canceller;
+        _fftw = makeFFTWObject!Complex(_nFFT * _nOS);
+    }
+
+
+    size_t inputBlockLength() @property
+    {
+        size_t a = (_nFFT + _nCP) * _nOS;
+        size_t b = _canceller.inputBlockLength;
+        return a * (b / gcd(a, b));     // LCM
+    }
+
+
+    void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
+    {
+        // メンバーを持っているかどうかチェック
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
+
+        // learningFromTX(signalGenerator(model).txBaseband);
+        static if(is(typeof((){ _canceller.preLearning(model, signalGenerator); })))
+            pragma(msg, "Prelearning of " ~ Canceller.stringof ~ " is ignored.");
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(input.length % this.inputBlockLength == 0);
+        if(!_alreadyEstimateIQI) assert(doLearning);
+    }
+    body{
+        if(_alreadyEstimateIQI){
+            if(_remainTXs.length && doLearning){
+                auto txtemp = _remainTXs;
+                auto rxtemp = _remainRXs;
+                _remainTXs = null;
+                _remainRXs = null;
+                this.apply!doLearning(txtemp, rxtemp, new C[txtemp.length]);
+            }
+
+            auto txbuf = doIQIInvert!"forward"(input, _iqTX);
+            auto dsbuf = doIQIInvert!"backward"(desired, _iqRX);
+            // auto erbuf = doIQIInvert!"backward"(errors, _iqRX);
+            import std.stdio;
+            // if(doLearning) writeln(txbuf.length / this.inputBlockLength);
+            _canceller.apply!doLearning(txbuf, dsbuf, errors);
+            auto erbuf = doIQIInvert!"forward"(errors, _iqRX);
+            errors[] = erbuf[];
+        }else{
+            // assert(doLearning);
+            immutable nSym = (_nFFT + _nCP) * _nOS;
+
+            foreach(i; 0 .. input.length / nSym)
+            {
+                if(!_alreadyEstimateIQI)
+                    applyForEachSymbol!doLearning(input[i*nSym .. (i+1)*nSym], desired[i*nSym .. (i+1)*nSym], errors[i*nSym .. (i+1)*nSym]);
+                else{
+                    errors[i*nSym .. (i+1)*nSym] = desired[i*nSym .. (i+1)*nSym];
+                }
+            }
+
+            _remainTXs ~= input;
+            _remainRXs ~= desired;
+        }
+    }
+
+
+    private
+    C[] doIQIInvert(string direction)(in C[] input, C coef)
+    {
+        C[] dst = new C[input.length];
+
+        static if(direction == "forward")
+        {
+            foreach(i; 0 .. input.length){
+                immutable e = input[i];
+                dst[i] = e + e.conj * coef;
+            }
+        }
+        else static if(direction == "backward")
+        {
+            foreach(i; 0 .. input.length){
+                immutable e = input[i];
+                dst[i] = (e - e.conj * coef) / (1 - coef.sqAbs);
+            }
+        }
+        else static assert(0);
+
+        return dst;
+    }
+
+
+    private
+    void applyForEachSymbol(Flag!"learning" doLearning)(in C[] input, in C[] desired, C[] errors)
+    in{
+        assert(!_alreadyEstimateIQI);
+    }
+    body{
+        static if(doLearning){
+            alias F = typeof(C.init.re);
+
+            _fftw.inputs!F[] = input[_nCP*_nOS .. $];
+            _fftw.fft!F();
+            _trTXSyms ~= _fftw.outputs!F[].dup;
+
+            _fftw.inputs!F[] = desired[_nCP*_nOS .. $];
+            _fftw.fft!F();
+            _trRXSyms ~= _fftw.outputs!F[].dup;
+
+            if(_trTXSyms.length == _nTrIQI){
+                estimateIQI();
+                _alreadyEstimateIQI = true;
+            }
+        }
+    }
+
+
+    private
+    void estimateIQI()
+    in{
+        assert(!_alreadyEstimateIQI);
+        assert(_trTXSyms.length == _nTrIQI);
+        assert(_trRXSyms.length == _nTrIQI);
+    }
+    body{
+        C[2][size_t] hlist;
+        foreach(f, b; _scMap){
+            if(!b) continue;
+            immutable invf = (f == 0 ? 0 : (_nFFT * _nOS)-f);
+
+            immutable h = leastSquareEstimate2(_trTXSyms.map!(a => a[f]),
+                                               _trTXSyms.map!(a => a[invf].conj),
+                                               _trRXSyms.map!(a => a[f]));
+
+            hlist[f] = h;
+        }
+
+        {
+            auto ks = hlist.keys;
+            auto invks = ks.zip(repeat(_nFFT * _nOS)).map!"a[0] == 0 ? 0 : a[1] - a[0]";
+            auto iqtxrx = leastSquareEstimate2(ks.zip(hlist.repeat).map!"a[1][a[0]][0]",
+                                               invks.zip(hlist.repeat).map!(a => a[1][a[0]][0].conj),
+                                               ks.zip(hlist.repeat).map!"a[1][a[0]][1]");
+            _iqTX = iqtxrx[0];
+            _iqRX = iqtxrx[1];
+            // writeln("NORMAL: ", iqtxrx);
+        }
+    }
+
+
+  private:
+    immutable size_t _nTrIQI;
+    immutable(bool[]) _scMap;
+    immutable size_t _nFFT, _nOS, _nCP;
+    FFTWObject!Complex _fftw;
+
+    Canceller _canceller;
+
+    bool _alreadyEstimateIQI;
+    C _iqTX, _iqRX;
+    
+    immutable(C)[] _remainTXs, _remainRXs;
+    C[][] _trTXSyms, _trRXSyms;
+}
+

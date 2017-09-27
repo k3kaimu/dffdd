@@ -182,12 +182,24 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
   enum bool isOrthogonalized = filterStructure[0] == 'O';
 
-  static if(filterStructure.endsWith("PHDCM"))
+  static if(filterStructure.startsWith("PreIQI"))
+  {
+    import dffdd.filter.freqdomain;
+
+    static if(filterStructure.startsWith("PreIQI-PH"))
+        auto subfilter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, false, false)(modOFDM(model), model);
+    else static if(filterStructure.startsWith("PreIQI-FHF"))
+        auto subfilter = makeFrequencyHammersteinFilter2!(filterOptimizer, 3, false)(model, false, false);
+    else static assert(0);
+
+    auto filter = new PreIQInvertionCanceller!(Complex!float, typeof(subfilter))(min(4, model.learningSymbols), model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling, subfilter);
+  }
+  else static if(filterStructure.endsWith("PHDCM"))
     auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, true, isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
 //   else static if(filterStructure.endsWith("CWLH"))

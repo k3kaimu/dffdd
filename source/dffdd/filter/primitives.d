@@ -126,6 +126,25 @@ unittest
 }
 
 
+final class OnlyPADistorter(C, size_t P)
+if(P % 2 == 1)
+{
+    enum size_t outputDim = (P + 1)/2;
+    enum size_t inputBlockLength = 1;
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        output.length = outputDim;
+        foreach(p; 1 .. P+1){
+            if(p % 2 == 1)
+                output[(p-1)/2] = input * (input.sqAbs() ^^ ((p-1)/2));
+        }
+    }
+
+    mixin ConverterOpCalls!(const(C), C[]);
+}
+
+
 final class SubSetOfPADistorter(C, size_t P)
 if(P % 2 == 1)
 {

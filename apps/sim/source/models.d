@@ -877,7 +877,7 @@ auto connectToRxChain(R)(R r)
 //}
 
 
-auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, size_t useWL = true, Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, bool useWL = true, bool isOrthogonalized, Mod)(Mod mod, Model model)
 {
     alias C = Complex!float;
 
@@ -885,12 +885,20 @@ auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = de
     alias Dist = CompleteDistorter!(distortionOrder);
   else
   {
-    static assert(distortionOrder == 1);
-    alias Dist = Distorter!(C, x => x);
+    // static assert(distortionOrder == 1);
+    // alias Dist = Distorter!(C, x => x);
+    alias Dist = OnlyPADistorter!(C, distortionOrder);
   }
 
-    alias GS = GramSchmidtOBFFactory!C;
-    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(Dist.outputDim));
+    static if(isOrthogonalized)
+    {
+        alias GS = GramSchmidtOBFFactory!C;
+        auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(Dist.outputDim));
+    }
+    else
+    {
+        auto dist = new Dist();
+    }
 
     auto makeOptimizer(State)(State state)
     {
