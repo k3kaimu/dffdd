@@ -240,9 +240,9 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         filterStructure.endsWith("SFHF") || filterStructure.endsWith("S1FHF") || filterStructure.endsWith("S2FHF"),
         filterStructure.endsWith("S2FHF"));
   }else static if(filterStructure.endsWith("WL"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, true, isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false, false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else
