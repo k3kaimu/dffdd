@@ -57,7 +57,7 @@ void mainJob()
         }
 
         foreach(learningSymbols; iota(10, 11, 1))
-        foreach(inr; iota(50, 55, 5))
+        foreach(inr; iota(20, 70, 5))
         foreach(txp; [23])
         foreach(irr; [25])
         {
@@ -155,7 +155,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     resList ~= mainImpl!methodName(m, dir);
 
     // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-    enum K = 0;    // 試行回数
+    enum K = 10;    // 試行回数
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(j; 0 .. K){
