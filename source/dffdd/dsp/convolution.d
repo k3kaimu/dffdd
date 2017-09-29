@@ -3,8 +3,6 @@ module dffdd.dsp.convolution;
 import std.complex;
 import std.math;
 import std.numeric;
-import std.typecons;
-import std.algorithm;
 
 import dffdd.utils.fft;
 
@@ -12,15 +10,13 @@ import dffdd.utils.fft;
 /**
 
 */
-C3[] convolution(FftObj, C1, C2, C3)(FftObj fftObj, in FrequencyDomain!(C1[]) specA, in FrequencyDomain!(C2[]) specB, C3[] dst)
+C[] convolution(FftObj, C)(FftObj fftObj, in FrequencyDomain!(C[]) specA, in FrequencyDomain!(C[]) specB, C[] dst)
 in{
     assert(specA.length == specB.length);
 }
 body{
-    alias F = typeof(C1.re);
-
     immutable size = specA.length;
-    // C3[] bufbuf = new C3[size];
+    C[] bufbuf = new C[size];
 
     if(dst.length < size)
         dst.length = specA.length;
@@ -31,12 +27,8 @@ body{
     foreach(i, ref e; dst)
         e *= -specB[i].conj;
 
-    // fftObj.inverseFft(dst, bufbuf);
-    {
-        fftObj.inputs!F[] = dst[];
-        fftObj.ifft!F();
-    }
-    dst[] = fftObj.outputs!F[];
+    fftObj.inverseFft(dst, bufbuf);
+    dst[] = bufbuf[];
 
     foreach(i, ref e; dst)
         e /= size;
@@ -48,10 +40,10 @@ body{
 /**
 
 */
-C3[] convolutionPower(FftObj, C1, C2, C3)(FftObj fftObj,
-                                in FrequencyDomain!(C1[]) specA,
-                                in FrequencyDomain!(C2[]) specB,
-                                C3[] dst)
+C[] convolutionPower(FftObj, C)(FftObj fftObj,
+                                in FrequencyDomain!(C[]) specA,
+                                in FrequencyDomain!(C[]) specB,
+                                C[] dst)
 {
     dst = convolution(fftObj, specA, specB, dst);
     foreach(ref e; dst)
@@ -66,11 +58,11 @@ Parameters:
     + smpPerSym := 1シンボルあたりのサンプル数, ただし、OFDMなら1
     + thr := 捕捉しきい値[dB]
 */
-Nullable!size_t findConvolutionPeak(FftObj, C1, C2, C3)(
+Nullable!size_t findConvolutionPeak(FftObj)(
                     FftObj fftObj,
-                    in FrequencyDomain!(C1[]) sendSpec,
-                    in FrequencyDomain!(C2[]) recvSpec,
-                    C3[] convDst,
+                    in FrequencyDomain!(Complex!float[]) sendSpec,
+                    in FrequencyDomain!(Complex!float[]) recvSpec,
+                    Complex!float[] convDst,
                     real dBThreshold = 20,
                     bool onlyHalf = false)
 {
@@ -79,7 +71,7 @@ Nullable!size_t findConvolutionPeak(FftObj, C1, C2, C3)(
     real maxP = -real.infinity;
     size_t maxIdx;
     foreach(i, ref e; convDst[0 .. onlyHalf ? $/2 : $]){
-        auto p = e.re;         // ここ2乗必要？
+        auto p = e.re^^2 + e.im^^2;         // ここ2乗必要？
         e = p;
 
         if(maxP < p){
