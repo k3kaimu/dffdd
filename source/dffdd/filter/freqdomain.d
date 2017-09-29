@@ -1142,18 +1142,14 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
     import dffdd.utils.linalg;
 
 
-    this(size_t nWLLearning, size_t nIter, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS, bool doNyquistComplyLearning = false, size_t nNMLTr = 1)
+    this(size_t nWLLearning, size_t nIter, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS)
     {
         _scMap = subcarrierMap.dup;
         _nFFT = nFFT;
         _nCP = nCP;
         _nOS = nOS;
-        _nSC = subcarrierMap.map!"a ? 1 : 0".sum();
         _nWLLearning = nWLLearning;
         _nIter = nIter;
-
-        _doNyquistComplyLearning = doNyquistComplyLearning;
-        _nNMLTr = nNMLTr;
 
         _fftw = makeFFTWObject!Complex(_nFFT * _nOS);
         _regenerator = new OverlapSaveRegenerator2!C(1, _nFFT * _nOS);
@@ -1193,10 +1189,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
     immutable bool[] _scMap;
     immutable size_t _nWLLearning;
     immutable size_t _nIter;
-    immutable size_t _nCP, _nFFT, _nOS, _nSC;
-
-    immutable bool _doNyquistComplyLearning;
-    immutable size_t _nNMLTr;
+    immutable size_t _nCP, _nFFT, _nOS;
 
     FFTWObject!Complex _fftw;
     OverlapSaveRegenerator2!C _regenerator;
@@ -1219,144 +1212,28 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
             ++_nBufferedSymbols;
 
             if(_nBufferedSymbols == _nWLLearning && _nWLLearning >= 2) {
-                if(_doNyquistComplyLearning)
-                {
-                    immutable nSWPTr = _nWLLearning - _nNMLTr;
-                    immutable nNMLTr = _nNMLTr;
-                    immutable nSym = (_nFFT + _nCP) * _nOS;
-                    C[] ips = _inputs.dup;
-                    C[] dss = _desired.dup;
-                    C[] ips_swp = ips[0 .. nSWPTr * nSym];
-                    C[] dss_swp = dss[0 .. nSWPTr * nSym];
-                    C[] ips_nml = ips[$ - nNMLTr * nSym .. $];
-                    C[] dss_nml = dss[$ - nNMLTr * nSym .. $];
+                C[] ips = _inputs.dup;
+                C[] dss = _desired.dup;
 
-                    foreach(iIter; 0 .. /*_nIter*/3){
-                        {
-                            C[][] freqX, freqY;
+                // foreach(iIter; 0 .. _nIter){
+                //     C[][] freqX, freqY;
+                //     estimateIQCoefs(ips, dss, freqX, freqY);
+                //     toIQless(ips, dss, freqX, freqY);
+                //     estimateCFR(ips, dss);
+                //     estimatePACoefs(ips, dss);
+                //     estimateCFR(ips, dss);
+                //     ips[] = _inputs[];
+                //     dss[] = _desired[];
+                // }
 
-                            estimateIQCoefs(
-                                ips_nml,
-                                dss_nml,
-                                freqX, freqY,
-                                No.useFreqResp,
-                                false);
-                            
-                            // toIQless(ips_swp, dss_swp, freqX, freqY);
-                        }
-                        {
-                            // toIQless
-                            foreach(i; 0 .. ips.length) {
-                                ips[i] = ips[i] + _iqTX * ips[i].conj;
-                                dss[i] = (dss[i] - _iqRX * dss[i].conj) / (1 - _iqRX.sqAbs);
-                            }
-                        }
-                        {
-                            // static
-                            C[] simpleChannelEstimate(in C[] xs, in C[] ys)
-                            {
-                                immutable cntSym = xs.length / nSym;
-                                C[][] freqX, freqY;
-                                foreach(i; 0 .. cntSym){
-                                    _fftw.inputs!float[] = xs[_nCP * _nOS + i * nSym .. (i+1) * nSym];
-                                    _fftw.fft!float();
-                                    freqX ~= _fftw.outputs!float[].dup;
-
-                                    _fftw.inputs!float[] = ys[_nCP * _nOS + i * nSym .. (i+1) * nSym];
-                                    _fftw.fft!float();
-                                    freqY ~= _fftw.outputs!float[].dup;
-                                }
-
-                                C[] freqResp = new C[_nFFT * _nOS];
-                                foreach(f; 0 .. _nFFT * _nOS){
-                                    C xy = 0;
-                                    real xx = 0;
-                                    foreach(i; 0 .. cntSym){
-                                        xy += freqX[i][f].conj * freqY[i][f];
-                                        xx += freqX[i][f].sqAbs;
-                                    }
-
-                                    freqResp[f] = xy / xx;
-                                }
-
-                                return freqResp;
-                            }
-
-                            auto chNML = simpleChannelEstimate(ips_nml, dss_nml);
-                            auto chSWP = simpleChannelEstimate(ips_swp, dss_swp);
-
-                            // estimate channel
-                            foreach(f; 0 .. _nFFT * _nOS){
-                                immutable bool byNML = (f != 0) && ((f <= _nSC/2) || (f >= (_nFFT * _nOS - _nSC/2)));
-                                
-                                if(byNML)
-                                    _channelFreqResponse[f] = chNML[f];
-                                else
-                                    _channelFreqResponse[f] = chSWP[f];
-                            }
-                        }
-                        {
-                            immutable cntSym = ips_nml.length / nSym;
-                            C[][][P] freqX;
-                            C[][] freqY;
-                            foreach(i; 0 .. cntSym){
-                                foreach(p; 0 .. P){
-                                    _fftw.inputs!float[] = ips_nml[_nCP * _nOS + i * nSym .. (i+1) * nSym];
-                                    foreach(ref e; ips) e = e * e.sqAbs^^p;
-                                    _fftw.fft!float();
-                                    freqX[p] ~= _fftw.outputs!float[].dup;
-                                }
-
-                                _fftw.inputs!float[] = dss_nml[_nCP * _nOS + i * nSym .. (i+1) * nSym];
-                                _fftw.fft!float();
-                                freqY ~= _fftw.outputs!float[].dup;
-                            }
-
-                            foreach(i, Y; freqY){
-                                foreach(f; 0 .. _nFFT * _nOS)
-                                    Y[f] /= _channelFreqResponse[f];
-                            }
-
-                            // a_pを推定していく
-                            foreach_reverse(p; 1 .. P){
-                                Complex!real num = complexZero!C,
-                                            den = complexZero!C;
-
-                                foreach(f; getSCIndex4PthAMPCoef(p)) foreach(i; 0 .. 1){
-                                    immutable x = freqX[p][i][f];
-                                    immutable y = freqY[i][f];
-                                    num += x.conj * y;
-                                    den += x.sqAbs;
-                                }
-
-                                _paCoefs[p] = num / den;
-
-                                // 干渉除去する
-                                foreach(f; 0 .. _nFFT * _nOS) foreach(i; 0 .. 1)
-                                    freqY[i][f] -= freqX[p][i][f] * _paCoefs[p];
-                            }
-                        }
-
-                        ips[] = _inputs[];
-                        dss[] = _desired[];
-                    }
-                    // assert(0);
-                }
-                else
-                {
-                    C[] ips = _inputs.dup;
-                    C[] dss = _desired.dup;
-
-                    foreach(iIter; 0 .. _nIter){
-                        C[][] freqX, freqY;
-
-                        estimateIQCoefs(ips, dss, freqX, freqY, /*iIter >= 1 ? Yes.useFreqResp : */No.useFreqResp);
-                        toIQless(ips, dss, freqX, freqY);
-                        estimateCFR(ips, dss);
-                        estimatePACoefs(ips, dss);
-                        ips[] = _inputs[];
-                        dss[] = _desired[];
-                    }
+                foreach(iIter; 0 .. _nIter){
+                    C[][] freqX, freqY;
+                    estimateIQCoefs(ips, dss, freqX, freqY);
+                    toIQless(ips, dss, freqX, freqY);
+                    estimateCFR(ips, dss);
+                    estimatePACoefs(ips, dss);
+                    ips[] = _inputs[];
+                    dss[] = _desired[];
                 }
             }
         }
@@ -1421,84 +1298,46 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
     }
 
 
-    void estimateIQCoefs(in C[] input, in C[] desired, ref C[][] freqX_dst, ref C[][] freqY_dst,
-        Flag!"useFreqResp" useFreqResp = No.useFreqResp,
-        bool removeHighOrderDist = true)
+    void estimateIQCoefs(in C[] input, in C[] desired, ref C[][] freqX_dst, ref C[][] freqY_dst)
     {
-        import std.stdio;
         immutable nSym = (_nFFT + _nCP) * _nOS;
-        immutable cntSym = input.length / nSym;
 
         C[][] freqX;
         C[][] freqY;
-        foreach(i; 0 .. cntSym){
+        foreach(i; 0 .. _nWLLearning){
             _fftw.inputs!float[] = input[_nCP * _nOS + i * nSym .. (i+1) * nSym];
             _fftw.fft!float();
             freqX ~= _fftw.outputs!float.dup;
 
-            if(removeHighOrderDist){
-                freqY ~= new C[_nFFT * _nOS];
-                fftAndRemoveHighOrder(input[_nCP * _nOS + i * nSym .. (i+1) * nSym], desired[_nCP * _nOS + i * nSym .. (i+1) * nSym], freqY[i]);
-            }
-            else{
-                _fftw.inputs!float[] = desired[_nCP * _nOS + i * nSym .. (i+1) * nSym];
-                _fftw.fft!float();
-                freqY ~= _fftw.outputs!float.dup;
-            }
+            freqY ~= new C[_nFFT * _nOS];
+            fftAndRemoveHighOrder(input[_nCP * _nOS + i * nSym .. (i+1) * nSym], desired[_nCP * _nOS + i * nSym .. (i+1) * nSym], freqY[i]);
         }
         freqX_dst = freqX;
         freqY_dst = freqY;
 
-        // assert(!useFreqResp);
-
         // H_10(f), H_01(f)を推定する
-        if(!useFreqResp)
+        C[2][size_t] hlist;
         {
-            C[2][size_t] hlist;
-            {
-                foreach(f; getSCIndex4IQ()){
-                    immutable invf = (f == 0 ? 0 : (_nFFT * _nOS)-f);
+            foreach(f; getSCIndex4IQ()){
+                immutable invf = (f == 0 ? 0 : (_nFFT * _nOS)-f);
 
-                    auto h = leastSquareEstimate2(freqX.map!(a => a[f]),
-                                                freqX.map!(a => a[invf].conj),
-                                                freqY.map!(a => a[f]));
-                    
-                    hlist[f] = h;
-                }
-            }
-
-            // H_10(f), H_01(f)から係数を推定する
-            {
-                auto ks = hlist.keys;
-                auto invks = ks.zip(repeat(_nFFT * _nOS)).map!"a[0] == 0 ? 0 : a[1] - a[0]";
-                auto iqtxrx = leastSquareEstimate2(ks.zip(hlist.repeat).map!"a[1][a[0]][0]",
-                                                invks.zip(hlist.repeat).map!(a => a[1][a[0]][0].conj),
-                                                ks.zip(hlist.repeat).map!"a[1][a[0]][1]");
-                _iqTX = iqtxrx[0];
-                _iqRX = iqtxrx[1];
-                writeln("NORMAL: ", iqtxrx);
+                auto h = leastSquareEstimate2(freqX.map!(a => a[f]),
+                                              freqX.map!(a => a[invf].conj),
+                                              freqY.map!(a => a[f]));
+                
+                hlist[f] = h;
             }
         }
-        else
-        {
-            // 
-            C[] freqH_Conj;
-            C[] hlist_pos, hlist_neg;
-            foreach(i; 0 .. cntSym){
-                foreach(f; getSCIndex4IQ()){
-                    auto h = freqY[i][f];
-                    h -= _channelFreqResponse[f] * freqX[i][f];
-                    h /= freqX[i][($-f) % $].conj;
-                    freqH_Conj ~= h;
-                    hlist_pos ~= _channelFreqResponse[f];
-                    hlist_neg ~= _channelFreqResponse[($-f) % $].conj;
-                }
-            }
 
-            auto iqtxrx = leastSquareEstimate2(hlist_pos, hlist_neg, freqH_Conj);
+        // H_10(f), H_01(f)から係数を推定する
+        {
+            auto ks = hlist.keys;
+            auto invks = ks.zip(repeat(_nFFT * _nOS)).map!"a[0] == 0 ? 0 : a[1] - a[0]";
+            auto iqtxrx = leastSquareEstimate2(ks.zip(hlist.repeat).map!"a[1][a[0]][0]",
+                                               invks.zip(hlist.repeat).map!(a => a[1][a[0]][0].conj),
+                                               ks.zip(hlist.repeat).map!"a[1][a[0]][1]");
             _iqTX = iqtxrx[0];
             _iqRX = iqtxrx[1];
-            writeln("USE_H: ", iqtxrx);
         }
     }
 
@@ -1565,12 +1404,12 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
             _channelFreqResponse[f] = num / den;
         }
 
-        // _fftw.inputs!float[] = _channelFreqResponse[];
-        // _fftw.ifft!float();
-        // _fftw.inputs!float[0 .. _nCP * _nOS] = _fftw.outputs!float[0 .. _nCP * _nOS];
-        // _fftw.inputs!float[_nCP * _nOS .. $] = complexZero!C;
-        // _fftw.fft!float();
-        // _channelFreqResponse[] = _fftw.outputs!float[];
+        _fftw.inputs!float[] = _channelFreqResponse[];
+        _fftw.ifft!float();
+        _fftw.inputs!float[0 .. _nCP * _nOS] = _fftw.outputs!float[0 .. _nCP * _nOS];
+        _fftw.inputs!float[_nCP * _nOS .. $] = complexZero!C;
+        _fftw.fft!float();
+        _channelFreqResponse[] = _fftw.outputs!float[];
     }
 
 
