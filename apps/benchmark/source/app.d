@@ -143,11 +143,11 @@ void realisticBenchmarkRange()
     foreach(i; 0 .. 64)
         taps ~= C(0.01, 0.01);
 
-    InputRange!C txiq = signal.connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject;
-    InputRange!C txamp = txiq.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    InputRange!C recv = txamp.connectTo(makeFIRFilter!C(taps)).inputRangeObject;
-    InputRange!C lna = recv.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    InputRange!C rxiq = lna.connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject;
+    InputRange!C txiq = signal.connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject;
+    InputRange!C txamp = txiq.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
+    InputRange!C recv = txamp.connectTo!(FIRFilterConverter!C)(taps).inputRangeObject;
+    InputRange!C lna = recv.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
+    InputRange!C rxiq = lna.connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject;
 
     StopWatch sw;
     sw.start();
@@ -171,11 +171,11 @@ void realisticBenchmarkRangeBuffered()
     foreach(i; 0 .. 64)
         taps ~= C(0.01, 0.01);
 
-    auto txiq = signal.chunks(320).connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject;
-    auto txamp = txiq.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    auto recv = txamp.connectTo(makeFIRFilter!C(taps)).inputRangeObject;
-    auto lna = recv.connectTo(makeRappModel!C(0.dB, 1, 1)).inputRangeObject;
-    auto rxiq = lna.connectTo(makeIQImbalancer!C(0.dB, (20).dB, 0)).inputRangeObject.joiner;
+    auto txiq = signal.chunks(320).connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject;
+    auto txamp = txiq.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
+    auto recv = txamp.connectTo!(FIRFilterConverter!C)(taps).inputRangeObject;
+    auto lna = recv.connectTo!(RappModelConverter!C)(0.dB, 1, 1).inputRangeObject;
+    auto rxiq = lna.connectTo!(IQImbalanceConverter!C)(0.dB, (20).dB, 0).inputRangeObject.joiner;
 
     StopWatch sw;
     sw.start();
@@ -201,11 +201,11 @@ void realisticBenchmarkRxBuffered()
     foreach(i; 0 .. 64)
         taps ~= C(0.01, 0.01);
 
-    auto txiq = makeRxBlock(makeIQImbalancer!C(0.dB, (20).dB, 0));
-    auto txamp = makeRxBlock(makeRappModel!C(0.dB, 1, 1));
-    auto recv = makeRxBlock(makeFIRFilter!C(taps));
-    auto lna = makeRxBlock(makeRappModel!C(0.dB, 1, 1));
-    auto rxiq = makeRxBlock(makeIQImbalancer!C(0.dB, (20).dB, 0));
+    auto txiq = RxBlock!(IQImbalanceConverter!C)(0.dB, (20).dB, 0);
+    auto txamp = RxBlock!(RappModelConverter!C)(0.dB, 1, 1);
+    auto recv = RxBlock!(FIRFilterConverter!C)(taps);
+    auto lna = RxBlock!(RappModelConverter!C)(0.dB, 1, 1);
+    auto rxiq = RxBlock!(IQImbalanceConverter!C)(0.dB, (20).dB, 0);
 
     // pragma(msg, typeof(sig).stringof);
 
@@ -259,7 +259,7 @@ void realisticBenchmarkHandmade()
         }
     }
 
-    input = input.chunks(1024).connectTo(makeFIRFilter(taps)).joiner.array().dup;
+    input = input.chunks(1024).connectTo!(FIRFilterConverter!C)(taps).joiner.array().dup;
 
     foreach(ref e; input) {
         auto x = e;

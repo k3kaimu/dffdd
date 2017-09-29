@@ -2,7 +2,6 @@ module dffdd.blockdiagram.iqmixer;
 
 import dffdd.utils.unit;
 import dffdd.blockdiagram.noise;
-import dffdd.blockdiagram.utils;
 import std.random;
 import std.math;
 import std.complex;
@@ -63,7 +62,7 @@ struct IQImbalance(R)
 }
 
 
-struct IQImbalanceConverterImpl(C)
+struct IQImbalanceConverter(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
@@ -82,6 +81,15 @@ struct IQImbalanceConverterImpl(C)
     }
 
 
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    {
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            this.opCall(input[i], output[i]);
+    }
+
+
     typeof(this) dup() const pure nothrow @safe @nogc @property
     {
         return this;
@@ -92,16 +100,6 @@ struct IQImbalanceConverterImpl(C)
     real _g1V;      // 電圧系での真値のゲイン
     C _g2V;         // 電圧計での真値のImageゲイン
 }
-
-
-alias IQImbalanceConverter(C) = ArrayConverterOf!(IQImbalanceConverterImpl!C);
-
-
-IQImbalanceConverter!C makeIQImbalancer(C)(Gain gain, Gain irr, real theta)
-{
-    return IQImbalanceConverter!C(gain, irr, theta);
-}
-
 
 unittest
 {
@@ -118,23 +116,20 @@ unittest
         e = C(uniform01(), uniform01);
 
     auto r0 = IQImbalance!(C[])(signal, 10.dB, 10.dB, 0.1).array;
-    auto r1 = signal.connectTo(makeIQImbalancer!C(10.dB, 10.dB, 0.1));
-    auto r2 = signal.chunks(3).connectTo(makeIQImbalancer!C(10.dB, 10.dB, 0.1)).joiner;
+    auto r1 = signal.connectTo!(IQImbalanceConverter!C)(10.dB, 10.dB, 0.1);
+    auto r2 = signal.chunks(3).connectTo!(IQImbalanceConverter!C)(10.dB, 10.dB, 0.1).joiner;
 
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
 }
 
 
-
-deprecated
 auto addPhaseNoise(R)(R r, Gain phaseNoise, real alpha = 0.5)
 {
     return PhaseNoise!R(r, phaseNoise, alpha);
 }
 
 
-deprecated
 struct PhaseNoise(R)
 {
     this(R r, real carrFreq, real samplingFreq, real paramC)
@@ -185,6 +180,8 @@ struct PhaseNoise(R)
     real _phi;
     BoxMuller!Random _noise;
 }
+
+
 
 
 /+

@@ -5,8 +5,6 @@ import std.traits;
 import std.range;
 import std.complex;
 
-import dffdd.blockdiagram.utils;
-
 
 struct Quantizer(R)
 {
@@ -151,7 +149,7 @@ struct SimpleQuantizer(R)
 }
 
 
-struct SimpleQuantizerConverterImpl(C)
+struct SimpleQuantizerConverter(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
@@ -163,9 +161,9 @@ struct SimpleQuantizerConverterImpl(C)
     }
 
 
-    void opCall(in InputElementType input, ref OutputElementType output) pure nothrow @safe @nogc
+    void opCall(in InputElementType input, ref OutputElementType output)
     {
-        immutable f = input * (1 << (_nbit - 1));
+        auto f = input * (1 << (_nbit - 1));
         long ivr, ivi;
 
         if(f.re >= long.max)
@@ -186,25 +184,18 @@ struct SimpleQuantizerConverterImpl(C)
     }
 
 
-    SimpleQuantizerConverterImpl dup() const pure nothrow @safe @nogc @property
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
     {
-        return this;
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            this.opCall(input[i], output[i]);
     }
 
 
   private:
     size_t _nbit;
 }
-
-
-alias SimpleQuantizerConverter(C) = ArrayConverterOf!(SimpleQuantizerConverterImpl!C);
-
-
-auto makeSimpleQuantizer(C)(size_t nbit)
-{
-    return SimpleQuantizerConverter!C(nbit);
-}
-
 
 unittest
 {
@@ -221,8 +212,8 @@ unittest
         e = C(uniform01(), uniform01);
 
     auto r0 = SimpleQuantizer!(C[])(signal, 8).array;
-    auto r1 = signal.connectTo(makeSimpleQuantizer!C(8));
-    auto r2 = signal.chunks(3).connectTo(makeSimpleQuantizer!C(8)).joiner;
+    auto r1 = signal.connectTo!(SimpleQuantizerConverter!C)(8);
+    auto r2 = signal.chunks(3).connectTo!(SimpleQuantizerConverter!C)(8).joiner;
 
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
