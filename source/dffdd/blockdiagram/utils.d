@@ -11,10 +11,10 @@ import carbon.channel;
 
 import rx;
 
-
-template connectTo_old(alias Block)
+/*
+template connectTo(alias Block)
 {
-    auto connectTo_old(R, Params...)(R r, Params params)
+    auto connectTo(R, Params...)(R r, Params params)
     {
       static if(is(typeof((){ auto b = Block(r, params); })))                   // Block is function
         return Block(r, params);
@@ -28,16 +28,7 @@ template connectTo_old(alias Block)
         static assert(0);
         // return Block!R(r, params);
     }
-}
-
-template connectTo(alias Block)
-{
-    auto connectTo(R, Params...)(R r, Params params)
-    if(is(typeof((){ connectTo_old!Block(r, params); })))
-    {
-        return connectTo_old!Block(r, params);
-    }
-}
+}*/
 
 
 auto consume(R, X)(ref R range, X x)
@@ -1012,7 +1003,6 @@ template connectTo(TImpl)
     import rx : isObservable;
 
     auto connectTo(S, X...)(S self, X args)
-    if(!is(typeof((){ connectTo_old!TImpl(self, args); })))
     {
       static if(isInputRange!S)
         return RangeAdapter!(TImpl, S)(self, args);
