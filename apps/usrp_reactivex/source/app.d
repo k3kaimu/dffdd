@@ -369,10 +369,9 @@ void zmqRXWorker(
 
             received = findPreamble(detector, received);
             auto bins = demodulateRX(ofdm, qpsk, received);
-            if(bins.length){
-                writefln("received!: %s", bins.length);
-                rxbinary.send(bins);
-            }
+            if(bins.length)
+                writefln("received!: %s", cast(string)bins);
+            // rxbinary.send(bins);
         }
         else
             Thread.sleep(100.msecs);
