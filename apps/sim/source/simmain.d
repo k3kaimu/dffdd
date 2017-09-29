@@ -498,7 +498,7 @@ auto preLearning(string filterType, Filter)(ref Filter filter, Model model)
         }
         {
             Model profModel = model;
-            // profModel.INR = profModel.lna.DR;
+            profModel.INR = profModel.lna.DR;
             profModel.useCoaxialCableAsChannel();
             profModel.rndSeed += 114514;
 
