@@ -233,23 +233,23 @@ struct RappModelConverterImpl(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output) const// pure nothrow @safe @nogc
+    void opCall(InputElementType input, ref OutputElementType output) const pure nothrow @safe @nogc
     {
         auto x = input;
-        auto r = sqAbs(x / _o);
+        auto r = abs(x),
+             u = x / r;     // unit vector
 
         // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
-        if(_s == 1){
-            r = (_g) / (sqrt( 1 + r));
-            output = r * x;
+        if(r <= 1E-6){
+            output = x;
         }
-        else if(_s == 3){
-            r = (_g) / (sqrt( 1 + r^^3).cbrt);
-            output = r * x;
+        else if(_s == 1){
+            r = (r * _g) / (sqrt( 1 + (r/_o)^^2 ));
+            output = r * u;
         }
         else{
-            r = (_g) / (( 1 + r^^(_s) )^^(1/(2*_s)));
-            output = r * x;
+            r = (r * _g) / (( 1 + (r/_o)^^(2*_s) )^^(1/(2*_s)));
+            output = r * u;
         }
     }
 
@@ -300,14 +300,12 @@ unittest
     foreach(ref e; signal)
         e = C(uniform01(), uniform01);
 
-    foreach(s; 1 .. 5){
-        auto r0 = RappModel!(C[])(signal, 30.dB, s, 1).array;
-        auto r1 = signal.connectTo(makeRappModel!C(30.dB, s, 1));
-        auto r2 = signal.chunks(3).connectTo(makeRappModel!C(30.dB, s, 1)).joiner;
+    auto r0 = RappModel!(C[])(signal, 30.dB, 1, 1).array;
+    auto r1 = signal.connectTo(makeRappModel!C(30.dB, 1, 1));
+    auto r2 = signal.chunks(3).connectTo(makeRappModel!C(30.dB, 1, 1)).joiner;
 
-        assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
-        assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
-    }
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
+    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
 }
 
 
