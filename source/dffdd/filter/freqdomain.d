@@ -505,7 +505,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                             immutable float pY1 = (){
                                 real y = 0;
                                     foreach(idxOfEstH; 0 .. _nEstH)
-                                        y += freqY[idxOfEstH][($-f) % $].sqAbs;
+                                        y += freqY[idxOfEstH][f == 0 ? 0 : $-f].sqAbs;
                                 
                                 return y / _nEstH;
                             }();
@@ -521,7 +521,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                             }();
 
                             immutable float ipI = (){
-                                    return pY3 * _importance[($-f) % $][_distorter.indexOfConjugated(p)]
+                                    return pY3 * _importance[f == 0 ? 0 : $-f][_distorter.indexOfConjugated(p)]
                                                * iqcoef;
                             }();
 
@@ -554,7 +554,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
                     foreach(f; 0 .. _nFFT * _nOS){
                         float h = freqH[f].sqAbs;
-                        float hinv = freqH[($-f) % $].sqAbs;
+                        float hinv = freqH[$-1-f].sqAbs;
 
                         foreach(p; 0 .. Dist.outputDim){
                             // 重要度と受信信号電力の積が，推定された干渉電力になる
@@ -803,26 +803,20 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     電力スペクトル密度のプロファイルを取ります
     + chunker: chunker(buf1, buf2)で，buf1に送信ベースバンド信号，buf2に受信ベースバンド信号を格納する
     */
-    void psdProfiling(scope void delegate(C[], C[]) chunker)
+    void psdProfiling(void delegate(C[], C[]) chunker)
     out{
         foreach(es; _importance)
             foreach(e; es) assert(!e.re.isNaN && !e.im.isNaN);
     }
     body{
-        // 信号を保存しておく
-        C[] txsignal = new C[(_nFFT + _nCP) * _nOS * 100],
-            rxsignal = new C[(_nFFT + _nCP) * _nOS * 100];
-
-        chunker(txsignal, rxsignal);
-
         C[][] weight;
         Tuple!(real[][], real[]) expectedPowers;
         real[][] psiPower;
         real[] gnl = new real[_distorter.outputDim];
         if(_doComplexSelect /*&& testcase == 0*/)
         {
-            _iqRX = estimateIQCoefs(estimateCFR(txsignal, rxsignal, C(0, 0)))[1];
-            weight = estimateCFR(txsignal, rxsignal, _iqRX);
+            _iqRX = estimateIQCoefs(estimateCFR(chunker, C(0, 0)))[1];
+            weight = estimateCFR(chunker, _iqRX);
             foreach(p; 0 .. _distorter.outputDim)
             {
                 gnl[p] = 0;
@@ -832,18 +826,14 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                 gnl[p] = sqrt(gnl[p] / _nSC);
             }
 
-            import std.stdio;
-            writeln(_iqRX);
-            writeln(gnl);
-
             //expectedPowers = calculateExpectedPower(signals, weight, C(0, 0));
-            psiPower = calculateExpectedPower(txsignal, rxsignal, weight, C(0, 0))[2];
+            psiPower = calculateExpectedPower(chunker, weight, C(0, 0))[2];
         }
         else
         {
             // H_{p,q}[f] を取得する
-            weight = estimateCFR(txsignal, rxsignal, C(0, 0));
-            expectedPowers[0 .. 2] = calculateExpectedPower(txsignal, rxsignal, weight, C(0, 0))[0 .. 2];
+            weight = estimateCFR(chunker, C(0, 0));
+            expectedPowers[0 .. 2] = calculateExpectedPower(chunker, weight, C(0, 0))[0 .. 2];
         }
 
         // if(testcase == 0){          // 重要度を計算する場合なら
@@ -871,20 +861,13 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     }
 
 
-    void actualPSDProfiling(scope void delegate(C[], C[]) chunker)
+    void actualPSDProfiling(void delegate(C[], C[]) chunker)
     {
-        // 信号を保存しておく
-        C[] txsignal = new C[(_nFFT + _nCP) * _nOS * 100],
-            rxsignal = new C[(_nFFT + _nCP) * _nOS * 100];
-
-        chunker(txsignal, rxsignal);
-
-
         C[][] weight;
         Tuple!(real[][], real[]) expectedPowers;
 
-        weight = estimateCFR(txsignal, rxsignal, C(0, 0));
-        expectedPowers[0 .. 2] = calculateExpectedPower(txsignal, rxsignal, weight, C(0, 0))[0 .. 2];
+        weight = estimateCFR(chunker, C(0, 0));
+        expectedPowers[0 .. 2] = calculateExpectedPower(chunker, weight, C(0, 0))[0 .. 2];
 
         _actualPower = expectedPowers[0];
         // foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
@@ -1017,7 +1000,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     +/
 
 
-    C[][] estimateCFR(in C[] txsignal, in C[] rxsignal, C iqRX = C(0, 0))
+    C[][] estimateCFR(void delegate(C[], C[]) chunker, C iqRX = C(0, 0))
     {
         // 次のようなフィルタを学習してみる
         // + 適応アルゴリズム : 最小二乗法
@@ -1031,16 +1014,14 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
         immutable spb = this.inputBlockLength / ((_nFFT + _nCP) * _nOS);    // 1ブロックあたりのシンボル数
 
-        C[] /*testTX = new C[this.inputBlockLength],
-            testRX = new C[this.inputBlockLength],*/
+        C[] testTX = new C[this.inputBlockLength],
+            testRX = new C[this.inputBlockLength],
             testER = new C[this.inputBlockLength];
 
         // 64シンボル使用して学習する
         foreach(i; 0 .. 64 / spb){
-            auto tx = txsignal[i * this.inputBlockLength .. (i+1) * this.inputBlockLength];
-            auto rx = rxsignal[i * this.inputBlockLength .. (i+1) * this.inputBlockLength];
-
-            testfilter.apply!(Yes.learning)(tx, rx, testER);
+            chunker(testTX, testRX);
+            testfilter.apply!(Yes.learning)(testTX, testRX, testER);
         }
 
         // 各周波数で，学習完了後の重みを得る
@@ -1048,7 +1029,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         foreach(f; 0 .. _nFFT * _nOS)
             foreach(p; 0 .. _distorter.outputDim){
                 immutable w1 = testfilter._stateAdapter._states[f].weight[0][p];
-                immutable w2 = testfilter._stateAdapter._states[($-f) % $].weight[0][_distorter.indexOfConjugated(p)];
+                immutable w2 = testfilter._stateAdapter._states[$-1-f].weight[0][_distorter.indexOfConjugated(p)];
 
                 weight[f][p] = (w1 - iqRX * w2.conj) / (1 - iqRX.sqAbs);
             }
@@ -1067,7 +1048,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         size_t cnt;
         foreach(f; 0 .. _nFFT * _nOS) if(_scMap[f]) {
             mx[0, cnt] = weights[f][0];
-            mx[1, cnt] = weights[($-f) % $][0].conj;
+            mx[1, cnt] = weights[f == 0 ? 0 : $-f][0].conj;
             y[cnt] = weights[f][1];
             ++cnt;
         }
@@ -1077,7 +1058,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     }
 
 
-    Tuple!(real[][], real[], real[][]) calculateExpectedPower(in C[] txsignal, in C[] rxsignal, in C[][] weight, C iqRX = C(0, 0))
+    Tuple!(real[][], real[], real[][]) calculateExpectedPower(void delegate(C[], C[]) chunker, in C[][] weight, C iqRX = C(0, 0))
     {
         C[] testTX = new C[this.inputBlockLength],
             testRX = new C[this.inputBlockLength],
@@ -1099,11 +1080,10 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
         testRX = testRX[0 .. (_nFFT + _nCP) * _nOS];
         auto disted = new C[][]((_nFFT + _nCP) * _nOS, _distorter.outputDim);
 
+        // 重要度を計算する
         enum size_t Navg = 64;
         foreach(i; 0 .. Navg){
-            // chunker(testTX, testRX);
-            testTX[0 .. (_nFFT + _nCP) * _nOS] = txsignal[i * (_nFFT + _nCP) * _nOS .. (i + 1) * (_nFFT + _nCP) * _nOS];
-            testRX[0 .. (_nFFT + _nCP) * _nOS] = rxsignal[i * (_nFFT + _nCP) * _nOS .. (i + 1) * (_nFFT + _nCP) * _nOS];
+            chunker(testTX, testRX);
             _distorter(testTX, disted);
 
             // 非線形送信信号を周波数領域に変換
@@ -1399,45 +1379,30 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
     }
 
 
-    void fftAndRemoveHighOrder(in C[] input, in C[] desired, C[] freqY)
+    void fftAndRemoveHighOrder(in C[] input, in C[] desired, C[] freqY, bool isIQFree)
     {
-        enum bool isIQFree = false;
-        auto fftIs = _fftw.inputs!float;
-        auto fftOs = _fftw.outputs!float;
-    
         immutable nSym = (_nFFT + _nCP) * _nOS;
 
-        fftIs[] = desired[];
+        _fftw.inputs!float[] = desired[];
         _fftw.fft!float();
-        freqY[] = fftOs[];
+        freqY[] = _fftw.outputs!float[];
 
-        // 歪みを再現する
-        fftIs[] = input[];
-        foreach(ref e; fftIs[]) e = e + _iqTX * e.conj;
-
-        // PAの歪みを再現する
-        foreach(ref e; fftIs[]){
-            immutable x2 = e.sqAbs;
-            immutable x = e;
-            auto dst = typeof(e)(0);
-
-            // ホーナー法
-            foreach_reverse(p; 1 .. P){
-                dst += _paCoefs[p];
-                dst *= x2;
-            }
-
-            e *= dst;
+        foreach(p; 1 .. P){
+            _fftw.inputs!float[] = input[];
+            if(!isIQFree) foreach(ref e; _fftw.inputs!float) e = e + _iqTX * e.conj;
+            // foreach(f, ref e; _fftw.inputs!float) e = _paCoefs[p] * e * (e.sqAbs^^p) * _channelFreqResponse[f];
+            foreach(ref e; _fftw.inputs!float) e = _paCoefs[p] * e * (e.sqAbs^^p);
+            _fftw.fft!float();
+            _fftw.inputs!float[] = _fftw.outputs!float[];
+            foreach(f, ref e; _fftw.inputs!float) e *= _channelFreqResponse[f];
+            _fftw.ifft!float();
+            _fftw.inputs!float[] = _fftw.outputs!float[];
+            if(!isIQFree) foreach(ref e; _fftw.inputs!float) e = e + _iqRX * e.conj;
+            _fftw.fft!float();
+            auto ops = _fftw.outputs!float;
+            foreach(f; 0 .. _nFFT * _nOS)
+                freqY[f] -= ops[f];
         }
-
-        _fftw.fft!float();
-
-        // チャネル
-        foreach(f, ref e; fftOs) e *= _channelFreqResponse[f];
-
-        // IQインバランス
-        foreach(f; 0 .. _nFFT * _nOS)
-            freqY[f] -= fftOs[f] + fftOs[($-f) % $].conj * _iqRX;
     }
 
 
@@ -1453,7 +1418,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
             freqX ~= _fftw.outputs!float.dup;
 
             freqY ~= new C[_nFFT * _nOS];
-            fftAndRemoveHighOrder(input[_nCP * _nOS + i * nSym .. (i+1) * nSym], desired[_nCP * _nOS + i * nSym .. (i+1) * nSym], freqY[i]);
+            fftAndRemoveHighOrder(input[_nCP * _nOS + i * nSym .. (i+1) * nSym], desired[_nCP * _nOS + i * nSym .. (i+1) * nSym], freqY[i], false);
         }
         freqX_dst = freqX;
         freqY_dst = freqY;
@@ -1487,7 +1452,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
 
     void toIQless(C[] input, C[] desired, C[][] freqX, C[][] freqY)
     {
-        // immutable nSym = (_nFFT + _nCP) * _nOS;
+        immutable nSym = (_nFFT + _nCP) * _nOS;
 
         foreach(i; 0 .. input.length) {
             input[i] = input[i] + _iqTX * input[i].conj;
@@ -1495,12 +1460,12 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
         }
 
         foreach(i; 0 .. freqX.length) foreach(f; 0 .. _nFFT * _nOS / 2) {
-            immutable f1 = f;
-            immutable f2 = f == 0 ? 0 : (_nFFT * _nOS - f);
-            immutable x1 = freqX[i][f1] + _iqTX * freqX[i][f2].conj;
-            immutable x2 = freqX[i][f2] + _iqTX * freqX[i][f1].conj;
-            immutable y1 = (freqY[i][f1] - _iqRX * freqY[i][f2].conj) / (1 - _iqRX.sqAbs);
-            immutable y2 = (freqY[i][f2] - _iqRX * freqY[i][f1].conj) / (1 - _iqRX.sqAbs);
+            auto f1 = f;
+            auto f2 = f == 0 ? 0 : (_nFFT * _nOS - f);
+            auto x1 = freqX[i][f1] + _iqTX * freqX[i][f2].conj;
+            auto x2 = freqX[i][f2] + _iqTX * freqX[i][f1].conj;
+            auto y1 = (freqY[i][f1] - _iqRX * freqY[i][f2].conj) / (1 - _iqRX.sqAbs);
+            auto y2 = (freqY[i][f2] - _iqRX * freqY[i][f1].conj) / (1 - _iqRX.sqAbs);
             freqX[i][f1] = x1;
             freqX[i][f2] = x2;
             freqY[i][f1] = y1;
@@ -1581,20 +1546,14 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
             else foreach(f; 0 .. _nFFT * _nOS) freqY[i/2][f] += ops[f];
         }
 
-        // freqY = freqY / Hを計算する
-        foreach(i, Y; freqY){
-            foreach(f; 0 .. _nFFT * _nOS)
-                Y[f] /= _channelFreqResponse[f];
-        }
-
         // a_pを推定していく
         foreach_reverse(p; 1 .. P){
             Complex!real num = complexZero!C,
                          den = complexZero!C;
 
             foreach(f; getSCIndex4PthAMPCoef(p)) foreach(i; 0 .. nLearningSymbols / 2){
-                immutable x = freqX[p][i][f];
-                immutable y = freqY[i][f];
+                auto x = freqX[p][i][f] * _channelFreqResponse[f];
+                auto y = freqY[i][f];
                 num += x.conj * y;
                 den += x.sqAbs;
             }
@@ -1603,7 +1562,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
 
             // 干渉除去する
             foreach(f; 0 .. _nFFT * _nOS) foreach(i; 0 .. nLearningSymbols / 2)
-                freqY[i][f] -= freqX[p][i][f] * _paCoefs[p];
+                freqY[i][f] -= freqX[p][i][f] * _channelFreqResponse[f] * _paCoefs[p];
         }
     }
 
