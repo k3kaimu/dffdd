@@ -57,70 +57,8 @@ struct IQImbalance(R)
 
   private:
     R _r;
-    real _g1V;              // 電圧系での真値のゲイン
-    Complex!real _g2V;      // 電圧計での真値のImageゲイン
-}
-
-
-struct IQImbalanceConverter(C)
-{
-    alias InputElementType = C;
-    alias OutputElementType = C;
-
-
-    this(Gain gain, Gain irr, real theta)
-    {
-        _g1V = gain.gain;
-        _g2V = gain.gain / irr.gain * std.complex.expi(theta);
-    }
-
-
-    void opCall(InputElementType input, ref OutputElementType output)
-    {
-        output = input * _g1V + input.conj * _g2V;
-    }
-
-
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
-    {
-        output.length = input.length;
-
-        foreach(i; 0 .. input.length)
-            this.opCall(input[i], output[i]);
-    }
-
-
-    typeof(this) dup() const pure nothrow @safe @nogc @property
-    {
-        return this;
-    }
-
-
-  private:
     real _g1V;      // 電圧系での真値のゲイン
-    C _g2V;         // 電圧計での真値のImageゲイン
-}
-
-unittest
-{
-    import std.complex;
-    import std.random;
-    import std.algorithm;
-    import dffdd.blockdiagram.utils;
-    import std.math;
-
-    alias C = Complex!float;
-
-    auto signal = new C[64];
-    foreach(ref e; signal)
-        e = C(uniform01(), uniform01);
-
-    auto r0 = IQImbalance!(C[])(signal, 10.dB, 10.dB, 0.1).array;
-    auto r1 = signal.connectTo!(IQImbalanceConverter!C)(10.dB, 10.dB, 0.1);
-    auto r2 = signal.chunks(3).connectTo!(IQImbalanceConverter!C)(10.dB, 10.dB, 0.1).joiner;
-
-    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r1));
-    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(r0, r2));
+    Complex!real _g2V;      // 電圧計での真値のImageゲイン
 }
 
 
