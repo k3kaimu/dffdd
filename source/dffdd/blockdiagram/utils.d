@@ -6,7 +6,6 @@ import std.range;
 import std.typecons;
 import std.concurrency;
 import std.container;
-import std.meta;
 
 import carbon.channel;
 
@@ -398,90 +397,23 @@ enum bool isHighOrderOneElementConverter(TImpl) = is(typeof((TImpl impl){
 }));
 
 
-interface IBlock(bool isDuplicable = false)
-{
-  static if(isDuplicable)
-  {
-    IBlock dup() @property;
-  }
-
-    void opIndexAssignImpl(Variant value, string key);
-    Variant opIndex(string key);
-    bool hasGetter(string key) @property;
-    bool hasSetter(string key) @property;
-
-    void opIndexAssign(T)(T value, string key)
-    {
-        static if(is(T : Variant))
-            this.opIndexAssignImpl(value, key);
-        else
-            this.opIndexAssignImpl(Variant(value), key);
-    }
-}
-
-
-interface ISPBlock(I, O, bool isDuplicable = false) : IBlock!(isDuplicable), IMNSPBlock!(TGroup!(I), TGroup!(O), isDuplicable)
-{
-    alias ElementType = const(O)[];
-    void put(const(I)[] input);
-    Observable!(const(O)[]) observableObject() @property;
-}
-
-
-struct TGroup(T...)
-{
-    alias Types = T;
-}
-
-
-alias Sinks(T...) = Tuple!(_ApplyConstArrayOf!(Observer, T));
-alias Sources(T...) = Tuple!(_ApplyConstArrayOf!(Observable, T));
-
-template _ApplyConstArrayOf(alias f, T...)
-{
-    alias _ApplyConstArrayOf = _ApplyConstArrayOfImpl!0;
-
-    template _ApplyConstArrayOfImpl(size_t i)
-    {
-        static if(i == T.length)
-            alias _ApplyConstArrayOfImpl = AliasSeq!();
-        else{
-            alias U = T[i];
-            alias _ApplyConstArrayOfImpl = AliasSeq!(f!(const(U)[]), _ApplyConstArrayOfImpl!(i+1));
-        }
-    }
-}
-
-
-interface IMNSPBlock(Is, Os, bool isDuplicable = false) : IBlock!(isDuplicable)
-if(is(Is : TGroup!X, X...) && is(Os : TGroup!Y, Y...))
-{
-    Sinks!(Is.Types) sinks() @property;
-    Sources!(Os.Types) sources() @property;
-}
-
-
-class RxBlock(TImpl) :
-    Observer!(const(TImpl.OutputElementType)[]),
-    ISPBlock!(TImpl.InputElementType, TImpl.OutputElementType, isDuplicable!(TImpl))
+struct RxBlock(TImpl)
 if(isConverter!TImpl || isHighOrderConverter!TImpl)
 {
     import std.algorithm : min;
     import std.functional : forward;
     import rx;
-    import std.conv : to;
-    import std.variant : Variant;
 
     alias InputElementType = TImpl.InputElementType;
     alias OutputElementType = TImpl.OutputElementType;
 
-    alias ElementType =const(OutputElementType)[];
+    alias ElementType = OutputElementType[];
 
 
     this(TImpl impl)
     {
         _impl = impl;
-        this();
+        _subject = new SubjectObject!(ElementType);
     }
 
 
@@ -494,103 +426,6 @@ if(isConverter!TImpl || isHighOrderConverter!TImpl)
 
     // @disable
     // this(this);
-
-
-    bool hasGetter(string key)
-    {
-        foreach(mname; __traits(allMembers, TImpl))
-        {
-            static if(
-                is(typeof((){ typeof(mixin("_impl." ~ mname)) x; }))
-            )
-            {
-                if(mname == key)
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-
-    Variant opIndex(string key)
-    {
-        foreach(mname; __traits(allMembers, TImpl))
-        {
-            static if(
-                is(typeof((){ typeof(mixin("_impl." ~ mname)) x; }))
-            )
-            {
-                if(mname == key)
-                    return Variant(mixin("_impl." ~ mname));
-            }
-        }
-
-        {
-            import core.exception;
-            onRangeError();
-
-            Variant null_;
-            return null_;
-        }
-    }
-
-
-    bool hasSetter(string key)
-    {
-        foreach(mname; __traits(allMembers, TImpl))
-        {
-            static if(
-                is(typeof((){ mixin("_impl." ~ mname); }))
-              &&
-                is(typeof((typeof(mixin("_impl." ~ mname)) v, TImpl impl){ mixin("impl." ~ mname ~ "=v;"); }))
-              &&
-                is(typeof((typeof(mixin("_impl." ~ mname)) v1, T v2){ auto x = to!(typeof(v1))(v2); }))
-            )
-            {
-                if(mname == key)
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-
-    void opIndexAssignImpl(Variant value, string key)
-    {
-        foreach(mname; __traits(allMembers, TImpl))
-        {
-            static if(
-                is(typeof((){ mixin("_impl." ~ mname); }))
-              &&
-                is(typeof((typeof(mixin("_impl." ~ mname)) v, TImpl impl){ mixin("impl." ~ mname ~ "=v;"); }))
-              &&
-                is(typeof((typeof(mixin("_impl." ~ mname)) v1, T v2){ auto x = to!(typeof(v1))(v2); }))
-            )
-            {
-                if(mname == key){
-                    alias T = typeof(mixin("_impl." ~ mname));
-                    mixin("_impl" ~ mname ~ " = to!T(value)");
-                    return;
-                }
-            }
-        }
-
-        {
-            import core.exception;
-            onRangeError();
-        }
-    }
-
-
-    void opIndexAssign(T)(T value, string key)
-    {
-        static if(is(T : Variant))
-            this.opIndexAssignImpl(value, key);
-        else
-            this.opIndexAssignImpl(Variant(value), key);
-    }
 
 
     void put(const(InputElementType)[] input)
@@ -607,32 +442,6 @@ if(isConverter!TImpl || isHighOrderConverter!TImpl)
     }
 
 
-    void completed() {}
-    void failure(Exception ex) {}
-
-
-    Observable!(const(OutputElementType)[]) observableObject() @property
-    {
-        return _subject;
-    }
-
-
-    Sinks!InputElementType sinks() @property
-    {
-        typeof(return) dst;
-        dst[0] = this;
-        return dst;
-    }
-
-
-    Sources!OutputElementType sources() @property
-    {
-        typeof(return) dst;
-        dst[0] = this.observableObject();
-        return dst;
-    }
-
-
     auto subscribe(TObserver)(TObserver observer)
     {
         return doSubscribe(_subject, observer);
@@ -641,11 +450,12 @@ if(isConverter!TImpl || isHighOrderConverter!TImpl)
 
   static if(isDuplicable!TImpl)
   {
-    RxBlock dup() @property
+    auto dup() const @property
     {
-        RxBlock dst = new RxBlock();
+        RxBlock dst;
         dst._impl = _impl.dup;
         dst._buffer = _buffer.dup;
+        dst._subject = new SubjectObject!ElementType;
 
         return dst;
     }
@@ -656,12 +466,6 @@ if(isConverter!TImpl || isHighOrderConverter!TImpl)
     TImpl _impl;
     SubjectObject!ElementType _subject;
     OutputElementType[] _buffer;
-
-
-    private this()
-    {
-        _subject = new SubjectObject!(const(OutputElementType)[])();
-    }
 }
 
 template makeRxBlock(TImpl)
@@ -669,14 +473,14 @@ if(isConverter!TImpl || isHighOrderConverter!TImpl)
 {
     auto makeRxBlock(TImpl impl)
     {
-        return new RxBlock!TImpl(impl);
+        return RxBlock!TImpl(impl);
     }
 
 
     auto makeRxBlock(Args...)(Args args)
     if(is(typeof(TImpl(args))))
     {
-        return new RxBlock!TImpl(args);
+        return RxBlock!TImpl(args);
     }
 }
 
@@ -693,7 +497,6 @@ unittest
 
         this(long* ptr) { _sum = ptr; }
 
-
         void opCall(in InputElementType[] input, ref OutputElementType[] output)
         {
             import std.algorithm : sum;
@@ -702,15 +505,8 @@ unittest
         }
 
 
-        long sum() @property { return *_sum; }
-        void sum(long v) @property { *_sum = v;  }
-
-        long* sumPtr() @property { return _sum; }
-
       private:
         long* _sum;
-
-        long psum() @property { return *_sum; }
     }
 
 
@@ -722,8 +518,6 @@ unittest
         scope(exit) disp.dispose();
 
         assert(*ptr == 1023*512);
-        assert(block["sum"] == 1023 * 512);
-        assert(block["sumPtr"] == ptr);
     }
     {
         long* ptr1 = new long;
@@ -921,7 +715,8 @@ unittest
     long* ptr = new long;
 
     long* ptr2 = new long;
-    auto block = makeRxBlock!Impl(ptr2);
+    alias Block = RxBlock!Impl;
+    auto block = Block(ptr2);
     auto disp = applyImpl(iota(1024).asObservable(), ptr).doSubscribe(block);
     scope(exit) disp.dispose();
 
@@ -1410,7 +1205,7 @@ mixin template SimpleObserverImpl(TObserver, E)
 {
     import rx;
 
-  public:
+public:
     void put(E obj)
     {
         static if (hasFailure!TObserver)
@@ -1447,7 +1242,7 @@ mixin template SimpleObserverImpl(TObserver, E)
             _disposable.dispose();
         }
     }
-  private:
+private:
     TObserver _observer;
     static if (hasCompleted!TObserver || hasFailure!TObserver)
     {
@@ -1721,203 +1516,4 @@ unittest
     bool ok = false;
     auto r = iota(2048).array.chunks(32).connectTo(Dropper!int(1024)).joiner;
     assert(equal(r, iota(1024, 2048)));
-}
-
-
-struct NopConverter(C)
-{
-    alias InputElementType = C;
-    alias OutputElementType = C;
-
-    void opCall(InputElementType input, ref OutputElementType output) const
-    {
-        // output = input + _c;
-        output = input;
-    }
-
-
-    void opCall(R)(R input, ref OutputElementType[] output) const
-    if(hasLength!R)
-    {
-        output.length = input.length;
-
-        static if(is(R : const(InputElementType)[])){
-            output[] = input[];
-        }else{
-            foreach(i; 0 .. output.length){
-                output[i] = input.front;
-                input.popFront();
-            }
-        }
-    }
-
-
-
-    NopConverter dup() const @property { return this; }
-}
-
-unittest
-{
-    NopConverter!int c;
-
-    int[] arr;
-    c([1, 2, 3], arr);
-    assert(arr == [1, 2, 3]);
-}
-
-
-class SerialRxBlocks(I, bool isDuplicable):
-    ISPBlock!(I, I, isDuplicable),
-    Observer!(const(I)[])
-{
-    import std.ascii;
-    import std.algorithm;
-    import std.conv;
-
-    alias InputElementType = I;
-    alias OutputElementType = I;
-    alias ElementType = I;
-
-
-    this(ISPBlock!(I, I, isDuplicable)[] blocks...)
-    {
-        _blocks = blocks.dup;
-        foreach(i; 0 .. _blocks.length - 1)
-            this._blocks[i].observableObject.doSubscribe(this._blocks[i + 1]);
-    }
-
-
-    bool hasGetter(string key)
-    {
-        try {
-            if(key.front.isDigit){
-                auto ns = key.findSplit(".");
-                if(ns[1].empty) return false;
-                auto n = to!size_t(ns[0]);
-                if(n >= _blocks.length) return false;
-                return _blocks[n].hasGetter(ns[2]);
-            }
-        }catch(Exception ex){
-            return false;
-        }
-
-        return false;
-    }
-
-
-    bool hasSetter(string key)
-    {
-        try {
-            if(key.front.isDigit){
-                auto ns = key.findSplit(".");
-                if(ns[1].empty) return false;
-                auto n = to!size_t(ns[0]);
-                if(n >= _blocks.length) return false;
-                return _blocks[n].hasSetter(ns[2]);
-            }
-        }catch(Exception ex){
-            return false;
-        }
-
-        return false;
-    }
-
-
-
-    Variant opIndex(string key)
-    {
-        if(key.front.isDigit){
-            auto ns = key.findSplit(".");
-            if(!ns[1].empty){
-                auto n = to!size_t(ns[0]);
-                return _blocks[n][ns[2]];
-            }
-        }
-
-        {
-            import core.exception;
-            onRangeError();
-
-            Variant null_;
-            return null_;
-        }
-    }
-
-
-    void opIndexAssignImpl(Variant value, string key)
-    {
-        if(key.front.isDigit){
-            auto ns = key.findSplit(".");
-            if(!ns[1].empty){
-                auto n = to!size_t(ns[0]);
-                _blocks[n].opIndexAssignImpl(value, ns[2]);
-                return;
-            }
-        }
-
-        {
-            import core.exception;
-            onRangeError();
-        }
-    }
-
-
-    void opIndexAssign(T)(T value, string key)
-    {
-        static if(is(T : Variant))
-            this.opIndexAssignImpl(value, key);
-        else
-            this.opIndexAssignImpl(Variant(value), key);
-    }
-
-
-    void put(const(I)[] input)
-    {
-        _blocks[0].put(input);
-    }
-
-
-    void completed() {}
-    void failure(Exception ex) {}
-
-
-    Observable!(const(I)[]) observableObject() @property
-    {
-        return _blocks[$-1].observableObject;
-    }
-
-
-    Sinks!InputElementType sinks() @property
-    {
-        return _blocks[0].sinks;
-    }
-
-
-    Sources!OutputElementType sources() @property
-    {
-        return _blocks[$-1].sources;
-    }
-
-
-    auto subscribe(TObserver)(TObserver observer)
-    {
-        return doSubscribe(_block[$-1], observer);
-    }
-
-
-  static if(isDuplicable)
-  {
-    SerialRxBlocks dup() @property
-    {
-        ISPBlock!(I, I, isDuplicable)[] bs;
-        foreach(e; _blocks)
-            bs ~= cast(ISPBlock!(I, I, isDuplicable))e.dup;
-
-        return new SerialRxBlocks(bs);
-    }
-  }
-
-
-  private:
-    ISPBlock!(I, I, isDuplicable)[] _blocks;
 }

@@ -108,14 +108,26 @@ struct Model
     bool useDTXIQ = true;
     bool useDTXPN = false;
     bool useDTXPA = true;
-    bool useDTXCH = true;
+    bool useDTXIQ2 = false;
     bool useSTXIQ = true;
     bool useSTXPN = false;
     bool useSTXPA = true;
-    bool useSTXCH = true;
+    bool useSTXIQ2 = false;
     bool useSRXLN = true;
     bool useSRXIQ = true;
     bool useSRXQZ = true;
+
+    bool useDesiredBaseband = true;
+    bool useTxBaseband = true;
+    bool useTxBasebandSWP = true;
+    bool useDesiredPADirect = true;
+    bool usePADirect = true;
+    bool usePADirectSWP = true;
+    bool useReceivedDesired = true;
+    bool useReceivedSI = true;
+    bool useReceivedSISWP = true;
+    bool useReceived = true;
+    bool useNoise = true;
 
     bool doNoiseElimination = false;
 
@@ -373,33 +385,6 @@ auto connectToModulator(R, Mod)(R r, Mod modObj, const(bool)* swExchange, Model 
 }
 
 
-auto makeSTXSignal(Model model, bool isSwapped = false)
-{
-    return siRandomBits(model).connectToModulator(modOFDM(model), new bool(isSwapped), model);
-}
-
-
-auto makeTrainingSignal(string type)(Model model)
-{
-    return makeSTXSignal(model, type.startsWith("FHF") || type.startsWith("S2FHF") || type.startsWith("IQISICFHF"));
-}
-
-
-alias makeCancellationEvaluationSignal(string type) = makeSTXSignal;
-
-
-auto makeDTXSignal(Model model)
-{
-    return desiredRandomBits(model).connectToModulator(modOFDM(model), new bool(false), model);
-}
-
-
-auto makeDTXNullSignal(Model model)
-{
-    return repeat(Complex!real(0));
-}
-
-
 auto connectToDemodulator(R, Mod)(R r, Mod modObj/*, Bits bits*/, Model)
 // if(isForwardRange!R)
 {
@@ -487,22 +472,10 @@ auto connectToAWGN(R)(R r, Model model)
 //}
 
 
-auto makeSTXIQConv(C)(Model model)
-{
-    Random rnd;
-    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
-    foreach(i; 0 .. 1000) rnd.popFront();
-
-    auto irrdB = normalDist(model.txIQMixer.IRR.dB, model.txIQMixer.MAX_VAR_IRR.dB, rnd);
-    auto theta = uniform(0, 1.0f, rnd) * 2*PI;
-    return makeIQImbalancer!C(0.dB, irrdB.dB, theta);
-}
-
-
 auto connectToTXIQMixer(R)(R r, Model model)
 {
     alias C = ElementType!R;
-    /+
+
     Random rnd;
     rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
     foreach(i; 0 .. 1000) rnd.popFront();
@@ -511,18 +484,8 @@ auto connectToTXIQMixer(R)(R r, Model model)
     auto theta = uniform(0, 1.0f, rnd) * 2*PI;
 
     // return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
-    +/
-    return r.connectTo(makeSTXIQConv!C(model)).toWrappedRange;
+    return r.connectTo(makeIQImbalancer!C(0.dB, irrdB.dB, theta)).toWrappedRange;
 }
-
-
-auto makeSTXIQBlock(C)(Model model)
-{
-    return makeRxBlock(makeSTXIQConv!C(model));
-}
-
-
-alias makeDTXIQBlock = makeSTXIQBlock;
 
 
 deprecated
@@ -530,18 +493,6 @@ auto connectToTXIQPhaseNoise(R)(R r, Model model)
 {
     return r.connectTo!(dffdd.blockdiagram.iqmixer.PhaseNoise)(model.carrFreq, model.samplingFreq, model.phaseNoise.paramC);
 }
-
-
-deprecated
-auto makeSTXPNBlock(C)(Model model)
-{
-    NopConverter!C impl;
-    return makeRxBlock(impl);
-}
-
-
-deprecated
-alias makeDTXPNBlock = makeSTXPNBlock;
 
 
 auto connectToRXIQMixer(R)(R r, Model model)
@@ -557,19 +508,6 @@ auto connectToRXIQMixer(R)(R r, Model model)
 
     // return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
     return r.connectTo(makeIQImbalancer!C(0.dB, irrdB.dB, theta)).toWrappedRange;
-}
-
-
-auto makeSRXIQBlock(C)(Model model)
-{
-    Random rnd;
-    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
-    foreach(i; 0 .. 1000) rnd.popFront();
-
-    auto irrdB = normalDist(model.rxIQMixer.IRR.dB, model.rxIQMixer.MAX_VAR_IRR.dB, rnd);
-    auto theta = uniform(0, 1.0f, rnd) * 2*PI;
-
-    return makeIQImbalancer!C(0.dB, irrdB.dB, theta).makeRxBlock;
 }
 
 
@@ -598,28 +536,6 @@ auto connectToPowerAmplifier(R)(R r, Model model)
         .connectTo(makeRappModel!C(model.pa.GAIN, 1, iip3.V / 2))
         .toWrappedRange;
 }
-
-
-auto makeSTXPABlock(C)(Model model)
-{
-    Random rnd;
-    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
-    foreach(i; 0 .. 1000) rnd.popFront();
-
-    auto iip3 = normalDist(model.pa.IIP3.dBm, model.pa.MAX_VAR_IIP3.dB, rnd).dBm;
-    auto txp = normalDist(model.pa.TX_POWER.dBm, model.pa.MAX_VAR_TXP.dB, rnd);
-    auto gain = normalDist(model.pa.GAIN.dB, model.pa.MAX_VAR_GAIN.dB, rnd);
-
-    auto v = (txp - model.pa.GAIN.dB).dBm;
-
-    auto vga = makePowerControlAmplifier!C(v);
-    auto pa = makeRappModel!C(model.pa.GAIN, 1, iip3.V / 2);
-
-    return new SerialRxBlocks!(C, true)(vga.makeRxBlock, pa.makeRxBlock);
-}
-
-
-alias makeDTXPABlock = makeSTXPABlock;
 
 
 auto connectToMultiPathChannel(R)(R r, Model model)
@@ -656,51 +572,6 @@ auto connectToMultiPathChannel(R)(R r, Model model)
 }
 
 
-auto makeSTXCHBlock(C)(Model model)
-{
-    // .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR.dB + model.lna.NF.dB).dB.gain^^2).sqrt.V)
-
-    ISPBlock!(C, C, true) ch;
-
-    if(model.channel.isCoaxialCable)
-    {
-        Random rGen;
-        rGen.seed(model.rndSeed);
-
-        BoxMuller!Random gGen = BoxMuller!Random(rGen);
-
-        // return r.connectTo!FIRFilter([C(0, 0), cast(C)gGen.front]).toWrappedRange;
-        ch = makeRxBlock(makeFIRFilter([C(0, 0), cast(C)gGen.front]));
-    }
-    else
-    {
-        Random rGen;
-        rGen.seed(model.rndSeed);
-
-        BoxMuller!Random gGen = BoxMuller!Random(rGen);
-
-        C[] coefs;
-        foreach(i; 0 .. model.channel.taps){
-            auto db = -1 * model.channel.c.dB * i;
-            coefs ~= cast(C)(gGen.front * 10.0L ^^ (db/20));
-            gGen.popFront();
-        }
-
-        // return r.connectTo!FIRFilter(coefs).toWrappedRange;
-        ch = makeRxBlock(makeFIRFilter(coefs));
-    }
-
-    auto amp = makeRxBlock(makePowerControlAmplifier!C((model.thermalNoise.power(model) * (model.INR.dB + model.lna.NF.dB).dB.gain^^2).sqrt.V));
-    return new SerialRxBlocks!(C, true)(ch, amp);
-}
-
-
-auto makeDTXCHBlock(C)(Model model)
-{
-    return makeRxBlock(makePowerControlAmplifier!C((model.thermalNoise.power(model) * (model.SNR.dB + model.lna.NF.dB).dB.gain^^2).sqrt.V));
-}
-
-
 auto connectToLNA(R)(R r, Model model)
 {
     alias C = ElementType!R;
@@ -720,20 +591,6 @@ auto connectToLNA(R)(R r, Model model)
 }
 
 
-auto makeSRXLNBlock(C)(Model model)
-{
-    auto awgn = makeAdder!C(
-                thermalNoise(model, model.lna.noiseSeedOffset)
-                .connectTo(makeLinearAmplifier!C(Gain.fromPowerGain(model.lna.NF.gain^^2 - 1)))
-        );
-    
-    auto awgnBlock = makeRxBlock(awgn);
-    auto rapp = makeRxBlock(makeRappModel!C(model.lna.GAIN, 3, (model.lna.IIP3.dBm - 36).dB.gain));
-
-    return new SerialRxBlocks!(C, true)(awgnBlock, rapp);
-}
-
-
 auto connectToQuantizer(R)(R r, Model model)
 {
     alias C = ElementType!R;
@@ -747,15 +604,6 @@ auto connectToQuantizer(R)(R r, Model model)
         .connectTo(makePowerControlAmplifier!C((30 - model.ofdm.PAPR.dB + 4.76).dBm))
         .connectTo(makeSimpleQuantizer!C(model.quantizer.numOfBits))
         .toWrappedRange;
-}
-
-
-auto makeSRXQZBlock(C)(Model model)
-{
-    auto pca = makePowerControlAmplifier!C((30 - model.ofdm.PAPR.dB + 4.76).dBm).makeRxBlock;
-    auto qz = makeSimpleQuantizer!C(model.quantizer.numOfBits).makeRxBlock;
-
-    return new SerialRxBlocks!(C, true)(pca, qz);
 }
 
 

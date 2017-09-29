@@ -27,18 +27,18 @@ import dffdd.utils.unit;
 import dffdd.dsp.statistics;
 
 
-// template hasMemberAsSignal(S, names...)
-// if(names.length == 0 || is(typeof(names[0]) : string))
-// {
-//   static if(names.length == 0)
-//   {
-//       enum bool hasMemberAsSignal = true;
-//   }
-//   else
-//   {
-//       enum bool hasMemberAsSignal = is(typeof(mixin("S.init." ~ names[0]))) && isInputRange!(typeof(mixin("S.init." ~ names[0]))) && hasMemberAsSignal!(S, names[1 .. $]);
-//   }
-// }
+template hasMemberAsSignal(S, names...)
+if(names.length == 0 || is(typeof(names[0]) : string))
+{
+  static if(names.length == 0)
+  {
+      enum bool hasMemberAsSignal = true;
+  }
+  else
+  {
+      enum bool hasMemberAsSignal = is(typeof(mixin("S.init." ~ names[0]))) && isInputRange!(typeof(mixin("S.init." ~ names[0]))) && hasMemberAsSignal!(S, names[1 .. $]);
+  }
+}
 
 
 void learning(F, C)(ref F filter, in C[] tx, in C[] rx, C[] outputBuf)
@@ -262,19 +262,35 @@ if(isBlockConverter!(Dist, C, C[]))
     }
 
 
-    /**
-    送信ベースバンド信号を利用して，orthogonalizerを学習します
-    */
-    void learningOrthogonalizer(S)(S signal)
+//   static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+//   {
+//     private void learningFromTX(R)(R txs)
+//     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
+//     {
+//         _distorter.learn(txs);
+//     }
+//   }
+
+
+//     void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
+//     {
+//         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
+//             learningFromTX(digitalTx);
+//     }
+
+
+    void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
+    // if(isModelParameterSet!M)
     {
+        // メンバーを持っているかどうかチェック
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
+
+        // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
         {
+            auto sig = signalGenerator(model);
             auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
-            foreach(i, ref e; buf){
-                assert(!signal.empty);
-                e = signal.front;
-                signal.popFront();
-            }
+            sig.fillBuffer!(["txBaseband"])(buf);
             _distorter.learn(buf);
         }
     }
@@ -344,21 +360,14 @@ if(isBlockConverter!(Dist, C, C[]))
     Dist distorter() @property { return _distorter; }
 
 
-    /**
-    送信ベースバンド信号を利用して，orthogonalizerを学習します
-    */
-    void learningOrthogonalizer(S)(S signal)
+    void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     {
+        // メンバーを持っているかどうかチェック
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
+
+        // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-        {
-            auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
-            foreach(i, ref e; buf){
-                assert(!signal.empty);
-                e = signal.front;
-                signal.popFront();
-            }
-            _distorter.learn(buf);
-        }
+            _distorter.learn(signalGenerator(model).txBaseband);
     }
 
 
@@ -430,21 +439,14 @@ if(isBlockConverter!(Dist, C, C[]))
     Dist distorter() @property { return _distorter; }
 
 
-    /**
-    送信ベースバンド信号を利用して，orthogonalizerを学習します
-    */
-    void learningOrthogonalizer(S)(S signal)
+    void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     {
+        // メンバーを持っているかどうかチェック
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
+
+        // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-        {
-            auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
-            foreach(i, ref e; buf){
-                assert(!signal.empty);
-                e = signal.front;
-                signal.popFront();
-            }
-            _distorter.learn(buf);
-        }
+            _distorter.learn(signalGenerator(model).txBaseband.map!(a => cast(C)a));
     }
 
 
@@ -455,7 +457,7 @@ if(isBlockConverter!(Dist, C, C[]))
     C[][] _buffer;
 }
 
-/+
+
 final class SimpleFrequencyDomainParallelHammersteinFilter(C, Dist, Adapter)
 if(isBlockConverter!(Dist, C, C[]))
 {
@@ -723,154 +725,11 @@ if(isBlockConverter!(Dist, C, C[]))
     Dist distorter() @property { return _distorter; }
 
 
-    /**
-    送信ベースバンド信号を利用して，orthogonalizerを学習します
-    */
-    void learningOrthogonalizer(S)(S signal)
-    {
-        static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-        {
-            auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
-            foreach(i, ref e; buf){
-                assert(!signal.empty);
-                e = signal.front;
-                signal.popFront();
-            }
-            _distorter.learn(buf);
-        }
-    }
-
-
-    /**
-    雑音のプロファイルを取ります
-    */
-    void noiseProfiling(S)(S noise)
-    {
-        auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
-        float[] buf = new float[_nFFT * _nOS];
-        buf[] = 0;
-
-        // auto buf = new Complex!float[_nOS * _nFFT];
-        foreach(i; 0 .. 1024){
-            foreach(j; 0 .. _nOS * _nFFT){
-                assert(!noise.empty);
-                fftw.inputs!float[j] = cast(Complex!float)noise.front;
-                noise.popFront();
-            }
-
-            fftw.fft!float();
-            foreach(j; 0 .. _nOS * _nFFT)
-                buf[j] += fftw.outputs!float[j].sqAbs;
-        }
-
-        foreach(j; 0 .. _nOS * _nFFT)
-            buf[j] /= 1024;
-
-        _noiseFloor = buf.sum() / (_nFFT * _nOS);
-    }
-
-
-    /**
-    電力スペクトル密度のプロファイルを取ります
-    + chunker: chunker(buf1, buf2)で，buf1に送信ベースバンド信号，buf2に受信ベースバンド信号を格納する
-    */
-    void psdProfiling(void delegate(C[], C[]) chunker)
-    {
-        auto testfilter = new SimpleFrequencyDomainParallelHammersteinFilter!(C, Dist, LSAdapter!(MultiFIRState!C))
-                        (   _distorter,
-                            (size_t i, bool b, MultiFIRState!C s) => makeLSAdapter(s, 1024),
-                            _scMap, _nFFT, _nCP, _nOS, _sampFreq, false);
-
-        immutable spb = this.inputBlockLength / ((_nFFT + _nCP) * _nOS);    // 1ブロックあたりのシンボル数
-
-        C[] testTX = new C[this.inputBlockLength],
-            testRX = new C[this.inputBlockLength],
-            testER = new C[this.inputBlockLength];
-
-        // 1024シンボル使用して学習する
-        foreach(i; 0 .. 1024 / spb){
-            chunker(testTX, testRX);
-            testfilter.apply!(Yes.learning)(testTX, testRX, testER);
-        }
-
-        // 各周波数で，学習完了後の重みを得る
-        C[][] weight = new C[][](_nFFT * _nOS, _distorter.outputDim);
-        foreach(f; 0 .. _nFFT * _nOS)
-            foreach(p; 0 .. _distorter.outputDim)
-                weight[f][p] = testfilter._states[f].weight[0][p];
-
-        real[][] powerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
-        real[][] firstPowerOfSI = new real[][](_nFFT * _nOS, _distorter.outputDim);
-        real[] powerOfRCV = new real[](_nFFT * _nOS);
-        real[] firstPowerOfRCV = new real[](_nFFT * _nOS);
-        foreach(f; 0 .. _nFFT * _nOS){
-            powerOfRCV[f] = 0;
-            foreach(p; 0 .. _distorter.outputDim)
-                powerOfSI[f][p] = 0;
-        }
-
-        testTX = testTX[0 .. (_nFFT + _nCP) * _nOS];
-        testRX = testRX[0 .. (_nFFT + _nCP) * _nOS];
-        auto disted = new C[][]((_nFFT + _nCP) * _nOS, _distorter.outputDim);
-
-        // 重要度を計算する
-        enum size_t Navg = 1024;
-        foreach(i; 0 .. Navg){
-            signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
-            _distorter(testTX, disted);
-
-            // 非線形送信信号を周波数領域に変換
-            foreach(p; 0 .. _distorter.outputDim){
-                foreach(k; 0 .. _nFFT * _nOS)
-                    _fftw.inputs!float[k] = disted[_nCP * _nOS + k][p];
-
-                _fftw.fft!float();
-
-                foreach(k; 0 .. _nFFT * _nOS){
-                    if(i == 0) firstPowerOfSI[k][p] = _fftw.outputs!float[k].sqAbs;
-                    disted[k][p] = _fftw.outputs!float[k] * weight[k][p];
-                }
-            }
-
-            // 受信信号の周波数成分
-            _fftw.inputs!float[] = testRX[_nCP * _nOS .. $];
-            _fftw.fft!float();
-            auto rxFFTed = _fftw.outputs!float();
-
-            // 電力に足し合わせる
-            foreach(f; 0 .. _nFFT * _nOS){
-                foreach(p; 0 .. _distorter.outputDim){
-                    powerOfSI[f][p] += disted[f][p].sqAbs;
-                }
-
-                powerOfRCV[f] += rxFFTed[f].sqAbs;
-            }
-
-            if(i == 0)
-                firstPowerOfRCV = powerOfRCV.dup;
-        }
-
-        // if(testcase == 0){          // 重要度を計算する場合なら
-            _importance = powerOfSI;
-            foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
-                _importance[f][p] /= powerOfRCV[f];
-            }
-        // }else if(testcase == 1){    // _actualPowerを算出するだけなら
-        //     _actualPower = powerOfSI;
-        //     foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
-        //     _requiredBasisFuncs = new bool[][](_nFFT * _nOS, _distorter.outputDim);
-        //     foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim)
-        //         _requiredBasisFuncs[f][p] = (_actualPower[f][p] >= _noiseFloor);
-        // }
-    }
-
-
-    /*
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     // if(isModelParameterSet!M)
     {
         // メンバーを持っているかどうかチェック
-        // static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband", "noise", "receivedSISWP"));
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband", "noise", "receivedSISWP"));
 
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
             _distorter.learn(signalGenerator(model).txBaseband);
@@ -878,9 +737,8 @@ if(isBlockConverter!(Dist, C, C[]))
         if(_doSelect)
             profiling(model, signalGenerator);
     }
-    */
 
-    /+
+
     void profiling(M, Signals)(M originalModel, Signals delegate(M) genSignal)
     {
         import dffdd.filter.ls : LSAdapter, makeLSAdapter;
@@ -1033,7 +891,6 @@ if(isBlockConverter!(Dist, C, C[]))
             }
         }
     }
-    +/
 
 
     void saveInfoToDir(string dir)
@@ -1148,9 +1005,8 @@ if(isBlockConverter!(Dist, C, C[]))
     real[][] _actualPower;
     bool[][] _requiredBasisFuncs;
 }
-+/
 
-/+
+
 final class SimpleFrequencyDomainDCMHammersteinFilterType2(C, Dist, alias genAdaptor, Flag!"isParallel" isParallel = No.isParallel)
 if(isBlockConverter!(Dist, C, C[]))
 {
@@ -1320,7 +1176,7 @@ if(isBlockConverter!(Dist, C, C[]))
     if(isModelParameterSet!M)
     {
         // メンバーを持っているかどうかチェック
-        // static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
 
         // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
@@ -1411,7 +1267,7 @@ final class SimpleFrequencyDomainDCMHammersteinFilterType1(C, Dist, alias genAda
     if(isModelParameterSet!M)
     {
         // メンバーを持っているかどうかチェック
-        // static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
 
         // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
@@ -1440,4 +1296,3 @@ final class SimpleFrequencyDomainDCMHammersteinFilterType1(C, Dist, alias genAda
     }
   }
 }
-+/
