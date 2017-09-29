@@ -40,12 +40,11 @@ void mainJob()
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     // "IQISICFHF_X",
-                                    // "PreIQI-FHF_LS",
                                     // "L_LS",
-                                    // "S2FHF_LS",
+                                    "S2FHF_LS",
                                     // "PH_LS",
                                     // "FHF_LS",
-                                    "OPH_RLS",
+                                    // "OPH_LS",
                                     // "WL_LS",
                                     // "L_LS",
                                     // "S2FHF_LS",
@@ -60,8 +59,8 @@ void mainJob()
             taskList ~= appender;
         }
 
-        foreach(learningSymbols; iota(5, 25, 5))
-        foreach(inr; iota(50, 55, 5))
+        foreach(learningSymbols; iota(60, 61, 1))
+        foreach(inr; iota(20, 25, 5))
         foreach(txp; [23])
         foreach(irr; [25])
         {

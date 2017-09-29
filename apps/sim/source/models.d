@@ -1066,7 +1066,7 @@ auto connectToRxChain(R)(R r)
 //}
 
 
-auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, size_t useWL = true, bool orthogonalized = true, Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, size_t useWL = true, Mod)(Mod mod, Model model)
 {
     alias C = Complex!float;
 
@@ -1074,20 +1074,12 @@ auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = de
     alias Dist = CompleteDistorter!(distortionOrder);
   else
   {
-    // static assert(distortionOrder == 1);
-    // alias Dist = Distorter!(C, x => x);
-    alias Dist = OnlyPADistorter!(C, distortionOrder);
+    static assert(distortionOrder == 1);
+    alias Dist = Distorter!(C, x => x);
   }
 
-    static if(orthogonalized)
-    {
-        alias GS = GramSchmidtOBFFactory!C;
-        auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(Dist.outputDim));
-    }
-    else
-    {
-        auto dist = new Dist();
-    }
+    alias GS = GramSchmidtOBFFactory!C;
+    auto dist = new OrthogonalizedVectorDistorter!(C, Dist, GS)(new Dist(), new GS(Dist.outputDim));
 
     auto makeOptimizer(State)(State state)
     {
@@ -1104,7 +1096,7 @@ auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = de
         }
     }
 
-    return new SimpleTimeDomainParallelHammersteinFilter!(Complex!float, typeof(dist), (s) => makeOptimizer(s))(model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols, dist, model.firFilter.taps);
+    return new SimpleTimeDomainParallelHammersteinFilter!(Complex!float, typeof(dist), (s) => makeOptimizer(s))(dist, model.firFilter.taps);
 }
 
 
@@ -1177,15 +1169,11 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
 +/
 
 
-auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder, bool useWL = true)(Model model, bool selectBF = false, bool selectComplexBF = false)
+auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model, bool selectBF = false, bool selectComplexBF = false)
 {
     import dffdd.filter.freqdomain;
     // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
-
-    static if(useWL)
-        alias Dist = CompleteDistorter!(distortionOrder);
-    else 
-        alias Dist = OnlyPADistorter!(Complex!float, distortionOrder);
+    alias Dist = CompleteDistorter!(distortionOrder);
 
     auto makeOptimizer(State)(State state)
     {
@@ -1215,7 +1203,6 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
             Complex!float,
             typeof(dist),
             typeof(stateAdapter),
-            useWL
         )(
             dist,
             stateAdapter,

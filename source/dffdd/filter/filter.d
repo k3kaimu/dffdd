@@ -220,10 +220,9 @@ auto oneStateFilter(State, Adapter)(State state, Adapter adapter)
 final class SimpleTimeDomainParallelHammersteinFilter(C, Dist, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
-    this(size_t nTrSamps, Dist dist, size_t numOfTaps)
+    this(Dist dist, size_t numOfTaps)
     {
         auto numOfFIR = dist.outputDim;
-        // _nTrSamps = nTrSamps;
         _distorter = dist;
         _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
         _adaptor = genAdaptor(_state);
@@ -256,12 +255,8 @@ if(isBlockConverter!(Dist, C, C[]))
                 _state.update(e);
                 ers[j] = dss[j] - _state.output;
 
-                static if(doLearning){
-                    // if(_nTrSamps > 0) {
-                        _adaptor.adapt(_state, ers[j]);
-                        // _nTrSamps -= 1;
-                    // }
-                }
+              static if(doLearning)
+                _adaptor.adapt(_state, ers[j]);
             }
         }
     }
@@ -274,7 +269,7 @@ if(isBlockConverter!(Dist, C, C[]))
     {
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
         {
-            auto buf = new C[](1000);
+            auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
             foreach(i, ref e; buf){
                 assert(!signal.empty);
                 e = signal.front;
@@ -286,7 +281,6 @@ if(isBlockConverter!(Dist, C, C[]))
 
 
   private:
-    // size_t _nTrSamps;
     Dist _distorter;
     MultiFIRState!(Complex!float) _state;
     typeof(genAdaptor(_state)) _adaptor;
