@@ -988,11 +988,16 @@ auto makeFrequencyHammersteinFilter(string optimizer, size_t distortionOrder = d
 +/
 
 
-auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder)(Model model)
+auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder, bool useWL = true)(Model model)
 {
     import dffdd.filter.freqdomain;
-    // alias BFs = BasisFunctions[0 .. numOfBasisFuncs];
-    alias Dist = CompleteDistorter!(distortionOrder);
+
+    alias C = Complex!float;
+
+    static if(useWL)
+        alias Dist = CompleteDistorter!(distortionOrder);
+    else
+        alias Dist = OnlyPADistorter!(C, distortionOrder);
 
     auto makeOptimizer(State)(State state)
     {
@@ -1006,7 +1011,6 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
         return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols);
     }
 
-    alias C = Complex!float;
     alias Adapter = typeof(makeOptimizer!(MultiFIRState!C)(MultiFIRState!C.init));
 
     auto dist = new Dist();
@@ -1030,11 +1034,6 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
             model.ofdm.numOfCP,
             model.ofdm.scaleOfUpSampling,
             model.samplingFreq,
-            // selectBF,
-            // selectComplexBF,
-            // model.basisFuncsSelection.nEstH,
-            // (-model.basisFuncsSelection.imageMargin.dB).dB,
-            // model.basisFuncsSelection.noiseMargin,
             model.doNoiseElimination
         );
 }

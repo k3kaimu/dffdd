@@ -638,19 +638,16 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
         _nOS = nOS;
         _nSC = subcarrierMap.map!(a => a ? 1 : 0).sum();
         _sampFreq = sampFreq;
-        // _distortedBuffer = new C[][](this.inputBlockLength, dim);
-        // _fftedBuffer = new C[][](dim, _nFFT * _nOS);
         _nEstH = nEstH;
         _limitIRR = limitIRR;
         _gainMargin = gainMargin;
-        // _isLastTimeLearning = false;
     }
 
 
     size_t inputBlockLength() @property
     {
         immutable a = _canceller.inputBlockLength,
-                  b = (_nFFT + _nCP) * _nOS * (_doSelect ? _nEstH : 1);
+                  b = (_nFFT + _nCP) * _nOS * _nEstH;
 
         return a * (b / gcd(a, b));     // LCM
     }
@@ -663,7 +660,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
         if(doLearning)
         {
-            if(_doSelect && _importance !is null && _selectedBasisFuncs is null){
+            if(_importance !is null && _selectedBasisFuncs is null){
                 _selectedBasisFuncs = new bool[][](_nFFT * _nOS, Dist.outputDim);
                 _selectingIsSuccess = new bool[](_nFFT * _nOS);
                 _selectingIsSuccess[] = true;
@@ -681,119 +678,46 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
                     freqY[idxOfEstH][] = _fftw.outputs!float[];
                 }
 
-                if(_doComplexSelect)
-                {
-                    foreach(f; 0 .. _nFFT * _nOS){
-                        size_t cnt;
-                        foreach(p; 0 .. Dist.outputDim){
-                            // 受信信号電力E[|Y[f]|^2]
-                            immutable float pY0 = (){
-                                real y = 0;
-                                    foreach(idxOfEstH; 0 .. _nEstH)
-                                        y += freqY[idxOfEstH][f].sqAbs;
-                                
-                                return y / _nEstH;
-                            }();
-
-                            // 受信信号電力E[|Y[-f]|^2]
-                            immutable float pY1 = (){
-                                real y = 0;
-                                    foreach(idxOfEstH; 0 .. _nEstH)
-                                        y += freqY[idxOfEstH][f == 0 ? 0 : $-f].sqAbs;
-                                
-                                return y / _nEstH;
-                            }();
-
-                            immutable iqcoef = (1 / _limitIRR.gain)^^2;
-
-                            immutable float pY2 = (pY0 + iqcoef * pY1 + 2 * sqrt(pY0 * iqcoef * pY1)) / (1 - iqcoef)^^2;
-                            immutable float pY3 = (pY1 + iqcoef * pY0 + 2 * sqrt(pY1 * iqcoef * pY0)) / (1 - iqcoef)^^2;
-
-                            // 重要度と受信信号電力の積が，推定された干渉電力になる
-                            immutable float ipR = (){
-                                    return pY2 * _importance[f][p];
-                            }();
-
-                            immutable float ipI = (){
-                                    return pY3 * _importance[f == 0 ? 0 : $-f][_distorter.indexOfConjugated(p)]
-                                               * iqcoef;
-                            }();
-
-                            _estimatedPower[f][p] = ipR + ipI + 2 * sqrt(ipR * ipI);
-
-                            if(_estimatedPower[f][p] * _gainMargin.gain^^2 > _noiseFloor)
-                                _selectedBasisFuncs[f][p] = true;
-                        }
-                    }
-                }
-                else
-                {
-                    // MMSE推定する
-                    C[] freqH = new C[](_nFFT * _nOS);
-                    foreach(f; 0 .. _nFFT * _nOS){
-                        real den = 0;
-                        C num = C(0, 0);
-
-                        foreach(idxOfEstH; 0 .. _nEstH){
-                            den += freqX[idxOfEstH][f].sqAbs;
-                            num += freqX[idxOfEstH][f].conj * freqY[idxOfEstH][f];
-                        }
-
-                        freqH[f] = cast(C)(num / den);
-                    }
-
-                    foreach(f; 0 .. _nFFT * _nOS){
-                        float h = freqH[f].sqAbs;
-                        float hinv = freqH[$-1-f].sqAbs;
-
-                        foreach(p; 0 .. Dist.outputDim){
-                            // 重要度と受信信号電力の積が，推定された干渉電力になる
-                            immutable float ip = (){
-                                    real y = 0;
-                                    foreach(idxOfEstH; 0 .. _nEstH)
-                                        y += freqY[idxOfEstH][f].sqAbs;
-                                    
-                                    return (y / _nEstH) * _importance[f][p];
-                                }();
-                            _estimatedPower[f][p] = ip;
-                        }
-
-                        // この条件が満たされたとき，全基底関数を使用する
-                        size_t cnt;
-                        if(hinv > h * _limitIRR.gain^^2) {
-                            cnt = Dist.outputDim;
-                            _selectingIsSuccess[f] = false;
-                            foreach(p; 0 .. Dist.outputDim)
-                                _selectedBasisFuncs[f][p] = true;
+                foreach(f; 0 .. _nFFT * _nOS){
+                    size_t cnt;
+                    foreach(p; 0 .. Dist.outputDim){
+                        // 受信信号電力E[|Y[f]|^2]
+                        immutable float pY0 = (){
+                            real y = 0;
+                                foreach(idxOfEstH; 0 .. _nEstH)
+                                    y += freqY[idxOfEstH][f].sqAbs;
                             
-                            goto LnextFreq;
-                        }
+                            return y / _nEstH;
+                        }();
 
-                        foreach(p; 0 .. Dist.outputDim) {
-                            auto ip = _estimatedPower[f][p];
+                        // 受信信号電力E[|Y[-f]|^2]
+                        immutable float pY1 = (){
+                            real y = 0;
+                                foreach(idxOfEstH; 0 .. _nEstH)
+                                    y += freqY[idxOfEstH][f == 0 ? 0 : $-f].sqAbs;
+                            
+                            return y / _nEstH;
+                        }();
 
-                            if(Dist.indexOfConjugated(p) >= p && !_selectedBasisFuncs[f][p]) {
-                                // 干渉電力にマージンを設けて，ノイズ電力と比較する
-                                if(ip * _gainMargin.gain^^2 > _noiseFloor){
-                                    _selectedBasisFuncs[f][p] = true;
-                                    _selectedBasisFuncs[f][Dist.indexOfConjugated(p)] = true;
-                                    cnt += 2;
-                                }
-                            }
-                        }
+                        immutable iqcoef = (1 / _limitIRR.gain)^^2;
 
-                      LnextFreq:
-                        if(cnt == 0){
-                            _selectedBasisFuncs[f][0] = true;
-                            cnt += 1;
-                        }
+                        immutable float pY2 = (pY0 + iqcoef * pY1 + 2 * sqrt(pY0 * iqcoef * pY1)) / (1 - iqcoef)^^2;
+                        immutable float pY3 = (pY1 + iqcoef * pY0 + 2 * sqrt(pY1 * iqcoef * pY0)) / (1 - iqcoef)^^2;
 
-                        assert(cnt != 0);
+                        // 重要度と受信信号電力の積が，推定された干渉電力になる
+                        immutable float ipR = (){
+                                return pY2 * _importance[f][p];
+                        }();
 
-                        // _states, _adaptersを更新する
-                        // _states[f] = MultiFIRState!(Complex!float)(cnt, 1);
-                        // _adapters[f] = _genAdapter(f, _scMap[f], _states[f]);
-                        // _selectedBasisFuncsDim[f] = cnt;
+                        immutable float ipI = (){
+                                return pY3 * _importance[f == 0 ? 0 : $-f][_distorter.indexOfConjugated(p)]
+                                            * iqcoef;
+                        }();
+
+                        _estimatedPower[f][p] = ipR + ipI + 2 * sqrt(ipR * ipI);
+
+                        if(_estimatedPower[f][p] * _gainMargin.gain^^2 > _noiseFloor)
+                            _selectedBasisFuncs[f][p] = true;
                     }
                 }
 
@@ -819,8 +743,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
         static if(is(typeof((Canceller canceller, M model, Signals delegate(M) signalGenerator){ canceller.preLearning(model, signalGenerator); })))
             _canceller.preLearning(model, signalGenerator);
 
-        if(_doSelect)
-            profiling(model, signalGenerator);
+        profiling(model, signalGenerator);
     }
 
 
@@ -865,13 +788,11 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
                 model.useReceivedSISWP = true;
 
                 auto n = signals.noise.save;
-                // auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
                 float[] buf = new float[_nFFT * _nOS];
             
                 foreach(ref e; buf)
                     e = 0;
 
-                // auto buf = new Complex!float[_nOS * _nFFT];
                 immutable size_t nSize = 64;
                 foreach(i; 0 .. nSize){
                     foreach(j; 0 .. _nOS * _nFFT){
@@ -901,7 +822,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
             real[][] psiPower;
             real[] gnl = new real[_distorter.outputDim];
             auto signals = genSignal(model);
-            if(_doComplexSelect && testcase == 0)
+            if(testcase == 0)
             {
                 _iqRX = estimateIQCoefs(estimateCFR(signals.save(), C(0, 0)))[1];
                 weight = estimateCFR(signals.save(), _iqRX);
@@ -914,7 +835,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
                     gnl[p] = sqrt(gnl[p] / _nSC);
                 }
 
-                //expectedPowers = calculateExpectedPower(signals, weight, C(0, 0));
                 psiPower = calculateExpectedPower(signals.save(), weight, C(0, 0))[2];
             }
             else
@@ -925,22 +845,13 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
             }
 
             if(testcase == 0){          // 重要度を計算する場合なら
-                if(_doComplexSelect){
-                    // _importance = psiPower.dup;
-                    _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
-                    foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
-                        _importance[f][p] = psiPower[f][p] / psiPower[f][0];
-                        _importance[f][p] *= gnl[p]^^2;
-                    }
-                }else{
-                    _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
-                    foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
-                        _importance[f][p] = expectedPowers[0][f][p] / expectedPowers[0][f][0];
-                    }
+                _importance = new real[][](_nFFT * _nOS, _distorter.outputDim);
+                foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim){
+                    _importance[f][p] = psiPower[f][p] / psiPower[f][0];
+                    _importance[f][p] *= gnl[p]^^2;
                 }
             }else if(testcase == 1){    // _actualPowerを算出するだけなら
                 _actualPower = expectedPowers[0];
-                // foreach(ref es; _actualPower) foreach(ref e; es) e /= Navg;
                 _requiredBasisFuncs = new bool[][](_nFFT * _nOS, _distorter.outputDim);
                 foreach(f; 0 .. _nFFT * _nOS) foreach(p; 0 .. _distorter.outputDim)
                     _requiredBasisFuncs[f][p] = (_actualPower[f][p] >= _noiseFloor);
@@ -1044,7 +955,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
                 _fftw.fft!float();
 
                 foreach(k; 0 .. _nFFT * _nOS){
-                    // if(i == 0) firstPowerOfSI[k][p] = _fftw.outputs!float[k].sqAbs;
                     powerOfPsi[k][p] += _fftw.outputs!float[k].sqAbs;
                     disted[k][p] = _fftw.outputs!float[k] * weight[k][p];
                 }
@@ -1063,9 +973,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
                 powerOfRCV[f] += rxFFTed[f].sqAbs;
             }
-
-            // if(i == 0)
-            //     firstPowerOfRCV = powerOfRCV.dup;
         }
 
         foreach(f; 0 .. _nFFT * _nOS){
@@ -1092,7 +999,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
         dir = buildPath(dir, "filterSpec");
         mkdirRecurse(dir);
 
-        if(_doSelect){
+        {
             auto file = File(buildPath(dir, "significance.csv"), "w");
             // 重要度
             foreach(f; 0 .. _nFFT * _nOS)
@@ -1134,7 +1041,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
         import std.conv;
 
         JSONValue jv = [ "type": typeof(this).stringof ];
-        if(_doSelect){
+        {
             size_t[] bfcounter(bool[][] arr) {
                 size_t[] cnts = new size_t[_distorter.outputDim+1];
                 foreach(f; 0 .. _nFFT * _nOS){
@@ -1161,7 +1068,8 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
         jv["nCP"] = _nCP;
         jv["nOS"] = _nOS;
         jv["sampFreq"] = _sampFreq;
-        jv["doSelect"] = _doSelect;
+        jv["doSelect"] = true;
+        jv["doComplexSelect"] = true;
 
         return jv;
     }
@@ -1174,9 +1082,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
     immutable(bool[]) _scMap;
     immutable size_t _nFFT, _nCP, _nOS, _nSC;
     immutable real _sampFreq;
-    // immutable bool _doSelect, _doComplexSelect;
-    enum bool _doSelect = true;
-    enum bool _doComplexSelect = true;
     immutable size_t _nEstH;
     immutable Gain _limitIRR, _gainMargin;
     C _iqRX;
