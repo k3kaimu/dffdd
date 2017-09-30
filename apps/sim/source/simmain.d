@@ -236,9 +236,17 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
   else static if(filterStructure.endsWith("FHF")){
     static assert(!isOrthogonalized);
-    auto filter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model,
-        filterStructure.endsWith("SFHF") || filterStructure.endsWith("S1FHF") || filterStructure.endsWith("S2FHF"),
-        filterStructure.endsWith("S2FHF"));
+
+    auto freqFilter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model);
+
+    static if(filterStructure.endsWith("S2FHF"))
+    {
+        auto filter = makeFrequencyDomainBasisFunctionSelector(model, freqFilter);
+    }
+    else
+    {
+        alias filter = freqFilter;
+    }
   }else static if(filterStructure.endsWith("WL"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, true, isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))

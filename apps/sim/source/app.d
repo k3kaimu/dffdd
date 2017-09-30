@@ -40,16 +40,16 @@ void mainJob()
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     // "IQISICFHF_X",
-                                    // "FHF_LS",
-                                    "OPH_LS",
+                                    "S2FHF_LS",
+                                    // "OPH_LS",
                                     // "OPH_RLS",
                                     // "WL_LS",
                                     // "L_LS",
-                                    // "FHF_RLS",
+                                    "FHF_LS",
                                     // "OPH_RLS",
                                     // "WL_RLS",
                                     // "L_RLS",
-                                    "PreIQI-PH_LS",
+                                    // "PreIQI-PH_LS",
                                     // "PreIQI-PH_RLS",
                                     // "S2FHF_LS",
                 /*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ /*"SFHF_LS",*/ /*"S2FHF_LS",*/ /*"L_LS", "WL_LS", "OPH_LS", "FHF_LS",*/ /*"IQISICFHF_X",*/ /*"TAYLOR_LS", "L_LS",*/ /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
@@ -63,7 +63,7 @@ void mainJob()
             taskList ~= appender;
         }
 
-        foreach(learningSymbols; iota(1, 21, 1))
+        foreach(learningSymbols; iota(5, 25, 5))
         foreach(inr; iota(50, 55, 5))
         foreach(txp; [23])
         foreach(irr; [25])
@@ -162,7 +162,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     resList ~= mainImpl!methodName(m, dir);
 
     // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-    enum K = 0;    // 試行回数
+    enum K = 10;    // 試行回数
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(j; 0 .. K){
