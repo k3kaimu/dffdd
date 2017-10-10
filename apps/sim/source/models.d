@@ -245,9 +245,9 @@ struct Model
         // Voltage TX_POWER = 15.dBm;
         // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
         // MAX2616
-        Gain GAIN = 27.0.dB;
-        Voltage Vsat = Voltage(20.0.dBm.V / 2);
-        Voltage IIP3 = 20.0.dBm;
+        Gain GAIN = 28.5.dB;
+        Voltage Vsat = Voltage(21.8.dBm.V / 2);
+        Voltage IIP3 = 21.8.dBm;
         Voltage TX_POWER = 15.dBm;
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
         Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
@@ -262,6 +262,7 @@ struct Model
         uint noiseSeedOffset = 123;
         Gain DR = 70.dB;        // Dynamic Range
         Voltage IIP3 = (-3).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
+        uint smoothFactor = 3;
     }
     LNA lna;
 
@@ -555,7 +556,7 @@ auto connectToLNA(R)(R r, Model model)
 {
     return r
     .add(thermalNoise(model, model.lna.noiseSeedOffset).connectTo!VGA(Gain.fromPowerGain(model.lna.NF.gain^^2 - 1)))
-    .connectTo!RappModel(model.lna.GAIN, 3, (model.lna.IIP3.dBm - 36).dB.gain)
+    .connectTo!RappModel(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3.dBm - 36).dB.gain)
     // .connectTo!VGA(model.lna.GAIN)
     .toWrappedRange;
 }
