@@ -814,7 +814,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
             if(testcase == 0)
             {
                 // LNAダイナミックレンジ最大まで使用する
-                model.INR = model.lna.DR;
+                // model.INR = model.lna.DR;
             }
 
             C[][] weight;
