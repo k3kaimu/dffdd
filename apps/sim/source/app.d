@@ -294,6 +294,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
             vv["selectingRatio"] = sumOfSuccFreq / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * K);
             vv["selectingRatioList"] = selectingRatioList;
 
+            size_t selectedBF;
             size_t failedCNT, failedCNTPLQ;
             size_t matchCNT, matchCNTPLQ;
             size_t overCNT, overCNTPLQ;
@@ -351,7 +352,14 @@ void mainForEachTrial(string methodName)(Model m, string dir)
                     }
                     if(!bBreaked) ++matchCNTPLQ;
                 }
+
+                foreach(f; 0 .. m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling)
+                    foreach(b; used[f].array)
+                        if(b.type == JSON_TYPE.TRUE)
+                            ++selectedBF;
             }
+            vv["selectedBFRatio"] = selectedBF / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length * distDim);
+            vv["avgSelectedBF"] = selectedBF / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
             vv["failedRatio"] = failedCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
             vv["matchRatio"] = matchCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
             vv["overRatio"] = overCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
