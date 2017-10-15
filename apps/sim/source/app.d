@@ -43,6 +43,7 @@ void mainJob()
                                     // "S2FHF_LS",
                                     // "Foolish013FHF_LS",
                                     "RNDFHF_LS",
+                                    "FullRNDFHF_LS",
                                     // "S2FHF_LMS",
                                     // "OPH_RLS",
                                     // "OPH_LS",
@@ -129,7 +130,7 @@ void mainJob()
         /// inr_vs_canc, rinr, cmops
         //static if(methodName == "S2FHF_LS")
         //static if(0)
-        static if(methodName == "S2FHF_LS" || methodName.startsWith("RNDFHF") || methodName.startsWith("Foolish") || methodName == "OPH_LS" || methodName == "WL_LS" || methodName == "L_LS")
+        static if(methodName == "S2FHF_LS" || methodName.endsWith("RNDFHF_LS") || methodName.startsWith("Foolish") || methodName == "OPH_LS" || methodName == "WL_LS" || methodName == "L_LS")
         foreach(learningSymbols; [60])
         foreach(inr; iota(20, 68, 3))
         foreach(txp; [23])

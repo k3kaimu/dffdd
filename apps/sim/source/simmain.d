@@ -265,6 +265,10 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
         auto filter = makeFoolishFrequencyDomainBasisFunctionSelector(model, usedIndexList, freqFilter);
     }
+    else static if(filterStructure.endsWith("FullRNDFHF"))
+    {
+        auto filter = makeFullRandomizeFrequencyDomainBasisFunctionSelector(model, freqFilter);
+    }
     else static if(filterStructure.endsWith("RNDFHF"))
     {
         auto filter = makeRandomizeFrequencyDomainBasisFunctionSelector(model, freqFilter);
