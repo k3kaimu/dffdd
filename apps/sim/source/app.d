@@ -39,14 +39,16 @@ void mainJob()
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
-                                    "S2FHF_RLS",
-                                    "S2FHF_LS",
-                                    "S2FHF_LMS",
-                                    "OPH_RLS",
-                                    "OPH_LS",
-                                    "OPH_LMS",
-                                    "WL_LS",
-                                    "L_LS",
+                                    // "S2FHF_RLS",
+                                    // "S2FHF_LS",
+                                    // "Foolish013FHF_LS",
+                                    "RNDFHF_LS",
+                                    // "S2FHF_LMS",
+                                    // "OPH_RLS",
+                                    // "OPH_LS",
+                                    // "OPH_LMS",
+                                    // "WL_LS",
+                                    // "L_LS",
                                     // "IQISICFHF_X",
                                     // "S2FHF_LS",
                                     // "OPH_LS",
@@ -127,7 +129,7 @@ void mainJob()
         /// inr_vs_canc, rinr, cmops
         //static if(methodName == "S2FHF_LS")
         //static if(0)
-        static if(methodName == "S2FHF_LS" || methodName == "OPH_LS" || methodName == "WL_LS" || methodName == "L_LS")
+        static if(methodName == "S2FHF_LS" || methodName.startsWith("RNDFHF") || methodName.startsWith("Foolish") || methodName == "OPH_LS" || methodName == "WL_LS" || methodName == "L_LS")
         foreach(learningSymbols; [60])
         foreach(inr; iota(20, 68, 3))
         foreach(txp; [23])
@@ -142,42 +144,42 @@ void mainJob()
         }
 
 
-        /// iteration
-        //static if(0)
-        static if(methodName.startsWith("S2FHF") || methodName.startsWith("FHF") || methodName.startsWith("OPH"))
-        foreach(learningSymbols; iota(1, 21, 1))
-        foreach(inr; [50])
-        foreach(txp; [23])
-        foreach(sf; [1, 3])
-        foreach(gamma; [2])
-        foreach(beta; [20])
-        foreach(irr; [25])
-        {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
-            appender.append(md[0], buildPath("results", md[1]));
-            dirset[md[1]] = true;
-        }
+        // /// iteration
+        // //static if(0)
+        // static if(methodName.startsWith("S2FHF") || methodName.startsWith("FHF") || methodName.startsWith("OPH"))
+        // foreach(learningSymbols; iota(1, 21, 1))
+        // foreach(inr; [50])
+        // foreach(txp; [23])
+        // foreach(sf; [1, 3])
+        // foreach(gamma; [2])
+        // foreach(beta; [20])
+        // foreach(irr; [25])
+        // {
+        //     auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
+        //     appender.append(md[0], buildPath("results", md[1]));
+        //     dirset[md[1]] = true;
+        // }
 
 
-        //static if(0)
-        static if(methodName == "S2FHF_LS")
-        foreach(learningSymbols; [60])
-        foreach(inr; [50])
-        foreach(txp; [23])
-        foreach(sf; [1, 3])
-        foreach(gamma; [2])
-        foreach(beta; [20])
-        foreach(irr; [25])
-        foreach(mvar; iota(0, 11, 1))
-        {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
-            md[0].txIQMixer.MAX_VAR_IRR = mvar.dB;
-            md[0].rxIQMixer.MAX_VAR_IRR = mvar.dB;
-            md[0].pa.MAX_VAR_GAIN = mvar.dB;
-            md[1] ~= "_mvar%s".format(cast(int)round(mvar * 10));
-            appender.append(md[0], buildPath("results", md[1]));
-            dirset[md[1]] = true;
-        }
+        // //static if(0)
+        // static if(methodName == "S2FHF_LS")
+        // foreach(learningSymbols; [60])
+        // foreach(inr; [50])
+        // foreach(txp; [23])
+        // foreach(sf; [1, 3])
+        // foreach(gamma; [2])
+        // foreach(beta; [20])
+        // foreach(irr; [25])
+        // foreach(mvar; iota(0, 11, 1))
+        // {
+        //     auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
+        //     md[0].txIQMixer.MAX_VAR_IRR = mvar.dB;
+        //     md[0].rxIQMixer.MAX_VAR_IRR = mvar.dB;
+        //     md[0].pa.MAX_VAR_GAIN = mvar.dB;
+        //     md[1] ~= "_mvar%s".format(cast(int)round(mvar * 10));
+        //     appender.append(md[0], buildPath("results", md[1]));
+        //     dirset[md[1]] = true;
+        // }
     }
 
     //writefln("%s tasks will be submitted.", taskList.length);
@@ -376,6 +378,10 @@ void mainForEachTrial(string methodName)(Model m, string dir)
             vv["actualCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (actualCostLMS / resList.length))/nsym;
             vv["nonSelCostRLS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 4*(distDim^^2 + distDim) * nfft)/nsym;
             vv["nonSelCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 2 * distDim * nfft)/nsym;
+            vv["nonSelCostRLS2"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 4*(2^^2 + 2) * nfft)/nsym;
+            vv["nonSelCostLMS2"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 2 * 2 * nfft)/nsym;
+            vv["nonSelCostRLS3"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 4*(3^^2 + 2) * nfft)/nsym;
+            vv["nonSelCostLMS3"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 3 * 2 * nfft)/nsym;
 
             return vv;
         }();

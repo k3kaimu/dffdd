@@ -593,6 +593,7 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
         );
 }
 
+
 auto makeFrequencyDomainBasisFunctionSelector(Canceller)(Model model, Canceller canceller)
 {
     import dffdd.filter.freqdomain;
@@ -608,6 +609,112 @@ auto makeFrequencyDomainBasisFunctionSelector(Canceller)(Model model, Canceller 
         (-model.basisFuncsSelection.imageMargin.dB).dB,
         model.basisFuncsSelection.noiseMargin,
     );
+}
+
+
+auto makeFoolishFrequencyDomainBasisFunctionSelector(Canceller)(Model model, in size_t[] used, Canceller canceller)
+{
+    immutable dim = canceller.distorter.outputDim;
+    bool[][] selectedBasisFuncs = new bool[][](model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling, dim);
+
+    foreach(f; 0 .. model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling)
+        foreach(i; used)
+            selectedBasisFuncs[f][i] = true;
+
+    canceller.selectedBasisFunctions = selectedBasisFuncs;
+
+    return canceller;
+}
+
+
+auto makeRandomizeFrequencyDomainBasisFunctionSelector(Canceller)(Model model, Canceller canceller)
+{
+    static
+    final class NopFrequencyDomainCanceller
+    {
+        this(Canceller canceller)
+        {
+            _canceller = canceller;
+        }
+
+
+        auto distorter() @property { return _canceller.distorter; }
+        size_t inputBlockLength() @property { return _canceller.inputBlockLength; }
+        void apply(Flag!"learning" doLearning, C)(in C[] input, in C[] desired, C[] errors) {}
+
+
+        void selectedBasisFunctions(in bool[][] selected) @property
+        {
+            foreach(e; selected)
+                _selected ~= e.dup;
+        }
+
+
+        const(bool[][]) selectedBasisFunctions() @property
+        {
+            return _selected;
+        }
+
+
+      private:
+        Canceller _canceller;
+        bool[][] _selected;
+    }
+
+
+    auto nopCanceller = new NopFrequencyDomainCanceller(canceller);
+    auto smartSelector = makeFrequencyDomainBasisFunctionSelector(model, nopCanceller);
+
+
+    static
+    final class RandomizedSelector
+    {
+        this(Canceller canceller, NopFrequencyDomainCanceller nopCanceller, typeof(smartSelector) sselector, uint seed)
+        {
+            _canceller = canceller;
+            _nopcanc = nopCanceller;
+            _sselector = sselector;
+            _seed = seed;
+        }
+
+
+        size_t inputBlockLength() @property
+        {
+            return _sselector.inputBlockLength;
+        }
+
+
+        void apply(Flag!"learning" doLearning, C)(in C[] input, in C[] desired, C[] errors)
+        {
+            if(_nopcanc.selectedBasisFunctions.length == 0){
+                _sselector.apply!doLearning(input, desired, errors);
+                enforce(_nopcanc.selectedBasisFunctions.length != 0);
+                const(bool)[][] selList = _nopcanc.selectedBasisFunctions.dup;
+                auto urng = Random(_seed);
+                selList.randomShuffle(urng);
+                _canceller.selectedBasisFunctions = selList;
+            }
+
+            _canceller.apply!doLearning(input, desired, errors);
+        }
+
+
+        void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
+        {
+            _sselector.preLearning(model, signalGenerator);
+            _canceller.preLearning(model, signalGenerator);
+        }
+
+
+      private:
+        Canceller _canceller;
+        NopFrequencyDomainCanceller _nopcanc;
+        typeof(smartSelector) _sselector;
+        uint _seed;
+    }
+
+
+    return new RandomizedSelector(canceller, nopCanceller, smartSelector, model.rndSeed + 1919893);
 }
 
 

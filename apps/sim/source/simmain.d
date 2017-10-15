@@ -243,6 +243,32 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     {
         auto filter = makeFrequencyDomainBasisFunctionSelector(model, freqFilter);
     }
+    else static if(filterStructure.startsWith("Foolish"))
+    {
+        import std.uni;
+        import std.exception : enforce;
+
+        immutable string usedList = filterStructure["Foolish".length .. $ - "FHF".length];
+        static assert(usedList.all!isNumber);
+
+        size_t[] usedIndexList;
+        foreach(i; 0 .. usedList.length){
+            auto c = usedList[i];
+            // usedIndexList ~= parse!size_t(str, 16);
+            if(c.isNumber)
+                usedIndexList ~= cast(size_t)(c - '0');
+            else{
+                enforce(c.isUpper && c.isAlpha);
+                usedIndexList ~= cast(size_t)(c - 'A') + 10;
+            }
+        }
+
+        auto filter = makeFoolishFrequencyDomainBasisFunctionSelector(model, usedIndexList, freqFilter);
+    }
+    else static if(filterStructure.endsWith("RNDFHF"))
+    {
+        auto filter = makeRandomizeFrequencyDomainBasisFunctionSelector(model, freqFilter);
+    }
     else
     {
         alias filter = freqFilter;
