@@ -42,8 +42,8 @@ void mainJob()
                                     // "S2FHF_RLS",
                                     // "S2FHF_LS",
                                     // "Foolish013FHF_LS",
-                                    "RNDFHF_LS",
-                                    "FullRNDFHF_LS",
+                                    // "RNDFHF_LS",
+                                    // "FullRNDFHF_LS",
                                     // "S2FHF_LMS",
                                     // "OPH_RLS",
                                     // "OPH_LS",
@@ -52,89 +52,37 @@ void mainJob()
                                     // "L_LS",
                                     // "IQISICFHF_X",
                                     // "S2FHF_LS",
-                                    // "OPH_LS",
+                                    "OPH_LS",
                                     // "OPH_RLS",
-                                    // "WL_LS",
-                                    // "L_LS",
-                                    // "FHF_LS",
+                                    "WL_LS",
+                                    "L_LS",
+                                    "FHF_LS",
                                     // "OPH_RLS",
                                     // "WL_RLS",
                                     // "L_RLS",
-                                    // "PreIQI-PH_LS",
+                                    "PreIQI-PH_LS",
                                     // "PreIQI-PH_RLS",
-                                    // "PreIQI-FHF_LS",
-                                    // "IQISICFHF_X",
+                                    "PreIQI-FHF_LS",
+                                    "IQISICFHF_X",
                                     // "S2FHF_LS",
                 /*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ /*"SFHF_LS",*/ /*"S2FHF_LS",*/ /*"L_LS", "WL_LS", "OPH_LS", "FHF_LS",*/ /*"IQISICFHF_X",*/ /*"TAYLOR_LS", "L_LS",*/ /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
             ))
     {
-        /+
         bool[string] dirset;
         auto appender = uniqueTaskAppender(&mainForEachTrial!methodName);
         scope(exit){
             enforce(appender.length == dirset.length);
             taskList ~= appender;
         }
-
-        foreach(learningSymbols; iota(5, 25, 5))
-        foreach(inr; iota(50, 55, 5))
-        foreach(txp; [23])
-        foreach(irr; [25])
-        {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, 2, 20, irr);
-            appender.append(md[0], buildPath("results", md[1]));
-            dirset[md[1]] = true;
-        }+/
-        bool[string] dirset;
-        auto appender = uniqueTaskAppender(&mainForEachTrial!methodName);
-        scope(exit){
-            enforce(appender.length == dirset.length);
-            taskList ~= appender;
-        }
-
-        // gamma_vs_rinr, canc, cmops
-        //static if(0)
-        static if(methodName == "S2FHF_RLS")
-        foreach(learningSymbols; [60])
-        foreach(inr; [50])
-        foreach(txp; [23])
-        foreach(sf; [1, 3])
-        foreach(gamma; iota(-10, 12, 2))
-        foreach(beta; iota(20, 35, 5))
-        foreach(irr; [25])
-        {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
-            appender.append(md[0], buildPath("results", md[1]));
-            dirset[md[1]] = true;
-        }
-
-
-        // beta_vs_rinr, canc, cmops
-        //static if(0)
-        static if(methodName == "S2FHF_RLS")
-        foreach(learningSymbols; [60])
-        foreach(inr; [50])
-        foreach(txp; [23])
-        foreach(sf; [1, 3])
-        foreach(gamma; [2])
-        foreach(beta; iota(10, 43, 3))
-        foreach(irr; iota(20, 35, 5))
-        {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
-            appender.append(md[0], buildPath("results", md[1]));
-            dirset[md[1]] = true;
-        }
-
 
         /// inr_vs_canc, rinr, cmops
         //static if(methodName == "S2FHF_LS")
         //static if(0)
-        static if(methodName == "S2FHF_LS" || methodName.endsWith("RNDFHF_LS") || methodName.startsWith("Foolish") || methodName == "OPH_LS" || methodName == "WL_LS" || methodName == "L_LS")
-        foreach(learningSymbols; [60])
+        foreach(learningSymbols; [60, 10])
         foreach(inr; iota(20, 68, 3))
         foreach(txp; [23])
-        foreach(sf; [1, 3])
+        foreach(sf; [1])
         foreach(gamma; [2])
         foreach(beta; [20])
         foreach(irr; [25])
@@ -144,43 +92,18 @@ void mainJob()
             dirset[md[1]] = true;
         }
 
-
-        // /// iteration
-        // //static if(0)
-        // static if(methodName.startsWith("S2FHF") || methodName.startsWith("FHF") || methodName.startsWith("OPH"))
-        // foreach(learningSymbols; iota(1, 21, 1))
-        // foreach(inr; [50])
-        // foreach(txp; [23])
-        // foreach(sf; [1, 3])
-        // foreach(gamma; [2])
-        // foreach(beta; [20])
-        // foreach(irr; [25])
-        // {
-        //     auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
-        //     appender.append(md[0], buildPath("results", md[1]));
-        //     dirset[md[1]] = true;
-        // }
-
-
-        // //static if(0)
-        // static if(methodName == "S2FHF_LS")
-        // foreach(learningSymbols; [60])
-        // foreach(inr; [50])
-        // foreach(txp; [23])
-        // foreach(sf; [1, 3])
-        // foreach(gamma; [2])
-        // foreach(beta; [20])
-        // foreach(irr; [25])
-        // foreach(mvar; iota(0, 11, 1))
-        // {
-        //     auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
-        //     md[0].txIQMixer.MAX_VAR_IRR = mvar.dB;
-        //     md[0].rxIQMixer.MAX_VAR_IRR = mvar.dB;
-        //     md[0].pa.MAX_VAR_GAIN = mvar.dB;
-        //     md[1] ~= "_mvar%s".format(cast(int)round(mvar * 10));
-        //     appender.append(md[0], buildPath("results", md[1]));
-        //     dirset[md[1]] = true;
-        // }
+        foreach(learningSymbols; iota(1, 21))
+        foreach(inr; [50])
+        foreach(txp; [23])
+        foreach(sf; [1])
+        foreach(gamma; [2])
+        foreach(beta; [20])
+        foreach(irr; [25])
+        {
+            auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
+            appender.append(md[0], buildPath("results", md[1]));
+            dirset[md[1]] = true;
+        }
     }
 
     //writefln("%s tasks will be submitted.", taskList.length);
@@ -272,7 +195,7 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     resList ~= mainImpl!methodName(m, dir);
 
     // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-    enum K = 0;    // 試行回数
+    enum K = 100;    // 試行回数
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(j; 0 .. K){
