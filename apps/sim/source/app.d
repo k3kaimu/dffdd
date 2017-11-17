@@ -40,7 +40,7 @@ void mainJob()
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     // "S2FHF_RLS",
-                                    // "S2FHF_LS",
+                                    "S2FHF_LS",
                                     // "Foolish013FHF_LS",
                                     // "RNDFHF_LS",
                                     // "FullRNDFHF_LS",
@@ -52,18 +52,19 @@ void mainJob()
                                     // "L_LS",
                                     // "IQISICFHF_X",
                                     // "S2FHF_LS",
-                                    "OPH_LS",
+                                    // "OPH_LS",
                                     // "OPH_RLS",
-                                    "WL_LS",
-                                    "L_LS",
-                                    "FHF_LS",
+                                    // "WL_LS",
+                                    // "L_LS",
+                                    // "FHF_LS",
                                     // "OPH_RLS",
                                     // "WL_RLS",
                                     // "L_RLS",
-                                    "PreIQI-PH_LS",
+                                    // "PreIQI-PH_LS",
                                     // "PreIQI-PH_RLS",
-                                    "PreIQI-FHF_LS",
-                                    "IQISICFHF_X",
+                                    // "PreIQI-FHF_LS",
+                                    // "IQISICFHF_X",
+                                    // "PreIQI-L_LS"
                                     // "S2FHF_LS",
                 /*"IQISICFHF_X", "WLFHF_LS",*/ /*"SFHF_LS",*/ /*"SFHF_LS",*/ /*"S2FHF_LS",*/ /*"L_LS", "WL_LS", "OPH_LS", "FHF_LS",*/ /*"IQISICFHF_X",*/ /*"TAYLOR_LS", "L_LS",*/ /*"OPH_LS", "WLFHF_LS", "WL_LS", "C2DCMFHF_LS", "P2DCMFHF_LS", *//*"SFHF_RLS", "WL_RLS",*/ /*"OPH_LS",*/ /*"SFHF_LS",*//* "C1DCMFHF_LS",*/ /*"C2SDCMFHF_LS",*/ /*"P1DCMFHF_LS", *//*"P2SDCMFHF_LS",*/
                 // "FHF_LMS", "FHF_LS", "OPH_LS", "OPH_RLS", "OPH_LMS", "OCH_LS", "OCH_RLS", "OCH_LMS", "WL_LS", "WL_RLS", "WL_LMS", "L_LS", "L_RLS", "L_LMS" /*"FHF", "PH"*//*, "OPH", "OPHDCM", "OCH", "WL", "L",*/ /*"OPHDCM"*/
@@ -79,10 +80,10 @@ void mainJob()
         /// inr_vs_canc, rinr, cmops
         //static if(methodName == "S2FHF_LS")
         //static if(0)
-        foreach(learningSymbols; [60, 10])
+        foreach(learningSymbols; [10])
         foreach(inr; iota(20, 68, 3))
         foreach(txp; [23])
-        foreach(sf; [1])
+        foreach(sf; [3])
         foreach(gamma; [2])
         foreach(beta; [20])
         foreach(irr; [25])
@@ -92,18 +93,18 @@ void mainJob()
             dirset[md[1]] = true;
         }
 
-        foreach(learningSymbols; iota(1, 21))
-        foreach(inr; [50])
-        foreach(txp; [23])
-        foreach(sf; [1])
-        foreach(gamma; [2])
-        foreach(beta; [20])
-        foreach(irr; [25])
-        {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
-            appender.append(md[0], buildPath("results", md[1]));
-            dirset[md[1]] = true;
-        }
+        // foreach(learningSymbols; iota(1, 21))
+        // foreach(inr; [50])
+        // foreach(txp; [23])
+        // foreach(sf; [1, 3])
+        // foreach(gamma; [2])
+        // foreach(beta; [20])
+        // foreach(irr; [25])
+        // {
+        //     auto md = makeModelAndDir!methodName(learningSymbols, inr, txp, sf, gamma, beta, irr);
+        //     appender.append(md[0], buildPath("results", md[1]));
+        //     dirset[md[1]] = true;
+        // }
     }
 
     //writefln("%s tasks will be submitted.", taskList.length);
@@ -312,6 +313,9 @@ void mainForEachTrial(string methodName)(Model m, string dir)
     
     auto file = File(buildPath(dir, "allResult.json"), "w");
     file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
+
+    file = File(buildPath(dir, "rawAllResult.json"), "w");
+    file.write(JSONValue(resList).toPrettyString(JSONOptions.specialFloatLiterals));
 }
 
 

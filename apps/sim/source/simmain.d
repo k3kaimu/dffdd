@@ -190,6 +190,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         auto subfilter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, false, false)(modOFDM(model), model);
     else static if(filterStructure.startsWith("PreIQI-FHF"))
         auto subfilter = makeFrequencyHammersteinFilter2!(filterOptimizer, 3, false)(model);
+    else static if(filterStructure.startsWith("PreIQI-L"))
+        auto subfilter = makeParallelHammersteinFilter!(filterOptimizer, 1, false, false)(modOFDM(model), model);
     else static assert(0);
 
     auto filter = new PreIQInvertionCanceller!(Complex!float, typeof(subfilter))(min(4, model.learningSymbols), model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling, subfilter);
@@ -333,7 +335,6 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
             sw.start();
             filter.apply!(Yes.learning)(refrs, recvs, outps);
             sw.stop();
-            //filter.apply!false(refrs, recvs, outps);
 
             if(model.outputWaveform){
                 foreach(i; 0 .. model.blockSize){

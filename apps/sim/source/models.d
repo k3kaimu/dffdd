@@ -280,6 +280,25 @@ struct Model
     FIRFilter firFilter;
 
 
+    struct NLMSAdapter 
+    {
+        real mu;
+    }
+    NLMSAdapter nlmsAdapter;
+
+
+    struct RLSAdapter
+    {
+        real delta;
+        real lambda;
+    }
+    RLSAdapter rlsAdapter;
+
+
+    struct LSAdapter {}
+    LSAdapter lsAdapter;
+
+
     struct Orthogonalizer
     {
         bool enabled = false;
@@ -505,9 +524,9 @@ auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = de
         immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
         static if(optimizer == "LMS")
-            return makeNLMSAdapter(state, 0.2).trainingLimit(samplesOfOnePeriod);
+            return makeNLMSAdapter(state, model.nlmsAdapter.mu).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "RLS")
-            return makeRLSAdapter(state, 1, 3E-3).trainingLimit(samplesOfOnePeriod);
+            return makeRLSAdapter(state, model.rlsAdapter.lambda, model.rlsAdapter.delta).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "LS")
         {
             // immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
