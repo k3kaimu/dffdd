@@ -13,9 +13,8 @@
 
     "dependencies": {
         "carbon": {"path": "../carbon"},
-        "dranges": {"path": "../dranges"},
         "dfftw3": "~>1.0.1",
         "cblas": "~>1.0.0",
-        "mir-algorithm": "~>0.5.16",
+        "mir-algorithm": "~>0.5.16"
     }
 }

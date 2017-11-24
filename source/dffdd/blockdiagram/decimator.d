@@ -6,9 +6,6 @@ import std.numeric;
 import std.complex;
 import std.range;
 
-import dranges.algorithm;
-import dranges.range;
-
 import dffdd.blockdiagram.utils;
 import dffdd.blockdiagram.filter;
 

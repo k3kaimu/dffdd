@@ -9,7 +9,6 @@ import std.algorithm;
 import std.traits;
 
 import dffdd.dsp.statistics;
-import dranges.range;
 import carbon.math;
 
 void writePSD(R)(auto ref R r, File file, real samplingFreq, size_t resolution)

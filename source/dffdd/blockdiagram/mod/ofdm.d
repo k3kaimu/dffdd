@@ -8,10 +8,6 @@ import std.numeric;
 import std.complex;
 import std.algorithm;
 
-import dranges.range;
-import dranges.algorithm;
-
-
 /*
 struct OFDMEqualizer(Mod)
 {
