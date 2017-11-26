@@ -3,6 +3,8 @@ module dffdd.dsp.convolution;
 import std.complex;
 import std.math;
 import std.numeric;
+import std.typecons;
+import std.algorithm;
 
 import dffdd.utils.fft;
 
@@ -10,7 +12,7 @@ import dffdd.utils.fft;
 /**
 
 */
-C[] convolution(FftObj, C)(FftObj fftObj, in FrequencyDomain!(C[]) specA, in FrequencyDomain!(C[]) specB, C[] dst)
+C[] convolution(FftObj, C)(FftObj fftObj, in C[] specA, in C[] specB, C[] dst)
 in{
     assert(specA.length == specB.length);
 }
@@ -41,8 +43,8 @@ body{
 
 */
 C[] convolutionPower(FftObj, C)(FftObj fftObj,
-                                in FrequencyDomain!(C[]) specA,
-                                in FrequencyDomain!(C[]) specB,
+                                in C[] specA,
+                                in C[] specB,
                                 C[] dst)
 {
     dst = convolution(fftObj, specA, specB, dst);
@@ -53,15 +55,25 @@ C[] convolutionPower(FftObj, C)(FftObj fftObj,
 }
 
 
+struct ConvResult(Index)
+{
+    Nullable!Index index;
+    real snr;
+
+    real snrdB() @property { return 10*log10(snr); }
+}
+
+
+
 /**
 Parameters:
     + smpPerSym := 1シンボルあたりのサンプル数, ただし、OFDMなら1
     + thr := 捕捉しきい値[dB]
 */
-Nullable!size_t findConvolutionPeak(FftObj)(
+ConvResult!size_t findConvolutionPeak(FftObj)(
                     FftObj fftObj,
-                    in FrequencyDomain!(Complex!float[]) sendSpec,
-                    in FrequencyDomain!(Complex!float[]) recvSpec,
+                    in Complex!float[] sendSpec,
+                    in Complex!float[] recvSpec,
                     Complex!float[] convDst,
                     real dBThreshold = 20,
                     bool onlyHalf = false)
@@ -96,7 +108,7 @@ Nullable!size_t findConvolutionPeak(FftObj)(
     Nullable!size_t nullV;
 
     if(snrdB > dBThreshold)
-        return Nullable!size_t(maxIdx);
+        return typeof(return)(Nullable!size_t(maxIdx), snrdB);
     else
-        return nullV;
+        return typeof(return)(nullV, snrdB);
 }
