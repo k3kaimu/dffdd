@@ -29,7 +29,7 @@ body{
     foreach(i, ref e; dst)
         e *= -specB[i].conj;
 
-    fftObj.inverseFft(dst, bufbuf);
+    .ifft!(typeof(C.re))(fftObj, dst, bufbuf);
     dst[] = bufbuf[];
 
     foreach(i, ref e; dst)
