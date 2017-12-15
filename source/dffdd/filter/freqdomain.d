@@ -699,7 +699,8 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
                             return y / _nEstH;
                         }();
 
-                        immutable iqcoef = (1 / _limitIRR.gain)^^2;
+                        // immutable iqcoef = (1 / _limitIRR.gain)^^2;
+                        immutable iqcoef = _iqRX.sqAbs();
 
                         immutable float pY2 = (pY0 + iqcoef * pY1 + 2 * sqrt(pY0 * iqcoef * pY1)) / (1 - iqcoef)^^2;
                         immutable float pY3 = (pY1 + iqcoef * pY0 + 2 * sqrt(pY1 * iqcoef * pY0)) / (1 - iqcoef)^^2;

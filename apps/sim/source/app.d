@@ -46,16 +46,16 @@ void mainJob()
                                     // "FullRNDFHF_LS",
                                     // "S2FHF_LMS",
                                     // "OPH_RLS",
-                                    // "OPH_LS",
+                                    "OPH_LS",
                                     // "OPH_LMS",
-                                    // "WL_LS",
+                                    "WL_LS",
                                     // "L_LS",
-                                    // "IQISICFHF_X",
+                                    "IQISICFHF_X",
                                     // "S2FHF_LS",
                                     // "OPH_LS",
                                     // "OPH_RLS",
                                     // "WL_LS",
-                                    // "L_LS",
+                                    "L_LS",
                                     // "FHF_LS",
                                     // "OPH_RLS",
                                     // "WL_RLS",
@@ -80,8 +80,8 @@ void mainJob()
         /// inr_vs_canc, rinr, cmops
         //static if(methodName == "S2FHF_LS")
         //static if(0)
-        foreach(learningSymbols; [10])
-        foreach(inr; iota(20, 68, 3))
+        foreach(learningSymbols; [10, 20, 60])
+        foreach(inr; iota(20, 70, 5))
         foreach(txp; [23])
         foreach(sf; [3])
         foreach(gamma; [2])
