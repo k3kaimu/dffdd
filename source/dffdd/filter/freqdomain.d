@@ -724,8 +724,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
                 _canceller.selectedBasisFunctions = _selectedBasisFuncs;
             }
-
-            _canceller.apply!doLearning(input, desired, errors);
         }
 
         _canceller.apply!doLearning(input, desired, errors);
