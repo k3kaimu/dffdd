@@ -208,10 +208,10 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 //     auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
 //   else static if(filterStructure.endsWith("CWL1H"))
 //     auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("IQISICFHF"))
+  else static if(filterStructure.endsWith("IterativeFreqSIC"))
   {
     import dffdd.filter.freqdomain;
-    auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, 2, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
+    auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
   }
   else static if(filterStructure.endsWith("WLFHF"))
   {
@@ -322,7 +322,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         StopWatch sw;
         foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
-            static if(filterStructure.endsWith("FHF"))
+            static if(filterStructure.endsWith("FHF") || filterStructure.endsWith("IterativeFreqSIC"))
             {
                 if(blockIdx >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
                     signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
