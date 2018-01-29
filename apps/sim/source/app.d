@@ -30,6 +30,30 @@ shared static this()
 }
 
 
+
+struct ModelSeed
+{
+    /* IQ Mixer */
+    Gain txIRR = 25.dB;
+    Gain rxIRR = 25.dB;
+
+    /* PA */
+    Voltage txPower = 23.dBm;
+    Voltage paIIP3 = 21.8.dBm;
+    Gain paGain = 28.5.dB;
+
+    /* LNA */
+    uint lnaSmoothFactor = 1;
+
+    /* Other */
+    Gain snr = 11.dB;
+    Gain inr = 50.dB;
+    uint numOfTrainingSymbols = 20;
+    Gain gamma = 0.dB;
+}
+
+
+
 void mainJob()
 {
     //import tuthpc.mpi;
@@ -288,9 +312,21 @@ Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, M
 }
 
 
-void mainForEachTrial(string methodName)(Model m, string dir)
+Random uniqueRandom(Args...)(Args args)
 {
-    //if(exists(buildPath(dir, "allResult.json"))) return;
+    ulong v = 0;
+    foreach(ref p; args)
+        v += hashOf(p);
+
+    Random rnd;
+    rnd.seed(v & uint.max);
+    return rnd;
+}
+
+
+void mainForEachTrial(string methodName)(Model m, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
+{
+    if(exists(buildPath(dir, "allResult.json"))) return;
 
     JSONValue[] resList;
 

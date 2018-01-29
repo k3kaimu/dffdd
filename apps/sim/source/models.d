@@ -187,18 +187,15 @@ struct Model
 
     struct TXIQMixer
     {
-        Gain IRR = 25.dB;  // 25dB
-        real iqTheta = 0;
-        Gain MAX_VAR_IRR = 0.dB;    // IRRの最大変位，dB単位で一様分布
+        /* f(x) = x + b*x としたときの b */
+        Complex!real imbCoef;
     }
     TXIQMixer txIQMixer;
 
 
     struct RXIQMixer
     {
-        Gain IRR = 25.dB;  // 25dB
-        real iqTheta = 0;
-        Gain MAX_VAR_IRR = 0.dB;    // IRRの最大変位，dB単位で一様分布
+        Complex!real imbCoef;
     }
     RXIQMixer rxIQMixer;
 
@@ -256,11 +253,18 @@ struct Model
     AWGN awgn;
 
 
+    //struct SIChannel
+    //{
+    //    size_t taps = 64;
+    //    Gain c = (40.0 / 64).dB;     // 64サンプル遅延で80dB減衰
+    //    bool isCoaxialCable = false;
+    //}
+    //SIChannel channel;
     struct SIChannel
     {
-        size_t taps = 64;
-        Gain c = (40.0 / 64).dB;     // 64サンプル遅延で80dB減衰
+        immutable(Complex!real)[] impulseResponse;
         bool isCoaxialCable = false;
+        uint rndSeed;
     }
     SIChannel channel;
 
@@ -382,14 +386,7 @@ auto connectToAWGN(R)(R r, Model model)
 
 auto connectToTXIQMixer(R)(R r, Model model)
 {
-    Random rnd;
-    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
-    foreach(i; 0 .. 1000) rnd.popFront();
-
-    auto irrdB = normalDist(model.txIQMixer.IRR.dB, model.txIQMixer.MAX_VAR_IRR.dB, rnd);
-    auto theta = uniform(0, 1.0f, rnd) * 2*PI;
-
-    return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
+    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.imbCoef);
 }
 
 
@@ -401,33 +398,17 @@ auto connectToTXIQPhaseNoise(R)(R r, Model model)
 
 auto connectToRXIQMixer(R)(R r, Model model)
 {
-    Random rnd;
-    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
-    foreach(i; 0 .. 1000) rnd.popFront();
-
-    auto irrdB = normalDist(model.rxIQMixer.IRR.dB, model.rxIQMixer.MAX_VAR_IRR.dB, rnd);
-    auto theta = uniform(0, 1.0f, rnd) * 2*PI;
-
-    return r.connectTo!IQImbalance(0.dB, irrdB.dB, theta).toWrappedRange;
+    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.imbCoef);
 }
 
 
 auto connectToPowerAmplifier(R)(R r, Model model)
 {
-    Random rnd;
-    rnd.seed((model.rndSeed + hashOf(__FUNCTION__)) & uint.max);
-    foreach(i; 0 .. 1000) rnd.popFront();
-
-    auto iip3 = normalDist(model.pa.IIP3.dBm, model.pa.MAX_VAR_IIP3.dB, rnd).dBm;
-    auto txp = normalDist(model.pa.TX_POWER.dBm, model.pa.MAX_VAR_TXP.dB, rnd);
-    auto gain = normalDist(model.pa.GAIN.dB, model.pa.MAX_VAR_GAIN.dB, rnd);
-
-    auto v = (txp - model.pa.GAIN.dB).dBm;
+    auto v = (model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm;
 
     return r
     .connectTo!PowerControlAmplifier(v)
-    .connectTo!RappModel(model.pa.GAIN, 1, iip3.V / 2)
-    // .connectTo!RappPowerAmplifier(model.pa.GAIN, model.pa.IIP3)
+    .connectTo!RappModel(model.pa.GAIN, 1, model.pa.IIP3.V / 2)
     .toWrappedRange;
 }
 

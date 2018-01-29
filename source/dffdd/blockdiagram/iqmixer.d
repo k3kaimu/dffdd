@@ -17,9 +17,15 @@ struct IQImbalance(R)
 {
     this(R r, Gain gain, Gain irr, real theta)
     {
+        this(r, gain, (1.0L/irr.gain) * std.complex.expi(theta));
+    }
+
+
+    this(R r, Gain gain, Complex!real imbCoef)
+    {
         _r = r;
         _g1V = gain.gain;
-        _g2V = gain.gain / irr.gain * std.complex.expi(theta);
+        _g2V = gain.gain * imbCoef;
     }
 
 
