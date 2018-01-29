@@ -301,11 +301,17 @@ struct Model
 
     struct BasisFunctionSelection
     {
-        Gain imageMargin = (-20).dB;
         Gain noiseMargin = 6.dB;
         size_t nEstH = 2;
     }
     BasisFunctionSelection basisFuncsSelection;
+
+
+    struct IterativeFreqSIC
+    {
+        size_t iterations = 2;
+    }
+    IterativeFreqSIC iterativeFreqSIC;
 
     void txPower(Voltage p) @property
     {
@@ -571,9 +577,9 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
         immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
 
       static if(optimizer == "LMS")
-        return makeNLMSAdapter(state, 0.8).trainingLimit(model.learningSymbols);
+        return makeNLMSAdapter(state, model.nlmsAdapter.mu).trainingLimit(model.learningSymbols);
       else static if(optimizer == "RLS")
-        return makeRLSAdapter(state, 1, 3E-7).trainingLimit(model.learningSymbols);
+        return makeRLSAdapter(state, model.rlsAdapter.lambda, model.rlsAdapter.delta).trainingLimit(model.learningSymbols);
       else static if(optimizer == "LS")
         return makeLSAdapter(state, model.learningSymbols).trainingLimit(model.learningSymbols);
     }
@@ -618,7 +624,6 @@ auto makeFrequencyDomainBasisFunctionSelector(Canceller)(Model model, Canceller 
         model.ofdm.scaleOfUpSampling,
         model.samplingFreq,
         model.basisFuncsSelection.nEstH,
-        (-model.basisFuncsSelection.imageMargin.dB).dB,
         model.basisFuncsSelection.noiseMargin,
     );
 }
