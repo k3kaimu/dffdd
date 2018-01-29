@@ -624,7 +624,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 {
     alias Dist = typeof(Canceller.init.distorter);
 
-    this(Canceller canceller, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS, real sampFreq, size_t nEstH = 2, Gain limitIRR = 20.dB, Gain gainMargin = 6.dB)
+    this(Canceller canceller, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS, real sampFreq, size_t nEstH = 2, Gain gainMargin = 6.dB)
     {
         _fftw = makeFFTWObject!Complex(nFFT * nOS);
         _canceller = canceller;
@@ -639,7 +639,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
         _nSC = subcarrierMap.map!(a => a ? 1 : 0).sum();
         _sampFreq = sampFreq;
         _nEstH = nEstH;
-        _limitIRR = limitIRR;
         _gainMargin = gainMargin;
     }
 
@@ -1050,7 +1049,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
                 return cnts;
             }
 
-            jv["limitIRR"] = _limitIRR.to!string;
             jv["gainMargin"] = _gainMargin.to!string;
             jv["numOfEstimationOfH"] = _nEstH;
             jv["selectedBasisFuncs"] = _selectedBasisFuncs;
@@ -1082,7 +1080,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
     immutable size_t _nFFT, _nCP, _nOS, _nSC;
     immutable real _sampFreq;
     immutable size_t _nEstH;
-    immutable Gain _limitIRR, _gainMargin;
+    immutable Gain _gainMargin;
     C _iqRX;
 
     // 重要度計算
