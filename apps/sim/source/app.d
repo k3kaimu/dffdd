@@ -137,7 +137,7 @@ void mainJob()
 
         foreach(learningSymbols; iota(2, 21, 1))
         {
-            auto md = makeModelAndDir!methodName(numOfTrials, learningSymbols, 50, 23, 3, -4, 25);
+            auto md = makeModelAndDir!methodName(learningSymbols, 50, 23, 3, -4, 25);
             auto dir = buildPath("results_ALL_iteration_vs_canc", md[1]);
             setRLSLMSParam(methodName, md[0]);
             appender.append(md[0], dir, No.saveAllRAWData);
@@ -183,101 +183,66 @@ void mainJob()
 }
 
 
-Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
+Tuple!(Model, string) makeModelAndDir(string methodName)(int learningSymbols, int inr, int txp, int lnaSmoothFactor, int gamma, int irr)
 {
-    Model[] models;
+    Model model;
+    model.SNR = 11.dB;
+    model.INR = inr.dB;
+    model.pa.TX_POWER = txp.dBm;
+    model.txIQMixer.IRR = irr.dB;
+    model.rxIQMixer.IRR = irr.dB;
+    model.basisFuncsSelection.noiseMargin = gamma.dB;
+    model.lna.smoothFactor = lnaSmoothFactor;
 
-    foreach(iTrial; 0 .. numOfTrials) {
-        Model model;
-        scope(success)
-            models ~= model;
+    // model.withSI = false;
+    // model.withSIC = false;
 
-        model.SNR = modelSeed.snr;
-        model.INR = modelSeed.inr;
-        model.pa.TX_POWER = modelSeed.txPower;
-        model.txIQMixer.IRR = modelSeed.txIRR;
-        model.rxIQMixer.IRR = modelSeed.rxIRR;
-        model.basisFuncsSelection.noiseMargin = modelSeed.gamma;
-        model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
+    // 再現する非線形性の選択
+    model.useDTXIQ = false;
+    model.useDTXPN = false;
+    model.useDTXPA = false;
+    model.useSTXIQ = true;
+    model.useSTXPN = false;
+    model.useSTXPA = true;
+    model.useSTXIQ2 = false;
+    model.useSRXLN = true;
+    model.useSRXIQ = true;
+    model.useSRXQZ = true;
 
-        // model.withSI = false;
-        // model.withSIC = false;
+    model.orthogonalizer.numOfTrainingSymbols = 10000;
 
-        // 再現する非線形性の選択
-        model.useDTXIQ = false;
-        model.useDTXPN = false;
-        model.useDTXPA = false;
-        model.useSTXIQ = true;
-        model.useSTXPN = false;
-        model.useSTXPA = true;
-        model.useSTXIQ2 = false;
-        model.useSRXLN = true;
-        model.useSRXIQ = true;
-        model.useSRXQZ = true;
+    if(methodName[0] == 'O')
+        model.orthogonalizer.enabled = true;
+    else
+        model.orthogonalizer.enabled = false;
 
+    // ベースバンド信号波形の出力
+    model.outputWaveform = false;
 
-        /* PAの設定 */
-        {
-            model.pa.TX_POWER = modelSeed.txPower;
-            model.pa.IIP3 = modelSeed.paIIP3.dBm;
-            model.pa.GAIN = modelSeed.paGain.dB;
-        }
+        model.channel.taps = 64;
+    model.firFilter.taps = 64;
 
-        /* TX IQ Mixer の設定 */
-        {
-            Random rnd = uniqueRandom(iTrial, "TXIQMixer");
-            model.txIQMixer.imbCoef = (1.0L / modelSeed.txIRR.gain) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
-        }
+    model.outputBER = false;
 
-        /* RX IQ Mixer の設定 */
-        {
-            Random rnd = uniqueRandom(iTrial, "RXIQMixer");
-            model.rxIQMixer.imbCoef = (1.0L / modelSeed.rxIRR.gain) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
-        }
+  static if(methodName.canFind("DCM"))
+  {
+    model.learningSymbols = 10;
+    model.learningCount = 3;
+  }
+  else
+  {
+    model.learningSymbols = learningSymbols;
+    model.learningCount = 1;
+  }
 
-        /* チャネルの設定 */
-        {
-            model.channel.isCoaxialCable = false;
-        }
-
-        /* キャンセラの設定 */
-        {
-            model.orthogonalizer.numOfTrainingSymbols = 10000;
-
-            if(methodName[0] == 'O')
-                model.orthogonalizer.enabled = true;
-            else
-                model.orthogonalizer.enabled = false;
-
-            // ベースバンド信号波形の出力
-            model.outputWaveform = false;
-
-            model.channel.taps = 64;
-            model.firFilter.taps = 64;
-
-            model.outputBER = false;
-
-            if(methodName.canFind("DCM")) {
-                model.learningSymbols = 10;
-                model.learningCount = 3;
-            } else {
-                model.learningSymbols = learningSymbols;
-                model.learningCount = 1;
-            }
-
-            if(methodName.split("_")[0].endsWith("FHF") || methodName == "IterativeFreqSIC_X") {
-                model.swappedSymbols = 100000;
-                model.rlsAdapter.delta = 4E-7;
-                model.rlsAdapter.lambda = 1;
-                model.nlmsAdapter.mu = 1;
-            } else {
-                model.swappedSymbols = 0;
-                model.rlsAdapter.delta = 0.1;
-                model.rlsAdapter.lambda = 1;
-                model.nlmsAdapter.mu = 0.33;
-            }
-        }
-    }
+  static if(methodName.split("_")[0].endsWith("FHF"))
+  {
+    model.swappedSymbols = 100000;
+  }
+  else
+  {
+    model.swappedSymbols = 0;
+  }
 
   static if(methodName.split("_")[0].endsWith("FHF"))
     string dir = "TXP%s_inr%s_%s_SF%s_G%s_IRR%s_%s".format(model.pa.TX_POWER, model.INR, methodName, model.lna.smoothFactor, model.basisFuncsSelection.noiseMargin, irr, learningSymbols);
@@ -288,7 +253,7 @@ Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, M
 }
 
 
-void mainForEachTrial(string methodName)(Model m, string dir)
+void mainForEachTrial(string methodName)(Model m, string dir, Flag!"saveAllRAWData" saveAllRAWData)
 {
     //if(exists(buildPath(dir, "allResult.json"))) return;
 
