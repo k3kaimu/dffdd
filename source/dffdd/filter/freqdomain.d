@@ -210,7 +210,7 @@ final class FrequencyDomainDCMHammersteinStateAdapter(C, Adapter, Flag!"isParall
 
     static struct WeightAccessorLv1
     {
-        auto opIndex(size_t p)
+        auto ref opIndex(size_t p)
         {
             return _states[p].weight[0, 0];
         }

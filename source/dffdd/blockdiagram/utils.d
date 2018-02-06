@@ -14,7 +14,9 @@ template connectTo(alias Block)
 {
     auto connectTo(R, Params...)(R r, Params params)
     {
-      static if(is(typeof((){ auto b = Block(r, params); })))                   // Block is function
+      static if(is(typeof({static assert(isConverter!Block);})))
+        return RangeAdapter!(Block, R)(r, Block(params));
+      else static if(is(typeof((){ auto b = Block(r, params); })))                   // Block is function
         return Block(r, params);
       else static if(is(typeof((){ auto b = Block.makeBlock(r, params); })))    // Block has .makeBlock
         return Block.makeBlock(r, params);
@@ -354,4 +356,384 @@ if(isForwardRange!R)
 //   private:
 //     R _r;
 // }
+
+
+enum isConverter(TImpl) = is(typeof((TImpl impl){
+    const(TImpl.InputElementType)[] input;
+    TImpl.OutputElementType[] output;
+    impl(input, output);
+}));
+
+
+enum bool isOneElementConverter(TImpl) = is(typeof((TImpl impl){
+    TImpl.InputElementType input;
+    TImpl.OutputElementType output;
+    impl(input, output);
+}));
+
+
+enum isDuplicableConverter(Conv) = isConverter!Conv && is(typeof((const Conv conv){
+    Conv other = conv.dup;
+}));
+
+
+
+struct RangeAdapter(TImpl, R)
+if(is(ElementType!R : const(TImpl.InputElementType)[]))
+{
+    this(R range, TImpl impl)
+    {
+        _range = range;
+        _impl = impl;
+    }
+
+
+    this(X...)(R range, auto ref X args)
+    if(X.length == 0 || is(typeof(TImpl(args))))
+    {
+        static if(X.length > 0) _impl = TImpl(args);
+        _range = range;
+    }
+
+
+    // @disable
+    // this(this);
+
+
+    const(OutputElementType)[] front() @property
+    {
+        if(_frontIsComputed) return _buffer;
+
+        auto input = _range.front;
+        _impl(input, _buffer);
+        _frontIsComputed = true;
+
+        return _buffer;
+    }
+
+
+    void popFront()
+    {
+        _range.popFront();
+        _frontIsComputed = false;
+    }
+
+
+  static if(isInfinite!R)
+  {
+    enum bool empty = false;
+  }
+  else
+  {
+    bool empty() @property
+    {
+        return _range.empty;
+    }
+  }
+
+
+  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  {
+    typeof(this) save() @property
+    {
+        typeof(this) dst = this;
+        dst._buffer = dst._buffer.dup;
+        dst._range = dst._range.save;
+        dst._impl = dst._impl.dup;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    alias InputElementType = TImpl.InputElementType;
+    alias OutputElementType = TImpl.OutputElementType;
+
+    OutputElementType[] _buffer;
+    bool _frontIsComputed;
+    R _range;
+    TImpl _impl;
+}
+
+unittest
+{
+    import std.typecons;
+    import std.algorithm;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        {
+            import std.algorithm : sum;
+
+            *_sum += input.sum();
+            output.length = input.length;
+            output[] = input[];
+        }
+
+
+      private:
+        long* _sum;
+    }
+
+
+    static
+    auto applyImpl(R)(R range, long* ptr)
+    {
+        return RangeAdapter!(Impl, R)(range, ptr);
+    }
+
+
+    long* ptr = new long;
+    auto r = applyImpl(iota(1024).array.chunks(32), ptr).joiner;
+    assert(equal(r, iota(1024)));
+    assert(*ptr == 1023*512);
+}
+
+
+struct RangeAdapter(TImpl, R)
+if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
+{
+    this(R range, TImpl impl)
+    {
+        _range = range;
+        _impl = impl;
+    }
+
+
+    this(X...)(R range, auto ref X args)
+    if(X.length == 0 || is(typeof(TImpl(args))))
+    {
+        static if(X.length > 0)
+            _impl = TImpl(args);
+
+        _range = range;
+    }
+
+
+    // @disable
+    // this(this);
+
+
+    OutputElementType front() @property
+    {
+        if(!_frontIsComputed){
+            auto input = _range.front;
+            _impl(input, _output);
+            _frontIsComputed = true;
+        }
+        
+        return _output;
+    }
+
+
+    void popFront()
+    {
+        _range.popFront();
+        _frontIsComputed = false;
+    }
+
+
+  static if(isInfinite!R)
+  {
+    enum bool empty = false;
+  }
+  else
+  {
+    bool empty() @property
+    {
+        return _range.empty;
+    }
+  }
+
+
+  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  {
+    typeof(this) save() @property
+    {
+        typeof(this) dst = this;
+        dst._range = dst._range.save;
+        dst._impl = dst._impl.dup;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    alias InputElementType = TImpl.InputElementType;
+    alias OutputElementType = TImpl.OutputElementType;
+
+    R _range;
+    TImpl _impl;
+    OutputElementType _output;
+    bool _frontIsComputed;
+}
+
+unittest
+{
+    import std.typecons;
+    import std.algorithm;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType input, ref OutputElementType output)
+        {
+            *_sum += input;
+            output = input;
+        }
+
+
+      private:
+        long* _sum;
+    }
+
+    static assert(isOneElementConverter!Impl);
+
+
+    static
+    auto applyImpl(R)(R range, long* ptr)
+    {
+        return RangeAdapter!(Impl, R)(range, ptr);
+    }
+
+
+    long* ptr = new long;
+    auto r = applyImpl(iota(1024), ptr);
+    assert(equal(r, iota(1024)));
+    assert(*ptr == 1023*512);
+}
+
+
+struct RangeAdapter(TImpl, R)
+if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
+{
+    this(R range, TImpl impl)
+    {
+        _range = range;
+        _impl = impl;
+    }
+
+
+    this(X...)(R range, auto ref X args)
+    if(X.length == 0 || is(typeof(TImpl(args))))
+    {
+        if(X.length != 0) _impl = TImpl(args);
+        _range = range;
+        _buffer = new OutputElementType[1];
+    }
+
+
+    // @disable
+    // this(this);
+
+
+    const(OutputElementType)[] front() @property
+    {
+        if(!_frontIsComputed){
+            auto input = _range.front;
+            TImpl.InputElementType[1] inputBuffer;
+            inputBuffer[0] = input;
+            _impl(inputBuffer[0 .. 1], _buffer);
+            _frontIsComputed = true;
+        }
+        
+        return _buffer;
+    }
+
+
+    void popFront()
+    {
+        _range.popFront();
+        _frontIsComputed = false;
+    }
+
+
+  static if(isInfinite!R)
+  {
+    enum bool empty = false;
+  }
+  else
+  {
+    bool empty() @property
+    {
+        return _range.empty;
+    }
+  }
+
+
+  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  {
+    typeof(this) save() @property
+    {
+        typeof(this) dst = this;
+        dst._range = dst._range.save;
+        dst._impl = dst._impl.dup;
+        dst._buffer = dst._buffer.dup;
+
+        return dst;
+    }
+  }
+
+
+  private:
+    alias InputElementType = TImpl.InputElementType;
+    alias OutputElementType = TImpl.OutputElementType;
+
+    R _range;
+    TImpl _impl;
+    OutputElementType[] _buffer;
+    bool _frontIsComputed;
+}
+
+unittest
+{
+    import std.typecons;
+    import std.algorithm;
+
+    static struct Impl
+    {
+        alias InputElementType = int;
+        alias OutputElementType = int;
+
+        this(long* ptr) { _sum = ptr; }
+
+        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        {
+            import std.algorithm;
+
+            *_sum += input.sum;
+            output.length = input.length;
+            output[] = input[];
+        }
+
+      private:
+        long* _sum;
+    }
+
+
+    static
+    auto applyImpl(R)(R range, long* ptr)
+    {
+        return RangeAdapter!(Impl, R)(range, ptr);
+    }
+
+
+    long* ptr = new long;
+    auto r = applyImpl(iota(1024), ptr).joiner;
+    assert(equal(r, iota(1024)));
+    import std.stdio;
+    assert(*ptr == 1023*512);
+}
 

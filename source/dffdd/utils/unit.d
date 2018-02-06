@@ -137,7 +137,6 @@ struct Gain
     }
 
 
-    deprecated
     real gain() pure nothrow @safe @nogc
     {
         return _g1V;
@@ -212,7 +211,6 @@ struct Voltage
     //}
 
 
-    deprecated
     real V() pure nothrow @safe @nogc
     {
         return _g1V;

@@ -6,6 +6,7 @@ import std.random;
 import std.math;
 import std.complex;
 import std.range;
+import std.traits;
 
 
 auto addIQImbalance(R)(R r, Gain gain, Gain irr)
@@ -13,58 +14,78 @@ auto addIQImbalance(R)(R r, Gain gain, Gain irr)
     return IQImbalance!R(r, gain, irr);
 }
 
-struct IQImbalance(R)
+
+struct IQImbalanceConverter(C)
 {
-    this(R r, Gain gain, Gain irr, real theta)
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(Gain gain, Gain irr, real theta)
     {
-        this(r, gain, (1.0L/irr.gain) * std.complex.expi(theta));
+        this(gain, (1.0L/irr.gain) * std.complex.expi(theta));
     }
 
 
-    this(R r, Gain gain, Complex!real imbCoef)
+    this(Gain gain, Complex!real coef)
     {
-        _r = r;
         _g1V = gain.gain;
-        _g2V = gain.gain * imbCoef;
+        _g2V = gain.gain * coef;
     }
 
 
-    auto front()
+    void opCall(InputElementType input, ref OutputElementType output)
     {
-        auto e = _r.front;
-        return e * _g1V + e.conj * _g2V;
+        output = input * _g1V + input.conj * _g2V;
     }
 
 
-    void popFront()
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
     {
-        _r.popFront();
+        output.length = input.length;
+
+        foreach(i; 0 .. input.length)
+            this.opCall(input[i], output[i]);
     }
 
 
-    bool empty()
+    typeof(this) dup() const pure nothrow @safe @nogc @property
     {
-        return _r.empty;
+        return this;
     }
-
-
-  static if(isForwardRange!R)
-  {
-    typeof(this) save() @property
-    {
-        typeof(return) dst = this;
-
-        dst._r = this._r.save;
-
-        return dst;
-    }
-  }
 
 
   private:
-    R _r;
     real _g1V;      // 電圧系での真値のゲイン
-    Complex!real _g2V;      // 電圧計での真値のImageゲイン
+    C _g2V;         // 電圧計での真値のImageゲイン
+}
+
+
+struct IQImbalance
+{
+    static
+    auto makeBlock(R)(R range, Gain gain, Complex!real coef)
+    {
+        import dffdd.blockdiagram.utils : connectTo;
+
+        alias E = Unqual!(ElementType!R);
+        return range.connectTo!(IQImbalanceConverter!E)(gain, coef);
+    }
+}
+
+
+unittest 
+{
+    import std.algorithm : map, equal;
+    import dffdd.blockdiagram.utils : connectTo;
+
+    Complex!real[] signal = new Complex!real[1024];
+    foreach(i; 0 .. 1024)
+        signal[i] = Complex!real(uniform01, uniform01);
+    enum coef = Complex!real(1.0, 2.0);
+
+    auto iqimb = signal.connectTo!IQImbalance(0.dB, coef);
+    assert(equal(iqimb, signal.map!(a => a + a.conj * Complex!real(1.0, 2.0))));
 }
 
 
