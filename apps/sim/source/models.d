@@ -262,7 +262,7 @@ struct Model
     //SIChannel channel;
     struct SIChannel
     {
-        Complex!float[] impulseResponse;
+        Complex!real[] impulseResponse;
         size_t taps;
     }
     SIChannel channel;
