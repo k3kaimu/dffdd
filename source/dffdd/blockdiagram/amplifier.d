@@ -241,8 +241,6 @@ struct PowerControlAmplifierConverter(C)
 
 struct PowerControlAmplifier
 {
-    import std.stdio;
-
     static
     auto makeBlock(R)(R r, Voltage op, size_t avgSize = 512)
     {
