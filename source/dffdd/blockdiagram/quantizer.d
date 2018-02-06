@@ -79,20 +79,21 @@ struct Quantizer(R)
 }
 
 
-struct SimpleQuantizer(R)
+struct SimpleQuantizerConverter(C)
 {
-    alias E = typeof(Unqual!(ElementType!R).init.re);
+    alias InputElementType = C;
+    alias OutputElementType = C;
 
-    this(R r, size_t nbit)
+
+    this(size_t nbit)
     {
-        _r = r;
         _nbit = nbit;
     }
 
 
-    Complex!E front() @property
+    void opCall(InputElementType input, ref OutputElementType output)
     {
-        auto f = _r.front * (1 << (_nbit - 1));
+        auto f = input * (1 << (_nbit - 1));
         long ivr, ivi;
 
         if(f.re >= long.max)
@@ -109,41 +110,33 @@ struct SimpleQuantizer(R)
         else
             ivi = cast(long)f.im;
 
-        return Complex!E(ivr, ivi) / (1 << (_nbit - 1));
+        output = C(ivr, ivi) / (1 << (_nbit - 1));
     }
 
 
-    void popFront()
+    typeof(this) dup() const pure nothrow @safe @nogc @property
     {
-        _r.popFront();
+        return this;
     }
-
-
-  static if(isInfinite!R)
-    enum bool empty = true;
-  else
-  {
-    bool empty() @property
-    {
-        return _r.empty;
-    }
-  }
-
-
-  static if(isForwardRange!R)
-  {
-    typeof(this) save() @property
-    {
-        typeof(return) dst = this;
-
-        dst._r = this._r.save;
-
-        return dst;
-    }
-  }
 
 
   private:
-    R _r;
     size_t _nbit;
+}
+
+
+struct SimpleQuantizer
+{
+    static
+    auto makeBlock(R)(R r, size_t nbit)
+    {
+        import dffdd.blockdiagram.utils : connectTo;
+        alias E = Unqual!(ElementType!R);
+        return r.connectTo!(SimpleQuantizerConverter!E)(nbit);
+    }
+}
+
+unittest 
+{
+    auto r = SimpleQuantizer.makeBlock(Complex!float[].init, 1);
 }
