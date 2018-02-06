@@ -372,7 +372,9 @@ enum bool isOneElementConverter(TImpl) = is(typeof((TImpl impl){
 }));
 
 
-enum isDuplicableConverter(Conv) = isConverter!Conv && is(typeof((const Conv conv){
+enum isDuplicableConverter(Conv) 
+    = (isConverter!Conv || isOneElementConverter!Conv) 
+        && is(typeof((const Conv conv) {
     Conv other = conv.dup;
 }));
 
