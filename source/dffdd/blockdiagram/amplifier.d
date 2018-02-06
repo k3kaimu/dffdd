@@ -75,63 +75,59 @@ s: smooth factor
 u: |x[n]|
 g(u) = (G*u)/(1+(u/o)^^(2s))^^(1/(2*s))
 */
-struct RappModel(R)
+struct RappModelConverter(C)
 {
-    this(R r, Gain gain, real smoothFactor, real saturation)
-    {
-        _r = r;
+    alias InputElementType = C;
+    alias OutputElementType = C;
 
+    this(Gain gain, real smoothFactor, real saturation)
+    {
         _g = gain.gain;
         _s = smoothFactor;
         _o = saturation;
     }
 
 
-    auto front()
+    void opCall(InputElementType input, ref OutputElementType output)
     {
-        auto x = _r.front;
-        auto r = abs(x),
-             u = x / r;     // unit vector
+        auto r = abs(input),
+             u = input / r;         // unit vector
 
         // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
-        if(r <= 1E-6)
-            return x;
-
-        r = (r * _g) / (( 1 + (r/_o)^^(2*_s) )^^(1/(2*_s)));
-        return r * u;
+        if(r <= 1E-6){
+            output = input;
+        }else{
+            r = (r * _g) / (( 1 + (r/_o)^^(2*_s) )^^(1/(2*_s)));
+            output = r * u;
+        }
     }
 
 
-    void popFront()
+    typeof(this) dup() const pure nothrow @safe @nogc @property
     {
-        _r.popFront();
+        return this;
     }
-
-
-    bool empty()
-    {
-        return _r.empty;
-    }
-
-
-  static if(isForwardRange!R)
-  {
-    typeof(this) save() @property
-    {
-        typeof(this) dst;
-        dst._r = this._r.save;
-        dst._g = this._g;
-        dst._s = this._s;
-        dst._o = this._o;
-
-        return dst;
-    }
-  }
 
 
   private:
-    R _r;
     real _g, _s, _o;
+}
+
+
+struct RappModel
+{
+    static
+    auto makeBlock(R)(R range, Gain gain, real smoothFactor, real saturation)
+    {
+        import dffdd.blockdiagram.utils : connectTo;
+        alias E = Unqual!(ElementType!R);
+        return range.connectTo!(RappModelConverter!E)(gain, smoothFactor, saturation);
+    }
+}
+
+unittest
+{
+    auto r = RappModel.makeBlock(Complex!float[].init, 1.0.dB, 1, 1);
 }
 
 

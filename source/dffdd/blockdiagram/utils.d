@@ -14,7 +14,7 @@ template connectTo(alias Block)
 {
     auto connectTo(R, Params...)(R r, Params params)
     {
-      static if(is(typeof({static assert(isConverter!Block);})))
+      static if(is(typeof({static assert(isConverter!Block || isOneElementConverter!Block);})))
         return RangeAdapter!(Block, R)(r, Block(params));
       else static if(is(typeof((){ auto b = Block(r, params); })))                   // Block is function
         return Block(r, params);
