@@ -177,6 +177,67 @@ struct VGA(R)
 }
 
 
+struct PowerControlAmplifierConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(Voltage op, size_t avgSize)
+    {
+        _power = op.V^^2;
+        _alpha = 1;
+        _cnt = 0;
+        _avgSize = avgSize;
+        _sumPower = 0;
+        _avgCount = 0;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        _sumPower += input.re^^2 + input.im^^2;
+        ++_cnt;
+        if(_cnt == _avgSize){
+            if(_avgCount < 30){
+                if(_sumPower == 0)
+                    _alpha = _alpha;
+                else
+                    _alpha = _alpha / 2 + sqrt(_power / (_sumPower / _avgSize)) / 2;
+
+                ++_avgCount;
+            }
+
+            _sumPower = 0;
+            _cnt = 0;
+        }
+
+        output = input * _alpha;
+    }
+
+
+    Gain gain() @property const
+    {
+        return Gain.fromVoltageGain(_alpha);
+    }
+
+
+    PowerControlAmplifierConverter!C dup() const pure nothrow @safe @nogc @property 
+    {
+        return this;
+    }
+
+
+  private:
+    real _power;
+    real _alpha;
+    size_t _cnt;
+    size_t _avgSize;
+    size_t _avgCount;
+    real _sumPower;
+}
+
+
 
 struct PowerControlAmplifier
 {
@@ -185,95 +246,9 @@ struct PowerControlAmplifier
     static
     auto makeBlock(R)(R r, Voltage op, size_t avgSize = 512)
     {
-        return PowerControlAmplifierImpl!R(r, op, avgSize);
-    }
-
-
-    static
-    struct PowerControlAmplifierImpl(R)
-    {
-        this(R r, Voltage op, size_t avgSize)
-        {
-            _r = r;
-            if(_r.empty){
-                _empty = true;
-                return;
-            }
-
-            _power = op.V^^2;
-            _alpha = 1;
-            _front = _r.front;
-            _r.popFront();
-
-            _empty = false;
-            _cnt = 0;
-            _avgSize = avgSize;
-            _sumPower = 0;
-            _avgCount = 0;
-        }
-
-
-        auto front() const @property
-        {
-            return _alpha * _front;
-        }
-
-
-        bool empty() const @property { return _empty; }
-
-
-        void popFront()
-        {
-            if(_r.empty){
-                _empty = true;
-                return;
-            }
-
-            _sumPower += _front.re^^2 + _front.im^^2;
-            ++_cnt;
-            if(_cnt == _avgSize){
-                if(_avgCount < 30){
-                    if(_sumPower == 0)
-                        _alpha = _alpha;
-                    else
-                        _alpha = _alpha / 2 + sqrt(_power / (_sumPower / _avgSize)) / 2;
-
-                    ++_avgCount;
-                }
-
-                _sumPower = 0;
-                _cnt = 0;
-            }
-
-            _front = this._r.front;
-
-            _r.popFront();
-        }
-
-
-      static if(isForwardRange!R)
-      {
-        typeof(this) save() @property
-        {
-            typeof(return) dst = this;
-
-            dst._r = this._r.save;
-
-            return dst;
-        }
-      }
-
-
-      private:
-        R _r;
-        real _power;
-        real _alpha;
-        Unqual!(ElementType!R) _front;
-        bool _empty;
-        size_t _cnt;
-        size_t _avgSize;
-        size_t _avgCount;
-        real _sumPower;
+        import dffdd.blockdiagram.utils : connectTo;
+        alias E = Unqual!(ElementType!R);
+        return r.connectTo!(PowerControlAmplifierConverter!E)(op, avgSize);
     }
 }
 
