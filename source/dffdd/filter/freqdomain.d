@@ -1156,6 +1156,27 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator) {}
 
 
+    JSONValue info()
+    {
+        static
+        JSONValue cpxToJV(F)(Complex!F a){
+            return JSONValue(["re": a.re, "im": a.im]);
+        }
+
+        JSONValue jv = [ "type": typeof(this).stringof ];
+        jv["estTXIQCoef"] = cpxToJV(_iqTX);
+        jv["estRXIQCoef"] = cpxToJV(_iqRX);
+        jv["estPACoefs"] = _paCoefs[].map!cpxToJV().array();
+
+        // 推定した周波数応答をインパルス応答に直す
+        _fftw.inputs!float[] = _channelFreqResponse[];
+        _fftw.ifft!float();
+        jv["estImpResp"] = _fftw.outputs!float[].map!cpxToJV().array();
+
+        return jv;
+    }
+
+
   private:
     immutable bool[] _scMap;
     immutable size_t _nWLLearning;

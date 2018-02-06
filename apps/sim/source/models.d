@@ -262,9 +262,8 @@ struct Model
     //SIChannel channel;
     struct SIChannel
     {
-        immutable(Complex!real)[] impulseResponse;
-        bool isCoaxialCable = false;
-        uint rndSeed;
+        Complex!float[] impulseResponse;
+        size_t taps;
     }
     SIChannel channel;
 
@@ -325,7 +324,7 @@ struct Model
 
     void useCoaxialCableAsChannel() @property
     {
-        this.channel.isCoaxialCable = true;
+        this.channel.taps = 1;
     }
 }
 
@@ -386,7 +385,7 @@ auto connectToAWGN(R)(R r, Model model)
 
 auto connectToTXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.imbCoef);
+    return r.connectTo!IQImbalance(0.dB, model.txIQMixer.imbCoef).toWrappedRange;
 }
 
 
@@ -398,7 +397,7 @@ auto connectToTXIQPhaseNoise(R)(R r, Model model)
 
 auto connectToRXIQMixer(R)(R r, Model model)
 {
-    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.imbCoef);
+    return r.connectTo!IQImbalance(0.dB, model.rxIQMixer.imbCoef).toWrappedRange;
 }
 
 
@@ -415,31 +414,9 @@ auto connectToPowerAmplifier(R)(R r, Model model)
 
 auto connectToMultiPathChannel(R)(R r, Model model)
 {
-    if(model.channel.isCoaxialCable)
-    {
-        Random rGen;
-        rGen.seed(model.rndSeed);
+    auto cs = model.channel.impulseResponse[0 .. model.channel.taps];
 
-        BoxMuller!Random gGen = BoxMuller!Random(rGen);
-
-        return r.connectTo!FIRFilter([Complex!float(0, 0), cast(Complex!float)gGen.front]).toWrappedRange;
-    }
-    else
-    {
-        Random rGen;
-        rGen.seed(model.rndSeed);
-
-        BoxMuller!Random gGen = BoxMuller!Random(rGen);
-
-        Complex!float[] coefs;
-        foreach(i; 0 .. model.channel.taps){
-            auto db = -1 * model.channel.c.dB * i;
-            coefs ~= cast(Complex!float)(gGen.front * 10.0L ^^ (db/20));
-            gGen.popFront();
-        }
-
-        return r.connectTo!FIRFilter(coefs).toWrappedRange;
-    }
+    return r.connectTo!FIRFilter(cs).toWrappedRange;
 }
 
 

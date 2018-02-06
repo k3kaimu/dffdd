@@ -13,8 +13,10 @@ import std.range;
 import std.file;
 import std.typecons;
 import std.exception;
+import std.complex;
 
 import dffdd.utils.unit;
+import dffdd.blockdiagram.noise;
 
 import models;
 import simmain;
@@ -33,6 +35,8 @@ shared static this()
 
 struct ModelSeed
 {
+    string cancellerType;
+
     /* IQ Mixer */
     Gain txIRR = 25.dB;
     Gain rxIRR = 25.dB;
@@ -43,13 +47,25 @@ struct ModelSeed
     Gain paGain = 28.5.dB;
 
     /* LNA */
-    uint lnaSmoothFactor = 1;
+    uint lnaSmoothFactor = 3;
 
     /* Other */
-    Gain snr = 11.dB;
-    Gain inr = 50.dB;
+    Gain SNR = 11.dB;
+    Gain INR = 50.dB;
     uint numOfTrainingSymbols = 20;
     Gain gamma = 0.dB;
+
+    /* NLMS/RLS Params */
+    real nlmsMu;
+    real rlsDelta;
+    real rlsLambda;
+
+    /* Basis function selection */
+    Gain bfsNoiseMargin = (-4).dB;
+    uint bfsNumOfEst = 2;
+
+    /* frequency domain iterative */
+    uint iterNumOfIteration = 2;
 }
 
 
@@ -61,40 +77,40 @@ void mainJob()
 
     auto taskList = new MultiTaskList();
 
-    auto setRLSLMSParam(string methodName, ref Model model)
+    auto setRLSLMSParam(ref ModelSeed model)
     {
-        if(methodName.startsWith("OPH")) {
-            model.rlsAdapter.delta = 0.1;
-            model.rlsAdapter.lambda = 1 - 1.5E-3;
-            model.nlmsAdapter.mu = 0.33;
+        if(model.cancellerType.startsWith("OPH")) {
+            model.rlsDelta = 0.1;
+            model.rlsLambda = 1 - 1.5E-3;
+            model.nlmsMu = 0.33;
         } else {
-            model.rlsAdapter.delta = 4E-7;
-            model.rlsAdapter.lambda = 1;
-            model.nlmsAdapter.mu = 1;
+            model.rlsDelta = 4E-7;
+            model.rlsLambda = 1;
+            model.nlmsMu = 1;
         }
     }
 
 
-    enum numOfTrials = 100;
+    enum numOfTrials = 5;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
-                                    //"S2FHF_LS",
-                                    //"S2FHF_RLS",
-                                    //"S2FHF_LMS",
-                                    ////
-                                    //"FHF_LS",
-                                    //"FHF_RLS",
-                                    //"FHF_LMS",
-                                    ////
-                                    //"OPH_RLS",
-                                    //"OPH_LS",
-                                    //"OPH_LMS",
-                                    //
-                                    //"WL_LS",
-                                    //
-                                    //"L_LS",
-                                    //
+                                    // "S2FHF_LS",
+                                    // "S2FHF_RLS",
+                                    // "S2FHF_LMS",
+                                    // //
+                                    // "FHF_LS",
+                                    // "FHF_RLS",
+                                    // "FHF_LMS",
+                                    // //
+                                    // "OPH_RLS",
+                                    // "OPH_LS",
+                                    // "OPH_LMS",
+                                    
+                                    // "WL_LS",
+                                    
+                                    // "L_LS",
+                                    
                                     "IterativeFreqSIC_X",
             ))
     {
@@ -105,16 +121,22 @@ void mainJob()
             taskList ~= appender;
         }
 
-        /+
+        
         /// S2FHF: gamma vs cancellation
         static if(methodName == "S2FHF_LS")
         foreach(learningSymbols; iota(2, 22, 2))
         foreach(gamma; iota(-10, 12, 2))
         {
-            auto md = makeModelAndDir!methodName(learningSymbols, 50, 23, 3, gamma, 25);
-            auto dir = buildPath("results_S2FHFLS_gamma_vs_canc", md[1]);
-            appender.append(md[0], dir, No.saveAllRAWData);
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.bfsNoiseMargin = gamma.dB;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results_S2FHFLS_gamma_vs_canc", dir);
             dirset[dir] = true;
+
+            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
@@ -123,10 +145,17 @@ void mainJob()
         foreach(inr; iota(20, 75, 5))
         foreach(sf; [1, 3])
         {
-            auto md = makeModelAndDir!methodName(20, inr, 23, sf, -4, 25);
-            auto dir = buildPath("results_S2FHFLS_selection", md[1]);
-            appender.append(md[0], dir, Yes.saveAllRAWData);
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.INR = inr.dB;
+            modelSeed.lnaSmoothFactor = sf;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results_S2FHFLS_selection", dir);
             dirset[dir] = true;
+
+            appender.append(numOfTrials, modelSeed, dir, Yes.saveAllRAWData);
         }
 
 
@@ -134,14 +163,20 @@ void mainJob()
         static if(methodName == "IterativeFreqSIC_X")
         foreach(learningSymbols; iota(2, 11, 1))
         foreach(inr; [10, 20, 30, 40, 50, 60, 70])
-        foreach(iter; iota(1, 6))
+        foreach(iter; iota(1, 5))
         {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, 23, 3, -4, 25);
-            auto dir = buildPath("results_Iterative_iter_vs_canc", md[1]);
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.INR = inr.dB;
+            modelSeed.iterNumOfIteration = iter;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
             dir ~= format("_%s", iter);
-            md[0].iterativeFreqSIC.iterations = iter;
-            appender.append(md[0], dir, No.saveAllRAWData);
+            dir = buildPath("results_Iterative_iter_vs_canc", dir);
             dirset[dir] = true;
+
+            appender.append(numOfTrials, modelSeed, dir, Yes.saveAllRAWData);
         }
 
 
@@ -151,54 +186,73 @@ void mainJob()
         foreach(inr; iota(20, 75, 5))
         foreach(sf; [1, 3])
         {
-            auto md = makeModelAndDir!methodName(learningSymbols, inr, 23, sf, -4, 25);
-            auto dir = buildPath("results_ALL_inr_vs_canc", md[1]);
-            appender.append(md[0], dir, No.saveAllRAWData);
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.INR = inr.dB;
+            modelSeed.lnaSmoothFactor = sf;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results_ALL_inr_vs_canc", dir);
             dirset[dir] = true;
+
+            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
 
 
         foreach(learningSymbols; iota(2, 21, 1))
         {
-            auto md = makeModelAndDir!methodName(numOfTrials, learningSymbols, 50, 23, 3, -4, 25);
-            auto dir = buildPath("results_ALL_iteration_vs_canc", md[1]);
-            setRLSLMSParam(methodName, md[0]);
-            appender.append(md[0], dir, No.saveAllRAWData);
-            dirset[dir] = true;
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            setRLSLMSParam(modelSeed);
+            auto dirName = makeDirNameOfModelSeed(modelSeed);
+            dirName = buildPath("results_ALL_iteration_vs_canc", dirName);
+
+            appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
+            dirset[dirName] = true;
         }
 
 
-        ///// RLS parameter, lambda = 1, delta=???
-        //static if(methodName.endsWith("_RLS"))
-        //foreach(lambdaExp; [-5, -4, /*-2, -3, -4, -5, -6, -7, -8, -9*/])
-        //foreach(lambdaDig; iota(10, 100)){
-        //    auto md = makeModelAndDir!methodName(10, 50, 23, 3, -4, 25);
-        //    auto dir = buildPath("results_RLSLMSParam", md[1]);
-        //    dir ~= format("_%s_%s_deltaopt", lambdaDig, lambdaExp);
-        //    with(md[0].rlsAdapter){
-        //        lambda = 1 - (lambdaDig * (10.0L^^lambdaExp));
-        //        if(methodName.startsWith("FHF"))
-        //            delta = 4E-7;
-        //        else
-        //            delta = 0.1;
-        //    }
-        //    appender.append(md[0], dir, No.saveAllRAWData);
-        //    dirset[dir] = true;
-        //}
+        // RLS parameter, lambda = 1, delta=???
+        static if(methodName.endsWith("_RLS"))
+        foreach(lambdaExp; [-5, -4, /*-2, -3, -4, -5, -6, -7, -8, -9*/])
+        foreach(lambdaDig; iota(10, 100)) {
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.rlsLambda = 1 - (lambdaDig * (10.0L^^lambdaExp));
+            
+            if(modelSeed.cancellerType.startsWith("FHF")) {
+                modelSeed.rlsDelta = 4E-7;
+            }else{
+                modelSeed.rlsDelta = 0.1;
+            }
 
-        //static if(methodName.endsWith("_LMS"))
-        //foreach(muExp; [-2])
-        //foreach(muDig; iota(21, 51, 1)){
-        //    auto md = makeModelAndDir!methodName(10, 50, 23, 3, -4, 25);
-        //    auto dir = buildPath("results_RLSLMSParam", md[1]);
-        //    dir ~= format("_%s_%s", muDig, muExp);
-        //    with(md[0].nlmsAdapter){
-        //        mu = muDig * (10.0L^^muExp);
-        //    }
-        //    appender.append(md[0], dir, No.saveAllRAWData);
-        //    dirset[dir] = true;
-        //}
+            auto dirName = makeDirNameOfModelSeed(modelSeed);
+            dirName ~= format("_%s_%s_deltaopt", lambdaDig, lambdaExp);
+            dirName = buildPath("results_RLSLMSParam", dirName);
+            dirset[dirName] = true;
+
+            appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
+        }
+
+
+        static if(methodName.endsWith("_LMS"))
+        foreach(muExp; [-2])
+        foreach(muDig; iota(21, 51, 1)){
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.nlmsMu = muDig * (10.0L^^muExp);
+
+            string dirName = makeDirNameOfModelSeed(modelSeed);
+            dirName ~= format("_%s_%s", muDig, muExp);
+            dirName = buildPath("results_RLSLMSParam", dirName);
+
+            appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
+            dirset[dirName] = true;
+        }
     }
 
     //writefln("%s tasks will be submitted.", taskList.length);
@@ -207,7 +261,7 @@ void mainJob()
 }
 
 
-Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
+Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 {
     Model[] models;
 
@@ -216,11 +270,11 @@ Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, M
         scope(success)
             models ~= model;
 
-        model.SNR = modelSeed.snr;
-        model.INR = modelSeed.inr;
-        model.pa.TX_POWER = modelSeed.txPower;
-        model.txIQMixer.IRR = modelSeed.txIRR;
-        model.rxIQMixer.IRR = modelSeed.rxIRR;
+        model.SNR = modelSeed.SNR;
+        model.INR = modelSeed.INR;
+        // model.pa.TX_POWER = modelSeed.txPower;
+        // model.txIQMixer.IRR = modelSeed.txIRR;
+        // model.rxIQMixer.IRR = modelSeed.rxIRR;
         model.basisFuncsSelection.noiseMargin = modelSeed.gamma;
         model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
 
@@ -243,8 +297,8 @@ Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, M
         /* PAの設定 */
         {
             model.pa.TX_POWER = modelSeed.txPower;
-            model.pa.IIP3 = modelSeed.paIIP3.dBm;
-            model.pa.GAIN = modelSeed.paGain.dB;
+            model.pa.IIP3 = modelSeed.paIIP3;
+            model.pa.GAIN = modelSeed.paGain;
         }
 
         /* TX IQ Mixer の設定 */
@@ -261,12 +315,25 @@ Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, M
 
         /* チャネルの設定 */
         {
-            model.channel.isCoaxialCable = false;
+            Random rnd = uniqueRandom(iTrial, "Channel");
+            model.channel.taps = 64;
+
+            BoxMuller!Random gGen = BoxMuller!Random(rnd);
+            Complex!float[] coefs;
+            foreach(i; 0 .. model.channel.taps){
+                // 64タップで40dB減衰
+                auto db = -1 * (40.0 / 64.0) * i;
+                coefs ~= cast(Complex!float)(gGen.front * 10.0L ^^ (db/20));
+                gGen.popFront();
+            }
+
+            model.channel.impulseResponse = coefs;
         }
 
         /* キャンセラの設定 */
         {
             model.orthogonalizer.numOfTrainingSymbols = 10000;
+            model.firFilter.taps = 64;
 
             if(methodName[0] == 'O')
                 model.orthogonalizer.enabled = true;
@@ -275,40 +342,53 @@ Tuple!(Model[], string) makeModelAndDir(string methodName)(size_t numOfTrials, M
 
             // ベースバンド信号波形の出力
             model.outputWaveform = false;
-
-            model.channel.taps = 64;
-            model.firFilter.taps = 64;
-
             model.outputBER = false;
 
             if(methodName.canFind("DCM")) {
                 model.learningSymbols = 10;
                 model.learningCount = 3;
             } else {
-                model.learningSymbols = learningSymbols;
+                model.learningSymbols = modelSeed.numOfTrainingSymbols;
                 model.learningCount = 1;
             }
 
-            if(methodName.split("_")[0].endsWith("FHF") || methodName == "IterativeFreqSIC_X") {
-                model.swappedSymbols = 100000;
-                model.rlsAdapter.delta = 4E-7;
-                model.rlsAdapter.lambda = 1;
-                model.nlmsAdapter.mu = 1;
-            } else {
-                model.swappedSymbols = 0;
-                model.rlsAdapter.delta = 0.1;
-                model.rlsAdapter.lambda = 1;
-                model.nlmsAdapter.mu = 0.33;
-            }
+            model.swappedSymbols = 100000;
+            model.rlsAdapter.delta = modelSeed.rlsDelta;
+            model.rlsAdapter.lambda = modelSeed.rlsLambda;
+            model.nlmsAdapter.mu = modelSeed.nlmsMu;
         }
     }
 
-  static if(methodName.split("_")[0].endsWith("FHF"))
-    string dir = "TXP%s_inr%s_%s_SF%s_G%s_IRR%s_%s".format(model.pa.TX_POWER, model.INR, methodName, model.lna.smoothFactor, model.basisFuncsSelection.noiseMargin, irr, learningSymbols);
-  else
-    string dir = "TXP%s_inr%s_%s_SF%s_IRR%s_%s".format(model.pa.TX_POWER, model.INR, methodName, model.lna.smoothFactor, irr, learningSymbols);
+    return models;
+}
 
-    return typeof(return)(model, dir);
+
+string makeDirNameOfModelSeed(ModelSeed modelSeed)
+{
+    string dir;
+    if(modelSeed.cancellerType.split("_")[0].endsWith("FHF"))
+    {
+        dir = "TXP%s_inr%s_%s_SF%s_G%s_IRR%s_%s"
+            .format(modelSeed.txPower,
+                    modelSeed.INR,
+                    modelSeed.cancellerType,
+                    modelSeed.lnaSmoothFactor,
+                    modelSeed.bfsNoiseMargin,
+                    modelSeed.txIRR,
+                    modelSeed.numOfTrainingSymbols);
+    }
+    else
+    {
+        dir = "TXP%s_inr%s_%s_SF%s_IRR%s_%s"
+            .format(modelSeed.txPower,
+                    modelSeed.INR,
+                    modelSeed.cancellerType,
+                    modelSeed.lnaSmoothFactor,
+                    modelSeed.txIRR,
+                    modelSeed.numOfTrainingSymbols);
+    }
+
+    return dir;
 }
 
 
@@ -324,22 +404,30 @@ Random uniqueRandom(Args...)(Args args)
 }
 
 
-void mainForEachTrial(string methodName)(Model m, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
+void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
 {
+    Model[] models = makeModels!methodName(nTrials, modelSeed);
+
     if(exists(buildPath(dir, "allResult.json"))) return;
 
     JSONValue[] resList;
-
-    // 最初の一回は普通にやる
-    resList ~= mainImpl!methodName(m, dir);
-
-    // writeln(mainImpl!methodName(m, dir)["training_symbols_per_second"]);
-    enum K = 100;    // 試行回数
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
-    foreach(j; 0 .. K){
-        m.rndSeed += 100;   // seed値を100ずつ足していく
-        auto res = mainImpl!methodName(m, null);
+    foreach(i, ref m; models) {
+        auto res = mainImpl!methodName(m, i == 0 ? dir : null);
+
+        if(saveAllRAWData) {
+            res["model"] = (){
+                static JSONValue cpx2JV(F)(Complex!F a) { return JSONValue(["re": a.re, "im": a.im]); }
+
+                JSONValue jv = cast(JSONValue[string])null;
+                jv["impulseResponse"] = m.channel.impulseResponse.map!cpx2JV.array();
+                jv["txIQCoef"] = cpx2JV(m.txIQMixer.imbCoef);
+                jv["rxIQCoef"] = cpx2JV(m.rxIQMixer.imbCoef);
+
+                return jv;
+            }();
+        }
         resList ~= res;
 
         if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF")){
@@ -350,13 +438,14 @@ void mainForEachTrial(string methodName)(Model m, string dir, Flag!"saveAllRAWDa
     }
 
     JSONValue jv = cast(JSONValue[string])null;
-
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
 
     if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF"))
         jv["selecting"] = (){
+            immutable nFFT = models[0].ofdm.numOfFFT * models[0].ofdm.scaleOfUpSampling;
+
             JSONValue[string] vv;
-            vv["selectingRatio"] = sumOfSuccFreq / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * K);
+            vv["selectingRatio"] = sumOfSuccFreq / cast(float)(nFFT * nTrials);
             vv["selectingRatioList"] = selectingRatioList;
 
             size_t selectedBF;
@@ -371,7 +460,7 @@ void mainForEachTrial(string methodName)(Model m, string dir, Flag!"saveAllRAWDa
             foreach(k, ref ev; resList){
                 auto reqs = ev["filterSpec"]["actualRequiredBasisFuncs"].array;
                 auto used = ev["filterSpec"]["selectedBasisFuncs"].array;
-                foreach(f; 0 .. m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling){
+                foreach(f; 0 .. nFFT){
                     auto r = reqs[f].array;
                     auto u = used[f].array;
 
@@ -418,33 +507,32 @@ void mainForEachTrial(string methodName)(Model m, string dir, Flag!"saveAllRAWDa
                     if(!bBreaked) ++matchCNTPLQ;
                 }
 
-                foreach(f; 0 .. m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling)
+                foreach(f; 0 .. nFFT)
                     foreach(b; used[f].array)
                         if(b.type == JSON_TYPE.TRUE)
                             ++selectedBF;
             }
-            vv["selectedBFRatio"] = selectedBF / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length * distDim);
-            vv["avgSelectedBF"] = selectedBF / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
-            vv["failedRatio"] = failedCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
-            vv["matchRatio"] = matchCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
-            vv["overRatio"] = overCNT / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+            vv["selectedBFRatio"] = selectedBF / cast(float)(nFFT * nTrials * distDim);
+            vv["avgSelectedBF"] = selectedBF / cast(float)(nFFT * nTrials);
+            vv["failedRatio"] = failedCNT / cast(float)(nFFT * nTrials);
+            vv["matchRatio"] = matchCNT / cast(float)(nFFT * nTrials);
+            vv["overRatio"] = overCNT / cast(float)(nFFT * nTrials);
 
-            vv["failedPLQRatio"] = failedCNTPLQ / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
-            vv["matchPLQRatio"] = matchCNTPLQ / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
-            vv["overPLQRatio"] = overCNTPLQ / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling * resList.length);
+            vv["failedPLQRatio"] = failedCNTPLQ / cast(float)(nFFT * nTrials);
+            vv["matchPLQRatio"] = matchCNTPLQ / cast(float)(nFFT * nTrials);
+            vv["overPLQRatio"] = overCNTPLQ / cast(float)(nFFT * nTrials);
 
-            immutable size_t nfft = m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling;
-            immutable size_t nsym = (m.ofdm.numOfFFT + m.ofdm.numOfCP) * m.ofdm.scaleOfUpSampling;
-            vv["idealCostRLS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (idealCostRLS / resList.length))/nsym;
-            vv["idealCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (idealCostLMS / resList.length))/nsym;
-            vv["actualCostRLS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (actualCostRLS / resList.length))/nsym;
-            vv["actualCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + (actualCostLMS / resList.length))/nsym;
-            vv["nonSelCostRLS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 4*(distDim^^2 + distDim) * nfft)/nsym;
-            vv["nonSelCostLMS"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 2 * distDim * nfft)/nsym;
-            vv["nonSelCostRLS2"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 4*(2^^2 + 2) * nfft)/nsym;
-            vv["nonSelCostLMS2"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 2 * 2 * nfft)/nsym;
-            vv["nonSelCostRLS3"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 4*(3^^2 + 2) * nfft)/nsym;
-            vv["nonSelCostLMS3"] = (0.25 * (distDim + 2) * nfft * log2(nfft) + 3 * 2 * nfft)/nsym;
+            immutable size_t nsym = models[0].ofdm.numOfSamplesOf1Symbol;
+            vv["idealCostRLS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (idealCostRLS / nTrials))/nsym;
+            vv["idealCostLMS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (idealCostLMS / nTrials))/nsym;
+            vv["actualCostRLS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (actualCostRLS / nTrials))/nsym;
+            vv["actualCostLMS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (actualCostLMS / nTrials))/nsym;
+            vv["nonSelCostRLS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 4*(distDim^^2 + distDim) * nFFT)/nsym;
+            vv["nonSelCostLMS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 2 * distDim * nFFT)/nsym;
+            vv["nonSelCostRLS2"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 4*(2^^2 + 2) * nFFT)/nsym;
+            vv["nonSelCostLMS2"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 2 * 2 * nFFT)/nsym;
+            vv["nonSelCostRLS3"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 4*(3^^2 + 2) * nFFT)/nsym;
+            vv["nonSelCostLMS3"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 3 * 2 * nFFT)/nsym;
 
             return vv;
         }();
