@@ -9,10 +9,14 @@ import std.meta;
 import std.path;
 import std.range;
 import std.traits;
+import std.typecons;
 
 import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.amplifier;
 import dffdd.blockdiagram.utils;
+import dffdd.blockdiagram.iqmixer;
+import dffdd.blockdiagram.filter;
+import dffdd.blockdiagram.quantizer;
 import dffdd.utils.unit;
 
 import models;
@@ -32,44 +36,82 @@ if(isForwardRange!R)
 
 final class SimulatedSignals
 {
-    // this() {}
-    alias Signals = getSymbolsByUDA!(SimulatedSignals, signals);
+    alias C = Complex!real;
 
-
-    Complex!real[] front()
+    Tuple!(
+        C, "desiredBaseband",
+        C, "txBaseband",
+        C, "paDirect",
+        C, "received"
+    ) front() @property
     {
-        Complex!real[] dst;
-        foreach(i, ref e; Signals) if(e !is null) {
-            dst ~= e.front;
-        }
+        if(_frontIsComputed) return _cache;
 
+        C d = desiredBaseband.front,
+          x = txBaseband.front,
+          n = noise.front;
+
+        C txiq, txvga, txpa;
+        _txIQMixer(x, txiq);
+        _txPAVGA(txiq, txvga);
+        _txPARapp(txvga, txpa);
+
+        C rxant, rxvga, rxlna, rxiq, rxqzvga, rxqz;
+        _channel(txpa, rxant);
+        _rxLNAVGA(rxant, rxvga);
+
+        if(_nowTrainingMode)
+            rxvga = rxvga * _selfInterferenceCoef + n * _noiseCoef;
+        else
+            rxvga = rxvga * _selfInterferenceCoef + d * _desiredCoef + n * _noiseCoef;
+
+        _rxLNARapp(rxvga, rxlna);
+        _rxIQMixer(rxlna, rxiq);
+        _rxQZVGA(rxiq, rxqzvga);
+        _rxQZ(rxqzvga, rxqz);
+
+        typeof(return) dst;
+        dst.desiredBaseband = d;
+        dst.txBaseband = x;
+        dst.paDirect = txpa;
+        dst.received = rxqz;
+        _cache = dst;
         return dst;
     }
-
-
-    bool empty = false;
 
 
     void popFront()
     {
-        foreach(i, ref e; Signals) if(e !is null)
-            e.popFront();
+        if(!_frontIsComputed) this.front();
+        desiredBaseband.popFront();
+        txBaseband.popFront();
+        noise.popFront();
+        _frontIsComputed = false;
     }
 
 
-    SimulatedSignals save()
+    enum bool empty = false;
+
+
+    void trainAGC()
     {
-        SimulatedSignals dst = new SimulatedSignals;
-        foreach(i, ref e; Signals) if(e !is null) {
-            // remove "this."
-            mixin("dst." ~ Signals[i].stringof[5 .. $]) = e.save();
-        }
+        _nowTrainingMode = true;
 
-        return dst;
+        immutable oldUseSWP = *_useSWPOFDM;
+        *_useSWPOFDM = false;
+
+        foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
+            this.popFront();
+
+        _nowTrainingMode = false;
+        *_useSWPOFDM = oldUseSWP;
+
+        foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
+            this.popFront();
     }
 
 
-    void fillBuffer(alias ms, C, size_t N)(C[][N] buffers...)
+    void fillBuffer(alias ms, X, size_t N)(X[][N] buffers...)
     if(ms.length == N)
     in{
         auto s = buffers[0].length;
@@ -77,264 +119,126 @@ final class SimulatedSignals
     }
     body{
         foreach(i; 0 .. buffers[0].length){
+            auto v = this.front;
             foreach(j, m; aliasSeqOf!ms)
-                mixin(format(`buffers[j][i] = cast(C)this.%s.front;`, m));
+                mixin(format(`buffers[j][i] = cast(C)v.%s;`, m));
             
             this.popFront();
         }
     }
 
 
-    void trainAGC()
+    void ignoreDesired(bool b) @property
     {
-        *_swIsAGCTraining = true;
-        *_swIsNotAGCTraining = false;
-
-        foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
-        {
-            import dffdd.utils.linalg : approxEqualCpx;
-
-            try{
-                // if(txBaseband !is null && txBasebandSWP !is null)   assert(txBaseband.front == txBasebandSWP.front);
-                // if(paDirect !is null && paDirectSWP !is null)       assert(paDirect.front == paDirectSWP.front);
-
-                // if(receivedSI !is null && receivedSISWP !is null)   assert(receivedSI.front == receivedSISWP.front);
-                // if(receivedSI !is null && received !is null)        assert(receivedSI.front == received.front);
-            }catch(Throwable o){
-                import std.stdio;
-                writeln(i);
-                if(txBaseband !is null && txBasebandSWP !is null)   writefln("txBaseband - txBasebandSWP: %s",  txBaseband.front - txBasebandSWP.front);
-                if(paDirect !is null && paDirectSWP !is null)       writefln("paDirect - paDirectSWP:     %s",  paDirect.front - paDirectSWP.front);
-
-                if(receivedSI !is null && receivedSISWP !is null)   writefln("receivedSI - receivedSISWP: %s", receivedSI.front - receivedSISWP.front);
-                if(receivedSI !is null && received !is null)        writefln("receivedSI - received:      %s", receivedSI.front - received.front);
-                throw o;
-            }
-
-                this.popFront();
-        }
-
-        *_swIsAGCTraining = false;
-        *_swIsNotAGCTraining = true;
-
-        foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
-            this.popFront();
+        _desiredCoef = b ? C(0) : C(1);
     }
 
 
-    void popFrontNSym(size_t n)
+    void useSWPOFDM(bool b) @property
     {
-        foreach(i; 0 .. n * _model.ofdm.numOfSamplesOf1Symbol)
-            this.popFront();
+        *_useSWPOFDM = b;
+    }
+
+
+    SimulatedSignals save() @property
+    {
+        SimulatedSignals dst = new SimulatedSignals();
+        dst._model = this._model;
+        
+        dst.desiredBaseband = this.desiredBaseband.save;
+        dst.txBaseband = this.txBaseband.save;
+        dst.noise = this.noise.save;
+
+        dst._cache = this._cache;
+        dst._frontIsComputed = this._frontIsComputed;
+        dst._nowTrainingMode = this._nowTrainingMode;
+        dst._useSWPOFDM = new bool(*this._useSWPOFDM);
+
+        dst._desiredCoef = this._desiredCoef;
+        dst._selfInterferenceCoef = this._selfInterferenceCoef;
+        dst._noiseCoef = this._noiseCoef;
+
+        dst._txIQMixer = this._txIQMixer.dup;
+        dst._txPAVGA = this._txPAVGA.dup;
+        dst._txPARapp = this._txPARapp.dup;
+        
+        dst._channel = this._channel.dup;
+
+        dst._rxLNAVGA = this._rxLNAVGA.dup;
+        dst._rxLNARapp = this._rxLNARapp.dup;
+        dst._rxIQMixer = this._rxIQMixer.dup;
+        dst._rxQZVGA = this._rxQZVGA.dup;
+        dst._rxQZ = this._rxQZ.dup;
+
+        return dst;
     }
 
 
   private:
     Model _model;
-    bool* _swIsAGCTraining;
-    bool* _swIsNotAGCTraining;
 
-    static struct signals {}
+  public:
+    Signal desiredBaseband;
+    Signal txBaseband;
+    Signal noise;
 
-  public @signals:
-    Signal desiredBaseband,
-           txBaseband,
-           txBasebandSWP,
-           desiredPADirect,
-           paDirect,
-           paDirectSWP,
-           receivedDesired,
-           receivedSI,
-           receivedSISWP,
-           received,
-           noise;
+  private:
+    typeof(front()) _cache;
+    bool _frontIsComputed;
+
+    bool _nowTrainingMode;
+    bool* _useSWPOFDM;
+
+    C _desiredCoef = C(1);
+    C _selfInterferenceCoef = C(1);
+    C _noiseCoef = C(1);
+
+    IQImbalanceConverter!C _txIQMixer;
+    PowerControlAmplifierConverter!C _txPAVGA;
+    RappModelConverter!C _txPARapp;
+    
+    FIRFilterConverter!C _channel;
+
+    PowerControlAmplifierConverter!C _rxLNAVGA;
+    RappModelConverter!C _rxLNARapp;
+    IQImbalanceConverter!C _rxIQMixer;
+    PowerControlAmplifierConverter!C _rxQZVGA;
+    SimpleQuantizerConverter!C _rxQZ;
 }
 
 
 SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 {
+    alias C = Complex!real;
+
     immutable doOutput = resultDir !is null;
-
-    bool* swIsAGCTraining = new bool(true),
-          swIsNotAGCTraining = new bool(false);
-
     immutable bool* alwaysFalsePointer = new bool(false);
     immutable bool* alwaysTruePointer = new bool(true);
 
     SimulatedSignals dst = new SimulatedSignals;
     dst._model = model;
-    dst._swIsAGCTraining = swIsAGCTraining;
-    dst._swIsNotAGCTraining = swIsNotAGCTraining;
+    dst._useSWPOFDM = new bool(false);
 
     dst.desiredBaseband = desiredRandomBits(model)
                         .connectToModulator(modOFDM(model), alwaysFalsePointer, model)
                         .map!"a*1.0L".asSignal;
 
-    Signal makeDesired(Signal desiredBaseband)
-    {
-        // 所望信号
-        Signal desired = desiredBaseband;
+    dst.txBaseband = siRandomBits(model)
+                        .connectToModulator(modOFDM(model), dst._useSWPOFDM, model)
+                        .map!"a*1.0L".asSignal;
 
-        if(doOutput){
-            desired = desired.psdSaveTo("psd_desired_afterMD.csv", resultDir,
-                                        model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        }
+    dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).toWrappedRange;
 
-        if(model.useDTXIQ){
-            desired = desired.connectToTXIQMixer(model);
-            if(doOutput){
-                desired = desired.psdSaveTo("psd_desired_afterTXIQ.csv", resultDir,
-                                            model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-            }
-        }
-
-        // if(model.useDTXPN){
-        //     desired = desired.connectToTXIQPhaseNoise(model).toWrappedRange;
-        //     if(doOutput){
-        //         desired = desired.psdSaveTo("psd_desired_afterTXIQPhaseNoise.csv", resultDir,
-        //                                     model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        //     }
-        // }
-
-        if(model.useDTXPA){
-            desired = desired.connectToPowerAmplifier(model);
-            if(doOutput){
-                desired = desired.psdSaveTo("psd_desired_afterPA.csv", resultDir,
-                                            model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-            }
-        }
-
-        return desired;
-    }
-
-    auto desired = makeDesired(dst.desiredBaseband.save);
-    dst.desiredPADirect = desired.save;
-
-    desired = desired.connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.SNR.dB + model.lna.NF.dB).dB.gain^^2).sqrt.V)
-                    .toWrappedRange;
-    dst.receivedDesired = desired.save;
-
-    if(doOutput){
-        desired = desired.psdSaveTo("psd_desired_afterVGA.csv", resultDir,
-                                    model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-    }
-
-
-    Signal makeTXReplica(const(bool)* sw, bool saveToFile)
-    {
-        Signal txbaseband = siRandomBits(model)
-                            .connectToModulator(modOFDM(model), sw, model)
-                            .map!"a*1.0L".asSignal;
-
-        if(saveToFile){
-            txbaseband = txbaseband.psdSaveTo("psd_SI_afterMD.csv", resultDir,
-                                              model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        }
-
-        return txbaseband;
-    }
-
-    dst.txBaseband = makeTXReplica(alwaysFalsePointer, false);
-    dst.txBasebandSWP = makeTXReplica(swIsNotAGCTraining, false);
-    auto selfInterference = makeTXReplica(alwaysFalsePointer, doOutput);
-
-
-    Signal makePADirect(Signal r, bool saveToFile)
-    {
-        if(model.useSTXIQ){
-            r = r.connectToTXIQMixer(model);
-            if(saveToFile) r = r.psdSaveTo("psd_SI_afterTXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        }
-
-        // if(model.useSTXPN){
-            // r = r.connectToTXIQPhaseNoise(model).toWrappedRange;
-            // if(saveToFile) r = r.psdSaveTo("psd_SI_afterTXIQPhaseNoise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        // }
-
-        if(model.useSTXPA){
-            r = r.connectToPowerAmplifier(model);
-            if(saveToFile) r = r.psdSaveTo("psd_SI_afterPA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        }
-        
-        if(model.useSTXIQ2){
-            r = r.connectToTXIQMixer(model);
-            if(saveToFile) r = r.psdSaveTo("psd_SI_afterTXIQ2.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        }
-
-        return r;
-    }
-
-    dst.paDirect = makePADirect(dst.txBaseband.save, false);
-    dst.paDirectSWP = makePADirect(dst.txBasebandSWP.save, false);
-    selfInterference = makePADirect(selfInterference, doOutput);
-
-
-    Signal makeReceived(Signal r2, Signal d, Signal n, bool saveToFile, bool forNoise = false)
-    {
-        auto r = n;
-
-        if(model.withSI && r2 !is null){
-            r2 = r2.connectToMultiPathChannel(model)
-                .connectTo!PowerControlAmplifier((model.thermalNoise.power(model) * (model.INR.dB + model.lna.NF.dB).dB.gain^^2).sqrt.V)
-                .toWrappedRange;
-
-            if(saveToFile) r2 = r2.psdSaveTo("psd_SI_afterVGA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-
-            if(forNoise)
-                r = r.add(r2.connectToSwitch(swIsAGCTraining)).toWrappedRange;
-            else
-                r = r.add(r2).toWrappedRange;
-        }
-
-        if(d !is null){
-            r = r.add(d.connectToSwitch(swIsNotAGCTraining)).toWrappedRange;
-        }
-
-        // r = r.add(thermalNoise(model).psdSaveTo("psd_thermal_noise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model))
-        //         .toWrappedRange;
-        if(saveToFile) r = r.psdSaveTo("psd_rcv_afterAWGN.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-
-        if(model.useSRXLN){
-            r = r.connectToLNA(model).psdSaveTo("psd_rcv_afterLNA.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        }
-
-        if(model.useSRXIQ){
-            r = r.connectToRXIQMixer(model);
-            
-            if(saveToFile)
-                r = r.psdSaveTo("psd_rcv_afterRXIQ.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-        }
-
-        if(model.useSRXQZ)
-            r = r.connectToQuantizer(model);
-
-        return r;
-    }
-
-    Signal noise = thermalNoise(model).toWrappedRange;
-    // if(doOutput)
-    //     dst.noise = noise.save.
-
-    dst.receivedSI = makeReceived(dst.paDirect.save, null, noise.save, false);
-    dst.receivedSISWP = makeReceived(dst.paDirectSWP.save, null, noise.save, false);
-    dst.received = makeReceived(selfInterference, desired.save, noise.save, doOutput);
-
-    dst.noise = makeReceived(dst.paDirect.save, null, noise.save, false, true);
-
-    if(doOutput)
-        dst.noise = dst.noise.psdSaveTo("psd_thermal_noise.csv", resultDir, model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol, model);
-
-    if(!model.useDesiredBaseband) dst.desiredBaseband = null;
-    if(!model.useTxBaseband) dst.txBaseband = null;
-    if(!model.useTxBasebandSWP) dst.txBasebandSWP = null;
-    if(!model.useDesiredPADirect) dst.desiredPADirect = null;
-    if(!model.usePADirect) dst.paDirect = null;
-    if(!model.usePADirectSWP) dst.paDirectSWP  = null;
-    if(!model.useReceivedDesired) dst.receivedDesired = null;
-    if(!model.useReceivedSI) dst.receivedSI = null;
-    if(!model.useReceivedSISWP) dst.receivedSISWP = null;
-    if(!model.useReceived) dst.received = null;
-    if(!model.useNoise) dst.noise = null;
+    dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
+    dst._txPAVGA = PowerControlAmplifierConverter!C((model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm);
+    dst._txPARapp = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.V / 2);
+    
+    dst._channel = FIRFilterConverter!C(model.channel.impulseResponse[0 .. model.channel.taps]);
+    dst._rxLNAVGA = PowerControlAmplifierConverter!C((model.thermalNoise.power(model) * (model.INR.dB + model.lna.NF.dB).dB.gain^^2).sqrt.V);
+    dst._rxLNARapp = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3.dBm - 36).dB.gain);
+    dst._rxIQMixer = IQImbalanceConverter!C(0.dB, model.rxIQMixer.imbCoef);
+    dst._rxQZVGA = PowerControlAmplifierConverter!C((30 - model.ofdm.PAPR.dB + 4.76).dBm);
+    dst._rxQZ = SimpleQuantizerConverter!C(model.quantizer.numOfBits);
 
     return dst;
 }

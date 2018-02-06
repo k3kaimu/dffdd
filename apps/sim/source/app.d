@@ -95,7 +95,7 @@ void mainJob()
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
-                                    // "S2FHF_LS",
+                                    "S2FHF_LS",
                                     // "S2FHF_RLS",
                                     // "S2FHF_LMS",
                                     // //
@@ -104,7 +104,7 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    // "OPH_LS",
+                                    "OPH_LS",
                                     // "OPH_LMS",
                                     
                                     // "WL_LS",

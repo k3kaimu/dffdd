@@ -728,9 +728,6 @@ if(isBlockConverter!(Dist, C, C[]))
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     // if(isModelParameterSet!M)
     {
-        // メンバーを持っているかどうかチェック
-        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband", "noise", "receivedSISWP"));
-
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
             _distorter.learn(signalGenerator(model).txBaseband);
 
@@ -799,6 +796,8 @@ if(isBlockConverter!(Dist, C, C[]))
             // }
 
             auto signals = genSignal(model);
+            signals.useSWPOFDM = true;
+            signals.ignoreDesired = true;
 
             // 次のようなフィルタを学習してみる
             // + 適応アルゴリズム : 最小二乗法
@@ -816,7 +815,7 @@ if(isBlockConverter!(Dist, C, C[]))
 
             // 1024シンボル使用して学習する
             foreach(i; 0 .. 1024 / spb){
-                signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
+                signals.fillBuffer!(["txBaseband", "received"])(testTX, testRX);
                 testfilter.apply!(Yes.learning)(testTX, testRX, testER);
             }
 
@@ -843,7 +842,7 @@ if(isBlockConverter!(Dist, C, C[]))
             // 重要度を計算する
             enum size_t Navg = 1024;
             foreach(i; 0 .. Navg){
-                signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
+                signals.fillBuffer!(["txBaseband", "received"])(testTX, testRX);
                 _distorter(testTX, disted);
 
                 // 非線形送信信号を周波数領域に変換

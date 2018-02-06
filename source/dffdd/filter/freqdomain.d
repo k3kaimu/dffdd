@@ -735,9 +735,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     // if(isModelParameterSet!M)
     {
-        // メンバーを持っているかどうかチェック
-        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband", "noise", "receivedSISWP"));
-
         static if(is(typeof((Canceller canceller, M model, Signals delegate(M) signalGenerator){ canceller.preLearning(model, signalGenerator); })))
             _canceller.preLearning(model, signalGenerator);
 
@@ -782,6 +779,8 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
                 model.useTxBasebandSWP = false;
                 model.useReceivedSISWP = false;
                 auto signals = genSignal(model);
+                signals.useSWPOFDM = true;
+                signals.ignoreDesired = true;
                 model.useTxBasebandSWP = true;
                 model.useReceivedSISWP = true;
 
@@ -820,6 +819,8 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
             real[][] psiPower;
             real[] gnl = new real[_distorter.outputDim];
             auto signals = genSignal(model);
+            signals.useSWPOFDM = true;
+            signals.ignoreDesired = true;
             if(testcase == 0)
             {
                 _iqRX = estimateIQCoefs(estimateCFR(signals.save(), C(0, 0)))[1];
@@ -878,7 +879,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
         // 64シンボル使用して学習する
         foreach(i; 0 .. 64 / spb){
-            signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
+            signals.fillBuffer!(["txBaseband", "received"])(testTX, testRX);
 
             testfilter.apply!(Yes.learning)(testTX, testRX, testER);
         }
@@ -942,7 +943,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
         // 重要度を計算する
         enum size_t Navg = 64;
         foreach(i; 0 .. Navg){
-            signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(testTX, testRX);
+            signals.fillBuffer!(["txBaseband", "received"])(testTX, testRX);
             _distorter(testTX, disted);
 
             // 非線形送信信号を周波数領域に変換

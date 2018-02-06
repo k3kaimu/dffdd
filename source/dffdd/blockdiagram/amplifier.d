@@ -183,7 +183,7 @@ struct PowerControlAmplifierConverter(C)
     alias OutputElementType = C;
 
 
-    this(Voltage op, size_t avgSize)
+    this(Voltage op, size_t avgSize = 512)
     {
         _power = op.V^^2;
         _alpha = 1;

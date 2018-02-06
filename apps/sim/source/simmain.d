@@ -306,6 +306,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         });
     }
 
+    signals.ignoreDesired = true;
     {
         //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
         //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -325,12 +326,12 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
             static if(filterStructure.endsWith("FHF") || filterStructure.endsWith("IterativeFreqSIC"))
             {
                 if(blockIdx >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
-                    signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
+                    signals.useSWPOFDM = false;
                 else
-                    signals.fillBuffer!(["txBasebandSWP", "receivedSISWP"])(refrs, recvs);
+                    signals.useSWPOFDM = true;
             }
-            else
-                signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
+
+            signals.fillBuffer!(["txBaseband", "received"])(refrs, recvs);
 
             sw.start();
             filter.apply!(Yes.learning)(refrs, recvs, outps);
@@ -379,7 +380,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         size_t cancCNT;
         foreach(blockIdxo; 0 .. 1024)
         {
-            signals.fillBuffer!(["txBaseband", "receivedSI"])(refrs, recvs);
+            signals.fillBuffer!(["txBaseband", "received"])(refrs, recvs);
 
             sw.start();
             filter.apply!(No.learning)(refrs, recvs, outps);
@@ -411,6 +412,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
 
 
+    signals.ignoreDesired = false;
     if(model.outputBER)
     {
         size_t inpSize, outSize;
