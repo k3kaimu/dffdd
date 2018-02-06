@@ -40,15 +40,6 @@ struct IQImbalanceConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
-    {
-        output.length = input.length;
-
-        foreach(i; 0 .. input.length)
-            this.opCall(input[i], output[i]);
-    }
-
-
     typeof(this) dup() const pure nothrow @safe @nogc @property
     {
         return this;
