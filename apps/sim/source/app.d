@@ -319,11 +319,11 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
             model.channel.taps = 64;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
-            Complex!float[] coefs;
+            Complex!real[] coefs;
             foreach(i; 0 .. model.channel.taps){
                 // 64タップで40dB減衰
                 auto db = -1 * (40.0 / 64.0) * i;
-                coefs ~= cast(Complex!float)(gGen.front * 10.0L ^^ (db/20));
+                coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
                 gGen.popFront();
             }
 
