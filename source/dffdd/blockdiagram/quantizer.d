@@ -4,6 +4,9 @@ import std.math;
 import std.traits;
 import std.range;
 import std.complex;
+import std.json;
+
+import dffdd.utils.json;
 
 
 struct Quantizer(R)
@@ -117,6 +120,14 @@ struct SimpleQuantizerConverter(C)
     typeof(this) dup() const pure nothrow @safe @nogc @property
     {
         return this;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return JSONValue([
+            "bits": _nbit
+        ]);
     }
 
 

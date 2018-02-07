@@ -3,8 +3,11 @@ module dffdd.blockdiagram.filter;
 
 import std.range;
 import std.traits;
+import std.json;
 
 import carbon.math : nextPowOf2;
+
+import dffdd.utils.json;
 
 
 struct FIRFilterConverter(C)
@@ -117,6 +120,14 @@ struct FIRFilterConverter(C)
     const(C)[] coeficients() const @property
     {
         return _coefs;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return JSONValue([
+            "coefs": DefaultJSONEnv.toJSONValue(_coefs)
+        ]);
     }
 
 

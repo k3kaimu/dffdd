@@ -10,6 +10,7 @@ import std.path;
 import std.range;
 import std.traits;
 import std.typecons;
+import std.json;
 
 import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.amplifier;
@@ -18,6 +19,7 @@ import dffdd.blockdiagram.iqmixer;
 import dffdd.blockdiagram.filter;
 import dffdd.blockdiagram.quantizer;
 import dffdd.utils.unit;
+import dffdd.utils.json;
 
 import models;
 import simmain;
@@ -170,6 +172,22 @@ final class SimulatedSignals
         dst._rxQZVGA = this._rxQZVGA.dup;
         dst._rxQZ = this._rxQZ.dup;
 
+        return dst;
+    }
+
+
+    JSONValue info()
+    {
+        JSONValue dst = JSONValue(string[string].init);
+        dst["txIQMixer"] = _txIQMixer.dumpInfoToJSON();
+        dst["txPAVGA"] = _txPAVGA.dumpInfoToJSON();
+        dst["txPARapp"] = _txPARapp.dumpInfoToJSON();
+        dst["channel"] = _channel.dumpInfoToJSON();
+        dst["rxLNAVGA"] = _rxLNAVGA.dumpInfoToJSON();
+        dst["rxLNARapp"] = _rxLNARapp.dumpInfoToJSON();
+        dst["rxIQMixer"] = _rxIQMixer.dumpInfoToJSON();
+        dst["rxQZVGA"] = _rxQZVGA.dumpInfoToJSON();
+        dst["rxQZ"] = _rxQZ.dumpInfoToJSON();
         return dst;
     }
 

@@ -4,8 +4,10 @@ import std.traits;
 import std.range;
 import std.math;
 import std.complex;
+import std.json;
 
 import dffdd.utils.unit;
+import dffdd.utils.json;
 
 
 struct PowerAmplifier(R)
@@ -106,6 +108,16 @@ struct RappModelConverter(C)
     typeof(this) dup() const pure nothrow @safe @nogc @property
     {
         return this;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return JSONValue([
+            "gain":         _g,
+            "smoothness":   _s,
+            "saturation":   _o
+        ]);
     }
 
 
@@ -225,6 +237,14 @@ struct PowerControlAmplifierConverter(C)
     PowerControlAmplifierConverter!C dup() const pure nothrow @safe @nogc @property 
     {
         return this;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return JSONValue([
+            "gain": _alpha
+        ]);
     }
 
 

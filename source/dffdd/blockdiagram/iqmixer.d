@@ -2,11 +2,13 @@ module dffdd.blockdiagram.iqmixer;
 
 import dffdd.utils.unit;
 import dffdd.blockdiagram.noise;
+import dffdd.utils.json;
 import std.random;
 import std.math;
 import std.complex;
 import std.range;
 import std.traits;
+import std.json;
 
 
 auto addIQImbalance(R)(R r, Gain gain, Gain irr)
@@ -43,6 +45,21 @@ struct IQImbalanceConverter(C)
     typeof(this) dup() const pure nothrow @safe @nogc @property
     {
         return this;
+    }
+
+
+    C imbCoef() const @property
+    {
+        return _g2V / _g1V;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        JSONValue jv = JSONValue(string[string].init);
+        jv["gain"] = DefaultJSONEnv.toJSONValue(_g1V);
+        jv["imbCoef"] = DefaultJSONEnv.toJSONValue(_g2V / _g1V);
+        return jv;
     }
 
 
