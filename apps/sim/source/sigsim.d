@@ -40,55 +40,27 @@ final class SimulatedSignals
 {
     alias C = Complex!real;
 
-    Tuple!(
-        C, "desiredBaseband",
-        C, "txBaseband",
-        C, "paDirect",
-        C, "received"
-    ) front() @property
+
+    this()
     {
-        if(_frontIsComputed) return _cache;
-
-        C d = desiredBaseband.front,
-          x = txBaseband.front,
-          n = noise.front;
-
-        C txiq, txvga, txpa;
-        _txIQMixer(x, txiq);
-        _txPAVGA(txiq, txvga);
-        _txPARapp(txvga, txpa);
-
-        C rxant, rxvga, rxlna, rxiq, rxqzvga, rxqz;
-        _channel(txpa, rxant);
-        _rxLNAVGA(rxant, rxvga);
-
-        if(_nowTrainingMode)
-            rxvga = rxvga * _selfInterferenceCoef + n * _noiseCoef;
-        else
-            rxvga = rxvga * _selfInterferenceCoef + d * _desiredCoef + n * _noiseCoef;
-
-        _rxLNARapp(rxvga, rxlna);
-        _rxIQMixer(rxlna, rxiq);
-        _rxQZVGA(rxiq, rxqzvga);
-        _rxQZ(rxqzvga, rxqz);
-
-        typeof(return) dst;
-        dst.desiredBaseband = d;
-        dst.txBaseband = x;
-        dst.paDirect = txpa;
-        dst.received = rxqz;
-        _cache = dst;
-        return dst;
+        foreach(ref buf; _tempbuf)
+            buf = new C[1024];
     }
 
 
-    void popFront()
+    void popFrontN(size_t n)
     {
-        if(!_frontIsComputed) this.front();
-        desiredBaseband.popFront();
-        txBaseband.popFront();
-        noise.popFront();
-        _frontIsComputed = false;
+        assert(_tempbuf[0].length != 0);
+
+        if(n <= _tempbuf[0].length) {
+            this.fillBuffer!(["txBaseband"])(_tempbuf[$-1][0 .. n]);
+        }else{
+            while(n != 0){
+                size_t consumed = min(n, _tempbuf[0].length);
+                this.popFrontN(consumed);
+                n -= consumed;
+            }
+        }
     }
 
 
@@ -102,30 +74,86 @@ final class SimulatedSignals
         immutable oldUseSWP = *_useSWPOFDM;
         *_useSWPOFDM = false;
 
-        foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
-            this.popFront();
+        this.popFrontN(_model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol);
 
         _nowTrainingMode = false;
         *_useSWPOFDM = oldUseSWP;
 
-        foreach(i; 0 .. _model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol)
-            this.popFront();
+        this.popFrontN(_model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol);
     }
 
 
     void fillBuffer(alias ms, X, size_t N)(X[][N] buffers...)
-    if(ms.length == N)
+    if(ms.length == N && N != 0)
     in{
         auto s = buffers[0].length;
         foreach(e; buffers) assert(e.length == s);
     }
     body{
-        foreach(i; 0 .. buffers[0].length){
-            auto v = this.front;
-            foreach(j, m; aliasSeqOf!ms)
-                mixin(format(`buffers[j][i] = cast(C)v.%s;`, m));
-            
-            this.popFront();
+        static foreach(m; aliasSeqOf!ms)
+            static assert(canFind(["txBaseband", "desiredBaseband", "paDirect", "received"], m), m ~ " is illegal.");
+
+        immutable size_t len = buffers[0].length;
+        if(len == 0) return;
+
+        foreach(ref buf; _tempbuf)
+            buf.length = max(buf.length, len);
+
+        C[] ds = _tempbuf[0][0 .. len],
+            xs = _tempbuf[1][0 .. len],
+            ns = _tempbuf[2][0 .. len];
+
+        foreach(i; 0 .. len){
+            ds[i] = desiredBaseband.front;
+            xs[i] = txBaseband.front;
+            ns[i] = noise.front;
+
+            desiredBaseband.popFront();
+            txBaseband.popFront();
+            noise.popFront();
+        }
+
+        C[] txiqs = _tempbuf[3][0 .. len],
+            txvgas = _tempbuf[4][0 .. len],
+            txpas = _tempbuf[5][0 .. len];
+
+        _txIQMixer(xs, txiqs);
+        _txPAVGA(txiqs, txvgas);
+        _txPARapp(txvgas, txpas);
+
+        C[] rxants = _tempbuf[6][0 .. len],
+            rxvgas = _tempbuf[7][0 .. len],
+            rxlnas = _tempbuf[8][0 .. len],
+            rxiqs = _tempbuf[9][0 .. len],
+            rxqzvgas = _tempbuf[10][0 .. len],
+            rxqzs = _tempbuf[11][0 .. len];
+
+        _channel(txpas, rxants);
+        _rxLNAVGA(rxants, rxvgas);
+
+        if(_nowTrainingMode){
+            foreach(i; 0 .. len)
+                rxvgas[i] = rxvgas[i] * _selfInterferenceCoef + ns[i] * _noiseCoef;
+        }else{
+            foreach(i; 0 .. len)
+                rxvgas[i] = rxvgas[i] * _selfInterferenceCoef + ds[i] * _desiredCoef + ns[i] * _noiseCoef;
+        }
+
+        _rxLNARapp(rxvgas, rxlnas);
+        _rxIQMixer(rxlnas, rxiqs);
+        _rxQZVGA(rxiqs, rxqzvgas);
+        _rxQZ(rxqzvgas, rxqzs);
+
+        static foreach(i, m; aliasSeqOf!ms) {
+            static if(m == "txBaseband")
+                xs.copy(buffers[i]);
+            else static if(m == "desiredBaseband")
+                ds.copy(buffers[i]);
+            else static if(m == "paDirect")
+                txpas.copy(buffers[i]);
+            else static if(m == "received")
+                rxqzs.copy(buffers[i]);
+            else static assert(0, m ~ " is illegal.");
         }
     }
 
@@ -151,8 +179,9 @@ final class SimulatedSignals
         dst.txBaseband = this.txBaseband.save;
         dst.noise = this.noise.save;
 
-        dst._cache = this._cache;
-        dst._frontIsComputed = this._frontIsComputed;
+        foreach(i, e; _tempbuf)
+            dst._tempbuf[i].length = e.length;
+
         dst._nowTrainingMode = this._nowTrainingMode;
         dst._useSWPOFDM = new bool(*this._useSWPOFDM);
 
@@ -201,8 +230,7 @@ final class SimulatedSignals
     Signal noise;
 
   private:
-    typeof(front()) _cache;
-    bool _frontIsComputed;
+    C[][13] _tempbuf;
 
     bool _nowTrainingMode;
     bool* _useSWPOFDM;
@@ -233,7 +261,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     immutable bool* alwaysFalsePointer = new bool(false);
     immutable bool* alwaysTruePointer = new bool(true);
 
-    SimulatedSignals dst = new SimulatedSignals;
+    SimulatedSignals dst = new SimulatedSignals();
     dst._model = model;
     dst._useSWPOFDM = new bool(false);
 
