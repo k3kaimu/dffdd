@@ -568,11 +568,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
 
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
-    // if(isModelParameterSet!M)
     {
-        // メンバーを持っているかどうかチェック
-        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband", "noise", "receivedSISWP"));
-
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
             _distorter.learn(signalGenerator(model).txBaseband);
     }
