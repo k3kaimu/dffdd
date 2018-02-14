@@ -8,6 +8,7 @@ import std.json;
 import carbon.math : nextPowOf2;
 
 import dffdd.utils.json;
+import dffdd.utils.unit;
 
 
 struct FIRFilterConverter(C)

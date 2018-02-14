@@ -61,7 +61,7 @@ alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Comple
 
 struct Model
 {
-    size_t numOfModelTrainingSymbols = 100;
+    size_t numOfModelTrainingSymbols = 300;
     size_t numOfFilterTrainingSymbols = 200;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
@@ -146,9 +146,9 @@ struct Model
     struct ThermalNoise
     {
         real temperature = 300;
-        real power(Model model)
+        Voltage power(Model model)
         {
-            return noisePower(model.samplingFreq, model.thermalNoise.temperature);
+            return Voltage(sqrt(noisePower(model.samplingFreq, model.thermalNoise.temperature)));
         }
     }
     ThermalNoise thermalNoise;
@@ -218,7 +218,7 @@ struct Model
         // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
         // MAX2616
         Gain GAIN = 28.5.dB;
-        Voltage Vsat = Voltage(21.8.dBm.V / 2);
+        Voltage Vsat = Voltage(21.8.dBm.volt / 2);
         Voltage IIP3 = 21.8.dBm;
         Voltage TX_POWER = 15.dBm;
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布

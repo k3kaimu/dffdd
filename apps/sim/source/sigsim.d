@@ -12,6 +12,7 @@ import std.traits;
 import std.typecons;
 import std.json;
 
+import dffdd.mod.qam;
 import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.amplifier;
 import dffdd.blockdiagram.utils;
@@ -164,6 +165,12 @@ final class SimulatedSignals
     }
 
 
+    void ignoreSI(bool b) @property
+    {
+        _selfInterferenceCoef = b ? C(0) : C(1);
+    }
+
+
     void useSWPOFDM(bool b) @property
     {
         *_useSWPOFDM = b;
@@ -240,7 +247,7 @@ final class SimulatedSignals
     C _noiseCoef = C(1);
 
     IQImbalanceConverter!C _txIQMixer;
-    PowerControlAmplifierConverter!C _txPAVGA;
+    VGAConverter!C _txPAVGA;
     RappModelConverter!C _txPARapp;
     
     FIRFilterConverter!C _channel;
@@ -248,7 +255,7 @@ final class SimulatedSignals
     PowerControlAmplifierConverter!C _rxLNAVGA;
     RappModelConverter!C _rxLNARapp;
     IQImbalanceConverter!C _rxIQMixer;
-    PowerControlAmplifierConverter!C _rxQZVGA;
+    VGAConverter!C _rxQZVGA;
     SimpleQuantizerConverter!C _rxQZ;
 }
 
@@ -275,15 +282,27 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).toWrappedRange;
 
+    Voltage vsi = QAM(16).outputVoltage();
+    vsi *= Gain.fromPowerGain(model.ofdm.numOfSubcarrier * 1.0 / model.ofdm.numOfFFT / model.ofdm.scaleOfUpSampling);
+
     dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
-    dst._txPAVGA = PowerControlAmplifierConverter!C((model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm);
-    dst._txPARapp = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.V / 2);
-    
+    vsi *= dst._txIQMixer.gain();
+    // dst._txPAVGA = PowerControlAmplifierConverter!C((model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm);
+    auto vpainput = (model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm;
+    dst._txPAVGA = VGAConverter!C(vpainput / vsi);
+    vsi = vpainput;
+    dst._txPARapp = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
+    vsi = dst._txPARapp.outputVoltage(vsi);
+
     dst._channel = FIRFilterConverter!C(model.channel.impulseResponse[0 .. model.channel.taps]);
-    dst._rxLNAVGA = PowerControlAmplifierConverter!C((model.thermalNoise.power(model) * (model.INR.dB + model.lna.NF.dB).dB.gain^^2).sqrt.V);
+    auto vlnainput = model.thermalNoise.power(model) * model.lna.NF * model.INR;
+    dst._rxLNAVGA = PowerControlAmplifierConverter!C(vlnainput, model.numOfModelTrainingSymbols/3 * model.ofdm.numOfSamplesOf1Symbol, 2);
+    vsi = Voltage(sqrt(vlnainput.volt^^2 + (model.thermalNoise.power(model) * model.lna.NF).volt^^2));
     dst._rxLNARapp = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3.dBm - 36).dB.gain);
+    vsi = dst._rxLNARapp.outputVoltage(vsi);
     dst._rxIQMixer = IQImbalanceConverter!C(0.dB, model.rxIQMixer.imbCoef);
-    dst._rxQZVGA = PowerControlAmplifierConverter!C((30 - model.ofdm.PAPR.dB + 4.76).dBm);
+    vsi *= dst._rxIQMixer.gain();
+    dst._rxQZVGA = VGAConverter!C((30 - model.ofdm.PAPR.dB + 4.76).dBm / vsi);
     dst._rxQZ = SimpleQuantizerConverter!C(model.quantizer.numOfBits);
 
     return dst;

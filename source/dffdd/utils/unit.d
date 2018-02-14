@@ -150,6 +150,25 @@ struct Gain
   }
 
 
+    Gain opBinary(string op : "*")(Gain g)
+    {
+        return this(_g1V * g._g1V);
+    }
+
+
+    Gain opBinary(string op : "/")(Gain g)
+    {
+        return this(_g1V / g._g1V);
+    }
+
+
+    void opOpAssign(string op)(Gain g)
+    if(op == "*" || op == "/")
+    {
+        this = this.opBinary!op(g);
+    }
+
+
     string toString() const
     {
         import std.format;
@@ -173,22 +192,22 @@ unittest
 
 Voltage dBm(real dbm)
 {
-    if(__ctfe)
-        return Voltage(sqrt(50.0) * expCTFE((dbm - 30)/20 * log(10.0)));
-    else
-        return Voltage(sqrt(50.0) * 10^^((dbm - 30)/20));
+    return Voltage.fromdBm(dbm);
 }
-
-
-Voltage V(real v)
-{
-    return Voltage(v);
-}
-
 
 
 struct Voltage
 {
+    static
+    Voltage fromdBm(real dbm)
+    {
+        if(__ctfe)
+            return Voltage(sqrt(50.0) * expCTFE((dbm - 30)/20 * log(10.0)));
+        else
+            return Voltage(sqrt(50.0) * 10^^((dbm - 30)/20));
+    }
+
+
     this(real v1V)
     {
         _g1V = v1V;
@@ -204,24 +223,10 @@ struct Voltage
     }
 
 
-    //deprecated
-    //real dBW() pure nothrow @safe @nogc
-    //{
-    //    return 20*log10(_g1V);
-    //}
-
-
-    real V() pure nothrow @safe @nogc
+    real volt() pure nothrow @safe @nogc
     {
         return _g1V;
     }
-
-
-    //deprecated
-    //real W() pure nothrow @safe @nogc
-    //{
-    //    return _g1V^^2;
-    //}
   }
 
     string toString() const
@@ -231,20 +236,45 @@ struct Voltage
     }
 
 
+    Voltage opBinary(string op : "*")(Gain g)
+    {
+        return Voltage(this._g1V * g.gain());
+    }
+
+
+    Voltage opBinary(string op : "/")(Gain g)
+    {
+        return Voltage(this._g1V / g.gain());
+    }
+
+
+    Gain opBinary(string op : "/")(Voltage v)
+    {
+        return Gain.fromVoltageGain(this._g1V / v._g1V);
+    }
+
+
+    void opOpAssign(string op)(Gain g)
+    if(op == "*" || op == "/")
+    {
+        this = this.opBinary!op(g);
+    }
+
+
   private:
     real _g1V;
 }
 
 unittest
 {
-    assert(approxEqual((-10).dBm.V, sqrt(50.0)*0.01));
-    assert(approxEqual((10).dBm.V, sqrt(50.0)*0.1));
+    assert(approxEqual((-10).dBm.volt, sqrt(50.0)*0.01));
+    assert(approxEqual((10).dBm.volt, sqrt(50.0)*0.1));
     assert(approxEqual((10).dBm.dBm, 10));
     assert(approxEqual((-10).dBm.dBm, -10));
 
     enum Voltage g1 = (-10).dBm;
-    assert(approxEqual(g1.V, sqrt(50.0)*0.01));
+    assert(approxEqual(g1.volt, sqrt(50.0)*0.01));
 
     enum Voltage g2 = 10.dBm;
-    assert(approxEqual(g2.V, sqrt(50.0)*0.1));
+    assert(approxEqual(g2.volt, sqrt(50.0)*0.1));
 }

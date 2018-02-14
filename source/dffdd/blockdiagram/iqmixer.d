@@ -51,15 +51,15 @@ struct IQImbalanceConverter(C)
     }
 
 
-    typeof(this) dup() const pure nothrow @safe @nogc @property
-    {
-        return this;
-    }
-
-
     C imbCoef() const @property
     {
         return _g2V / _g1V;
+    }
+
+
+    Gain gain() const @property
+    {
+        return Gain.fromPowerGain(_g1V^^2 + _g2V.sqAbs());
     }
 
 
@@ -69,6 +69,12 @@ struct IQImbalanceConverter(C)
         jv["gain"] = DefaultJSONEnv.toJSONValue(_g1V);
         jv["imbCoef"] = DefaultJSONEnv.toJSONValue(_g2V / _g1V);
         return jv;
+    }
+
+
+    typeof(this) dup() const pure nothrow @safe @nogc @property
+    {
+        return this;
     }
 
 

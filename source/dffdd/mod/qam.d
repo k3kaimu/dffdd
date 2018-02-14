@@ -7,6 +7,7 @@ import std.numeric;
 
 import dffdd.mod.bpsk;
 import dffdd.mod.qpsk;
+import dffdd.utils.unit;
 
 
 ubyte[][] getGrayCode(size_t N)
@@ -103,6 +104,16 @@ struct QAM
         }
 
         return outputs;
+    }
+
+
+    Voltage outputVoltage() const @property
+    {
+        real p = 0;
+        foreach(e; _toSymbol)
+            p += e.sqAbs();
+
+        return Voltage(sqrt(p * 2));
     }
 
 

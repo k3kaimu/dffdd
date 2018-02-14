@@ -367,15 +367,16 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     }
 
     {
-        float sicv;
+        // float sicv;
 
-        bool*[] endFlags = iota(5).map!"new bool"().array();
+        bool*[] endFlags = iota(4).map!"new bool"().array();
         auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
         auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model, endFlags[1]);
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model, endFlags[2]);
-        auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model, endFlags[3]);
-        auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[4]);
+        // auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model, endFlags[3]);
+        auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[3]);
 
+        real sumRemainPower = 0;
         StopWatch sw;
         size_t cancCNT;
         foreach(blockIdxo; 0 .. 1024)
@@ -394,18 +395,42 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
                 .put(psdBeforePSD, recvs);
                 .put(psdAfterSIC, outps);
                 .put(foutPSD, refrs);
-                .put(sicValue, recvs.zip(outps));
+                // .put(sicValue, recvs.zip(outps));
                 .put(inbandSICValue, recvs.zip(outps));
             }
 
+            sumRemainPower += outps.map!(a => a.sqAbs).sum();
             ++cancCNT;
 
             if(endFlags[].fold!"a && *b"(true))
                 break;
         }
 
+        sumRemainPower /= cancCNT * model.blockSize;
         infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
-        infoResult["cancellation_dB"] = sicv;
+        // infoResult["cancellation_dB"] = sicv;
+
+        // 雑音電力を測る
+        signals.ignoreSI = true;
+        scope(exit) signals.ignoreSI = false;
+        real sumNoisePower = 0;
+        foreach(i; 0 .. cancCNT) {
+            signals.fillBuffer!(["received"])(refrs);
+            sumNoisePower += refrs.map!(a => a.sqAbs).sum();
+        }
+        sumNoisePower /= cancCNT * model.blockSize;
+        real sumRemainSI = sumRemainPower - sumNoisePower;
+        if(sumRemainSI < 0) sumRemainSI = 1E-6;
+        Gain RINR = Gain.fromPowerGain(sumRemainSI / sumNoisePower),
+             canc = Gain.fromPowerGain((model.INR.gain^^2 + 1) / (RINR.gain^^2 + 1));
+
+        infoResult["cancellation_dB"] = canc.dB;
+        infoResult["RINR_dB"] = RINR.dB;
+        if(resultDir !is null){
+            File(buildPath(resultDir ,"cancellation_value.csv"), "w").writeln(canc.dB);
+            File(buildPath(resultDir ,"RINR_value.csv"), "w").writeln(RINR.dB);
+        }
+
     }
 
     //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -430,7 +455,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         real berResult = -1;
         auto berCounter = makeInstrument(delegate void (FiberRange!(Complex!float) r){
             auto bits = r
-            .connectTo!PowerControlAmplifier(ofdmModSignalPower.sqrt.V)
+            .connectTo!PowerControlAmplifier(Voltage(ofdmModSignalPower.sqrt))
             .connectToDemodulator(modOFDM(model), model);
 
             // 慣らし運転
