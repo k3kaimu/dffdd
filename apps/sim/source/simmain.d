@@ -377,6 +377,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[3]);
 
         real sumRemainPower = 0;
+        real sumSI = 0;
         StopWatch sw;
         size_t cancCNT;
         foreach(blockIdxo; 0 .. 1024)
@@ -400,6 +401,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
             }
 
             sumRemainPower += outps.map!(a => a.sqAbs).sum();
+            sumSI += recvs.map!(a => a.sqAbs).sum();
             ++cancCNT;
 
             if(endFlags[].fold!"a && *b"(true))
@@ -407,6 +409,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         }
 
         sumRemainPower /= cancCNT * model.blockSize;
+        sumSI /= cancCNT * model.blockSize;
         infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
         // infoResult["cancellation_dB"] = sicv;
 
@@ -422,10 +425,12 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         real sumRemainSI = sumRemainPower - sumNoisePower;
         if(sumRemainSI < 0) sumRemainSI = 1E-6;
         Gain RINR = Gain.fromPowerGain(sumRemainSI / sumNoisePower),
-             canc = Gain.fromPowerGain((model.INR.gain^^2 + 1) / (RINR.gain^^2 + 1));
+             INR = Gain.fromPowerGain(sumSI / sumNoisePower),
+             canc = Gain.fromPowerGain((INR.gain^^2 + 1) / (RINR.gain^^2 + 1));
 
         infoResult["cancellation_dB"] = canc.dB;
         infoResult["RINR_dB"] = RINR.dB;
+        infoResult["INR_dB"] = INR.dB;
         if(resultDir !is null){
             File(buildPath(resultDir ,"cancellation_value.csv"), "w").writeln(canc.dB);
             File(buildPath(resultDir ,"RINR_value.csv"), "w").writeln(RINR.dB);
