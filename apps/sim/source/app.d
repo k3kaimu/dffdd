@@ -356,6 +356,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
             model.rlsAdapter.delta = modelSeed.rlsDelta;
             model.rlsAdapter.lambda = modelSeed.rlsLambda;
             model.nlmsAdapter.mu = modelSeed.nlmsMu;
+            model.iterativeFreqSIC.iterations = modelSeed.iterNumOfIteration;
         }
     }
 
