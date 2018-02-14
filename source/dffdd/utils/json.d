@@ -17,6 +17,7 @@ import std.traits;
 import std.typecons;
 import std.typetuple;
 import std.variant;
+import std.functional;
 
 
 private template _StaticIota(size_t M, size_t N)
@@ -227,7 +228,7 @@ template JSONEnv(alias overloads)
 
     private string createFromJSONValueExceptionMsg(T)(JSONValue json)
     {
-        return "cannot convert to '" ~ T.stringof ~ "' from "`"` ~ toJSON(&json) ~ `"`;
+        return "cannot convert to '" ~ T.stringof ~ "' from "`"` ~ toJSON(json) ~ `"`;
     }
 
 
@@ -602,7 +603,7 @@ unittest{
     auto jv = S1.toJSONValue(s1);
 
     auto jvtext = parseJSON(`{"gloF":12345,"strB":"Custom Convertor-String : foo","fltC":2,"gloG":"Custom Convertor-String : global variable","intA":12,"aasE":{"4":5,"1":2,"2":3,"3":4},"arrD":[1,2,3,4]}`);
-    assert(toJSON(&jv) == toJSON(&jvtext));
+    assert(toJSON(jv) == toJSON(jvtext));
 
     auto s2 = S1.fromJSONValueImpl(jv);
     auto s3 = S1.fromJSONValueImpl(jvtext);
@@ -679,7 +680,7 @@ unittest{
 
     auto x = jot.toJSONValueImpl();
     auto y = parseJSON(`{"strB":"foo-bar","fltC":12.5,"intA":12}`);
-    assert(toJSON(&x) == toJSON(&y));
+    assert(toJSON(x) == toJSON(y));
 
     assert(typeof(jot).fromJSONValueImpl(x) == jot);
     assert(typeof(jot).fromJSONValueImpl(y) == jot);
