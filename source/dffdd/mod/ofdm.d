@@ -418,6 +418,7 @@ unittest
                             }
                         }
                         else{
+                            import std.complex : abs;
                             assert(approxEqual(ops1[j].abs(), 0));
                             assert(approxEqual(ops2[j].abs(), 0));
                         }

@@ -92,7 +92,7 @@ struct RappModelConverter(C)
 
     void opCall(InputElementType input, ref OutputElementType output)
     {
-        auto r = abs(input),
+        auto r = std.complex.abs(input),
              u = input / r;         // unit vector
 
         // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
