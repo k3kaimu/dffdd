@@ -3,6 +3,7 @@ module dffdd.utils.linalg;
 import cblas;
 import std.complex;
 import std.range;
+import std.traits;
 
 import mir.ndslice;
 
@@ -365,11 +366,17 @@ unittest
 y[j] = sum_i mx[i, j] * a[i] のa[i]を最小二乗法で求める．
 結果は，y[0 .. P]に上書きされる．(P: mx.length!0)
 */
-Complex!float[] leastSquareEstimate(Slice!(Contiguous, [2], Complex!float*) mx, Complex!float[] y)
+Complex!R[] leastSquareEstimate(R : double)(Slice!(Contiguous, [2], Complex!R*) mx, Complex!R[] y)
 {
     import std.algorithm : min, max;
 
-    static float[] sworkSpace;
+    static if(is(R == float))
+        alias gelss = LAPACKE_cgelss;
+    else
+        alias gelss = LAPACKE_zgelss;
+
+
+    static R[] sworkSpace;
 
     immutable L = y.length;
     immutable P = mx.length!0;
@@ -378,7 +385,7 @@ Complex!float[] leastSquareEstimate(Slice!(Contiguous, [2], Complex!float*) mx, 
     static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
 
     adjustSize(sworkSpace, min(L, P));
-    LAPACKE_cgelss(102, cast(int)L, cast(int)P, 1, cast(float[2]*)&(mx[0, 0]), cast(int)L, cast(float[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
+    gelss(102, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)L, cast(R[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
 
     return y[0 .. P];
 }
@@ -387,11 +394,8 @@ Complex!float[] leastSquareEstimate(Slice!(Contiguous, [2], Complex!float*) mx, 
 /**
 パラメータ数2個の最小二乗問題をときます
 */
-Complex!float[2] leastSquareEstimate2(R1, R2, R3)(R1 x1, R2 x2, R3 y)
-if(isInputRange!R1 && isInputRange!R2 && isInputRange!R3
-    && is(ElementType!R1 : Complex!float)
-    && is(ElementType!R2 : Complex!float)
-    && is(ElementType!R3 : Complex!float))
+Unqual!(ElementType!R1)[2] leastSquareEstimate2(R1, R2, R3)(R1 x1, R2 x2, R3 y)
+if(isInputRange!R1 && isInputRange!R2 && isInputRange!R3)
 {
     Complex!real xx11 = Complex!real(0, 0),
                  xx12 = Complex!real(0, 0),
@@ -425,7 +429,7 @@ if(isInputRange!R1 && isInputRange!R2 && isInputRange!R3
     alias f = xy2;
 
     immutable Complex!real det = a * d - b * c;
-    return [cast(Complex!float)((d*e - b*f) / det), cast(Complex!float)((a*f - c*e) / det)];
+    return [cast(ElementType!R1)((d*e - b*f) / det), cast(ElementType!R1)((a*f - c*e) / det)];
 }
 
 
