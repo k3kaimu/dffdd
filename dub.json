@@ -15,6 +15,6 @@
         "carbon": {"path": "../carbon"},
         "dfftw3": "~>1.0.1",
         "cblas": "~>1.0.0",
-        "mir-algorithm": "~>0.5.16"
+        "mir-algorithm": "~>1.0.0-alpha4"
     }
 }
