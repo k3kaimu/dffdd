@@ -250,6 +250,8 @@ final class FrequencyDomainDCMHammersteinStateAdapter(C, Adapter, Flag!"isParall
 
 final class OverlapSaveRegenerator2(C)
 {
+    alias R = typeof(C.init.re);
+
     this(size_t maxDim, size_t nFFT)
     {
         _fftw = makeFFTWObject!Complex(nFFT);
@@ -343,10 +345,10 @@ final class OverlapSaveRegenerator2(C)
                 e = tx[i][p];
 
             // 信号xを周波数領域に変換しXを得る
-            auto ips = _fftw.inputs!float;
-            auto ops = _fftw.outputs!float;
+            auto ips = _fftw.inputs!R;
+            auto ops = _fftw.outputs!R;
             ips[] = _inputs[p][];
-            _fftw.fft!float();
+            _fftw.fft!R();
 
             _distFFTBuf[p][] = ops[];
         }
@@ -363,18 +365,18 @@ final class OverlapSaveRegenerator2(C)
         }
 
         // XとHの積を計算する
-        auto ips = _fftw.inputs!float;
+        auto ips = _fftw.inputs!R;
         assert(_distFFTBufSelected.joiner.all!(a => !a.sqAbs.isNaN));
         state.regenerate(_distFFTBufSelected, ips);
-        assert(ips.ptr == _fftw.inputs!float.ptr);
+        assert(ips.ptr == _fftw.inputs!R.ptr);
         assert(ips.all!(a => !a.sqAbs.isNaN));
 
         // y = IFFT{XH}の計算
         // IFFT
-        // _fftw.inputs!float[] = _buffer[];
-        _fftw.ifft!float();
+        // _fftw.inputs!R[] = _buffer[];
+        _fftw.ifft!R();
         // 結果の後ろをoutputに足す
-        output[] += _fftw.outputs!float[$ - size .. $];
+        output[] += _fftw.outputs!R[$ - size .. $];
     }
 
 
