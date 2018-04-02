@@ -65,7 +65,7 @@ struct ModelSeed
     uint bfsNumOfEst = 2;
 
     /* frequency domain iterative */
-    uint iterNumOfIteration = 2;
+    uint iterNumOfIteration = 10;
 }
 
 
@@ -111,7 +111,8 @@ void mainJob()
                                     
                                     // "L_LS",
                                     
-                                    "IterativeFreqSIC_X",
+                                    // "IterativeFreqSIC_X",
+                                    "Sidelobe_X",
             ))
     {
         bool[string] dirset;
@@ -122,69 +123,69 @@ void mainJob()
         }
 
         
-        /// S2FHF: gamma vs cancellation
-        static if(methodName == "S2FHF_LS")
-        foreach(learningSymbols; iota(2, 22, 2))
-        foreach(gamma; iota(-10, 12, 2))
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.bfsNoiseMargin = gamma.dB;
+        // /// S2FHF: gamma vs cancellation
+        // static if(methodName == "S2FHF_LS")
+        // foreach(learningSymbols; iota(2, 22, 2))
+        // foreach(gamma; iota(-10, 12, 2))
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     modelSeed.bfsNoiseMargin = gamma.dB;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_S2FHFLS_gamma_vs_canc", dir);
-            dirset[dir] = true;
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath("results_S2FHFLS_gamma_vs_canc", dir);
+        //     dirset[dir] = true;
 
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
-
-
-        /// S2FHF: selection
-        static if(methodName == "S2FHF_LS")
-        foreach(inr; iota(20, 75, 5))
-        foreach(sf; [1, 3])
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 20;
-            modelSeed.INR = inr.dB;
-            modelSeed.lnaSmoothFactor = sf;
-
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_S2FHFLS_selection", dir);
-            dirset[dir] = true;
-
-            appender.append(numOfTrials, modelSeed, dir, Yes.saveAllRAWData);
-        }
+        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
 
 
-        /// Iterative: iter vs cancellation
-        static if(methodName == "IterativeFreqSIC_X")
-        foreach(learningSymbols; iota(2, 11, 1))
-        foreach(inr; [10, 20, 30, 40, 50, 60, 70])
-        foreach(iter; iota(1, 5))
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = inr.dB;
-            modelSeed.iterNumOfIteration = iter;
+        // /// S2FHF: selection
+        // static if(methodName == "S2FHF_LS")
+        // foreach(inr; iota(20, 75, 5))
+        // foreach(sf; [1, 3])
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 20;
+        //     modelSeed.INR = inr.dB;
+        //     modelSeed.lnaSmoothFactor = sf;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir ~= format("_%s", iter);
-            dir = buildPath("results_Iterative_iter_vs_canc", dir);
-            dirset[dir] = true;
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath("results_S2FHFLS_selection", dir);
+        //     dirset[dir] = true;
 
-            appender.append(numOfTrials, modelSeed, dir, Yes.saveAllRAWData);
-        }
+        //     appender.append(numOfTrials, modelSeed, dir, Yes.saveAllRAWData);
+        // }
+
+
+        // /// Iterative: iter vs cancellation
+        // static if(methodName == "IterativeFreqSIC_X")
+        // foreach(learningSymbols; iota(2, 11, 1))
+        // foreach(inr; [10, 20, 30, 40, 50, 60, 70])
+        // foreach(iter; iota(1, 5))
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     modelSeed.INR = inr.dB;
+        //     modelSeed.iterNumOfIteration = iter;
+
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir ~= format("_%s", iter);
+        //     dir = buildPath("results_Iterative_iter_vs_canc", dir);
+        //     dirset[dir] = true;
+
+        //     appender.append(numOfTrials, modelSeed, dir, Yes.saveAllRAWData);
+        // }
 
 
         /// inr vs cancellation
-        static if(methodName.endsWith("_LS") || methodName == "IterativeFreqSIC_X")
-        foreach(learningSymbols; [10, 20, 30, 100])
-        foreach(inr; iota(20, 75, 5))
-        foreach(sf; [1, 3])
+        // static if(methodName.endsWith("_LS") || methodName == "IterativeFreqSIC_X")
+        foreach(learningSymbols; [10])
+        foreach(inr; iota(50, 75, 5))
+        foreach(sf; [1])
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
@@ -200,59 +201,59 @@ void mainJob()
         }
 
 
-        foreach(learningSymbols; iota(2, 21, 1))
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            setRLSLMSParam(modelSeed);
-            auto dirName = makeDirNameOfModelSeed(modelSeed);
-            dirName = buildPath("results_ALL_iteration_vs_canc", dirName);
+        // foreach(learningSymbols; iota(2, 21, 1))
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     setRLSLMSParam(modelSeed);
+        //     auto dirName = makeDirNameOfModelSeed(modelSeed);
+        //     dirName = buildPath("results_ALL_iteration_vs_canc", dirName);
 
-            appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
-            dirset[dirName] = true;
-        }
+        //     appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
+        //     dirset[dirName] = true;
+        // }
 
 
-        // RLS parameter, lambda = 1, delta=???
-        static if(methodName.endsWith("_RLS"))
-        foreach(lambdaExp; [-5, -4, /*-2, -3, -4, -5, -6, -7, -8, -9*/])
-        foreach(lambdaDig; iota(10, 100)) {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
-            modelSeed.rlsLambda = 1 - (lambdaDig * (10.0L^^lambdaExp));
+        // // RLS parameter, lambda = 1, delta=???
+        // static if(methodName.endsWith("_RLS"))
+        // foreach(lambdaExp; [-5, -4, /*-2, -3, -4, -5, -6, -7, -8, -9*/])
+        // foreach(lambdaDig; iota(10, 100)) {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 10;
+        //     modelSeed.rlsLambda = 1 - (lambdaDig * (10.0L^^lambdaExp));
             
-            if(modelSeed.cancellerType.startsWith("FHF")) {
-                modelSeed.rlsDelta = 4E-7;
-            }else{
-                modelSeed.rlsDelta = 0.1;
-            }
+        //     if(modelSeed.cancellerType.startsWith("FHF")) {
+        //         modelSeed.rlsDelta = 4E-7;
+        //     }else{
+        //         modelSeed.rlsDelta = 0.1;
+        //     }
 
-            auto dirName = makeDirNameOfModelSeed(modelSeed);
-            dirName ~= format("_%s_%s_deltaopt", lambdaDig, lambdaExp);
-            dirName = buildPath("results_RLSLMSParam", dirName);
-            dirset[dirName] = true;
+        //     auto dirName = makeDirNameOfModelSeed(modelSeed);
+        //     dirName ~= format("_%s_%s_deltaopt", lambdaDig, lambdaExp);
+        //     dirName = buildPath("results_RLSLMSParam", dirName);
+        //     dirset[dirName] = true;
 
-            appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
-        }
+        //     appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
+        // }
 
 
-        static if(methodName.endsWith("_LMS"))
-        foreach(muExp; [-2])
-        foreach(muDig; iota(21, 51, 1)){
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
-            modelSeed.nlmsMu = muDig * (10.0L^^muExp);
+        // static if(methodName.endsWith("_LMS"))
+        // foreach(muExp; [-2])
+        // foreach(muDig; iota(21, 51, 1)){
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 10;
+        //     modelSeed.nlmsMu = muDig * (10.0L^^muExp);
 
-            string dirName = makeDirNameOfModelSeed(modelSeed);
-            dirName ~= format("_%s_%s", muDig, muExp);
-            dirName = buildPath("results_RLSLMSParam", dirName);
+        //     string dirName = makeDirNameOfModelSeed(modelSeed);
+        //     dirName ~= format("_%s_%s", muDig, muExp);
+        //     dirName = buildPath("results_RLSLMSParam", dirName);
 
-            appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
-            dirset[dirName] = true;
-        }
+        //     appender.append(numOfTrials, modelSeed, dirName, No.saveAllRAWData);
+        //     dirset[dirName] = true;
+        // }
     }
 
     //writefln("%s tasks will be submitted.", taskList.length);

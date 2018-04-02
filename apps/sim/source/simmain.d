@@ -213,6 +213,11 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     import dffdd.filter.freqdomain;
     auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
   }
+  else static if(filterStructure.endsWith("Sidelobe"))
+  {
+    import dffdd.filter.sidelobe;
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+  }
   else static if(filterStructure.endsWith("WLFHF"))
   {
     static assert(!isOrthogonalized);
