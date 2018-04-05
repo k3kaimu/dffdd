@@ -50,6 +50,50 @@ auto makeSpectrumAnalyzer(C)(string filename, string resultDir, size_t dropSize,
 }
 
 
+auto makeSyncSpectrumAnalyzer(C, size_t dim, alias names)(string filename, string resultDir, Model model, bool* endFlag = null)
+{
+    import std.meta : Repeat;
+    alias Tup = Tuple!(Repeat!(dim, C));
+    enum size_t N = 1024;
+
+    if(resultDir !is null) {
+        return makeInstrument!Tup(delegate void(FiberRange!Tup r){
+            auto fftw = makeFFTWObject!C(model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
+            alias R = typeof(C.init.re);
+            immutable size_t cp = model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling;
+
+            R[][] freq = new R[][](dim, fftw.inputs!R.length);
+            foreach(buf; freq) foreach(ref e; buf) e = 0;
+
+            foreach(ch; r.chunks(model.ofdm.numOfSamplesOf1Symbol).take(N)) {
+                auto arr = ch.array();
+                static foreach(i, name; names){{
+                    arr[cp .. $].map!(a => a[i]).copy(fftw.inputs!R[]);
+                    fftw.fft!R();
+                    auto ps = fftw.outputs!R.map!(std.complex.sqAbs);
+                    foreach(f, ref e; freq[i])
+                        e += ps[f];
+                }}
+            }
+
+            File file = File(buildPath(resultDir, filename), "w");
+            file.writefln("Frequency,%(%s,%)", names);
+            foreach(f; 0 .. fftw.inputs!R.length) {
+                file.writef("%s,", f);
+                foreach(i; 0 .. dim)
+                    file.writef("%s,", freq[i][f] / N);
+                file.writeln();
+            }
+
+            if(endFlag) *endFlag = true;
+        });
+    } else {
+        if(endFlag) *endFlag = true;
+        return makeInstrument!Tup(delegate void(FiberRange!Tup){});
+    }
+}
+
+
 auto makeCancellationProbe(C)(float* dst, string filename, string resultDir, size_t dropSize, Model model, bool* endFlag = null)
 {
     alias Tup = Tuple!(C, C);
@@ -374,12 +418,13 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     {
         // float sicv;
 
-        bool*[] endFlags = iota(4).map!"new bool"().array();
+        bool*[] endFlags = iota(5).map!"new bool"().array();
         auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
         auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model, endFlags[1]);
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model, endFlags[2]);
         // auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model, endFlags[3]);
         auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[3]);
+        auto syncSpecAnalyzer = makeSyncSpectrumAnalyzer!(Complex!float, 2, ["Y", "D"])("psd_sync.csv", resultDir, model, endFlags[4]);
 
         real sumRemainPower = 0;
         real sumSI = 0;
@@ -403,6 +448,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
                 .put(foutPSD, refrs);
                 // .put(sicValue, recvs.zip(outps));
                 .put(inbandSICValue, recvs.zip(outps));
+                .put(syncSpecAnalyzer, zip(recvs, outps));
             }
 
             sumRemainPower += outps.map!(a => a.sqAbs).sum();

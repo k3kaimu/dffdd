@@ -240,9 +240,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
         foreach(i; 0 .. _nCP*_nOS)
             h[i] = (h1[i] - _iqTX.conj * _iqRX * h1[i].conj) / (1 - _iqTX.sqAbs * _iqRX.sqAbs);
 
-        import std.stdio;
-        writeln("H:", h);
-
         // インパルス応答hから周波数応答Hに変換
         _fftw.inputs!double[0 .. _nCP*_nOS] = h[0 .. $];
         _fftw.inputs!double[_nCP*_nOS .. $] = complexZero!(Complex!double);
@@ -298,13 +295,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 vecPsiY ~= freqPsiY[p][i][f];
                 vecY ~= freqY[i][f];
             }
-
-            // import std.stdio;
-            // writeln("POWER");
-            // writeln(_channelFreqResponse.map!sqAbs.sum / _channelFreqResponse.length);
-            // writeln(vecPsiX.map!sqAbs.sum / vecPsiX.length);
-            // writeln(vecPsiY.map!sqAbs.sum / vecPsiY.length);
-            // writeln(vecY.map!sqAbs.sum / vecY.length);
 
             auto estCoefs = leastSquareEstimate2(vecPsiX, vecPsiY, vecY);
 
@@ -373,8 +363,6 @@ unittest
     foreach(ref e; signal)
         e += e.conj * trueTXIQImb;
 
-    writeln(signal.map!sqAbs.sum() / signal.length);
-
     immutable Complex!real trueTXPACoef = 0.03 * std.complex.expi(0.4*PI);
     foreach(ref e; signal)
         e += e * e.sqAbs * trueTXPACoef;
@@ -396,8 +384,6 @@ unittest
         signal = newsignal;
     }
 
-    writeln(signal.map!sqAbs.sum() / signal.length);
-
     immutable Complex!real trueRXLNACoef = 0.03 * std.complex.expi(-0.1*PI);
     foreach(ref e; signal)
         e += e * e.sqAbs * trueRXLNACoef;
@@ -415,16 +401,16 @@ unittest
         return std.complex.abs(t - x) / std.complex.abs(t);
     }
 
-    // 相対誤差が0.1以下
-    writefln!"%s : %s"(canceller._iqTX, trueTXIQImb);
-    writefln!"%s : %s"(canceller._iqRX, trueRXIQImb);
-    writefln!"%s : %s"(canceller._paCoefs[1], trueTXPACoef);
-    writefln!"%s : %s"(canceller._lnaCoefs[1], trueRXLNACoef);
+    // // 相対誤差が0.1以下
+    // writefln!"%s : %s"(canceller._iqTX, trueTXIQImb);
+    // writefln!"%s : %s"(canceller._iqRX, trueRXIQImb);
+    // writefln!"%s : %s"(canceller._paCoefs[1], trueTXPACoef);
+    // writefln!"%s : %s"(canceller._lnaCoefs[1], trueRXLNACoef);
 
     canceller._fftw.inputs!double[] = canceller._channelFreqResponse[];
     canceller._fftw.ifft!double();
-    writeln(canceller._fftw.outputs!double[0 .. 8]);
-    writeln(channel[0 .. 8]);
+    // writeln(canceller._fftw.outputs!double[0 .. 8]);
+    // writeln(channel[0 .. 8]);
     // assert(relErr(canceller._iqTX, trueTXIQImb) < 0.1);
     // assert(relErr(canceller._iqRX, trueRXIQImb) < 0.1);
     // assert(relErr(canceller._paCoefs[1], trueTXPACoef) < 0.1);
@@ -437,6 +423,6 @@ unittest
     dst = dst[$/4 .. $/4*3];
     auto rem = dst.fold!((a, b) => a + b.sqAbs)(0.0L);
     auto si = signal.fold!((a, b) => a + b.sqAbs)(0.0L);
-    writeln(10*log10(si/rem));
+    // writeln(10*log10(si/rem));
     // assert(10*log10(si/rem) > 70);  // 70 dB以上の除去量
 }

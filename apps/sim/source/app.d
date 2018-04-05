@@ -104,14 +104,14 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    // "OPH_LS",
+                                    "OPH_LS",
                                     // "OPH_LMS",
                                     
                                     // "WL_LS",
                                     
                                     // "L_LS",
                                     
-                                    // "IterativeFreqSIC_X",
+                                    "IterativeFreqSIC_X",
                                     "Sidelobe_X",
             ))
     {
@@ -183,9 +183,9 @@ void mainJob()
 
         /// inr vs cancellation
         // static if(methodName.endsWith("_LS") || methodName == "IterativeFreqSIC_X")
-        foreach(learningSymbols; [10])
-        foreach(inr; iota(50, 75, 5))
-        foreach(sf; [1])
+        foreach(learningSymbols; [50])
+        foreach(inr; iota(20, 105, 1))
+        foreach(sf; [1, 3])
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
