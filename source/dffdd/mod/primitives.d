@@ -117,7 +117,7 @@ unittest
     // サイクリックプレフィックス: 3
     // 使用サブキャリア数: 4
     // アップサンプリング率: 2
-    auto mod = chainedMod(new QPSK(), new OFDM!(Complex!float)(8, 3, 4, 2));
+    auto mod = chainedMod(new QPSK!(Complex!float)(), new OFDM!(Complex!float)(8, 3, 4, 2));
 
     assert(mod.symInputLength == 2 * 4);
     assert(mod.symOutputLength == (8 + 3) * 2);
