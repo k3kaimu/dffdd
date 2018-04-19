@@ -3,6 +3,7 @@ module dffdd.utils.binary;
 import core.bitop;
 
 import std.algorithm;
+import std.random;
 import std.range;
 import std.traits;
 
@@ -12,7 +13,7 @@ import carbon.stream;
 渡されたレンジの要素のうち、下部nDigitsビットだけをレンジにして返します。
 */
 auto toBinaryDigits(bool fromLSB = true, R)(R rng, size_t nDigits)
-if(isInputRange!R && isIntegral!(Unqual!(ElementType!R)))
+if(isInputRange!R && isUnsigned!(Unqual!(ElementType!R)))
 in{
     assert(nDigits <= (ElementType!R).sizeof * 8);
 }
@@ -110,7 +111,7 @@ body{
 }
 ///
 unittest{
-    auto input = [0, 1, 2, 3, 4, 5, 6, 7];
+    uint[] input = [0, 1, 2, 3, 4, 5, 6, 7];
 
     auto binDigs = toBinaryDigits(input, 3);
     assert(equal(binDigs, [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1]));
@@ -123,10 +124,13 @@ unittest{
 
     binDigs = toBinaryDigits(input, 0);
     assert(binDigs.empty);
+
+    binDigs = toBinaryDigits(input[0 .. 3], 32);
+    assert(equal(binDigs, chain(0.repeat(32), 1.only, 0.repeat(31), [0, 1], 0.repeat(30))));
 }
 ///
 unittest{
-    auto input = [0, 1, 2, 3, 4, 5, 6, 7];
+    uint[] input = [0, 1, 2, 3, 4, 5, 6, 7];
 
     auto binDigs = toBinaryDigits!false(input, 3);
     assert(equal(binDigs, [0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1]));
@@ -139,6 +143,39 @@ unittest{
 
     binDigs = toBinaryDigits!false(input, 0);
     assert(binDigs.empty);
+}
+
+
+/**
+渡された疑似乱数生成器を用いてランダムなビット列を生成します
+*/
+auto randomBits(E = ubyte, Rnd)(Rnd rnd = std.random.rndGen)
+if(isUniformRNG!Rnd && isUnsigned!(ElementType!Rnd))
+{
+    alias E = ElementType!Rnd;
+    return rnd.toBinaryDigits(E.sizeof * 8).map!"cast(ubyte)(a ? 1 : 0)";
+}
+
+unittest
+{
+    import std.random;
+    auto rndbits = randomBits(Random(0));
+
+    alias E = ElementType!Random;
+    auto rnd = Random(0);
+    foreach(i; 0 .. 1000) {
+        E x = rnd.front;
+        foreach(j; 0 .. E.sizeof * 8){
+            assert(((x >> j) & 1) == rndbits.front);
+            rndbits.popFront();
+        }
+        rnd.popFront();
+    }
+}
+
+unittest
+{
+    auto rndbits = randomBits();
 }
 
 
