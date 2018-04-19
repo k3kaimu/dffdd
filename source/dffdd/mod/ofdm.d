@@ -211,7 +211,7 @@ template generateOFDMAliasSignalAtFrequency(size_t Q, BasisFuncs...)
 
                 // fft + swap
                 fftObjUp.fft!F();
-                swapHalf(fftObjUp.outputs!float);
+                swapHalf(fftObjUp.outputs!F);
 
                 foreach(long j; 0 .. QX) {
                     immutable long bandIdx = (j % 2 == 0) ? j/2 : -(j+1)/2;
