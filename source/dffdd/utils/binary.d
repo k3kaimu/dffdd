@@ -180,15 +180,15 @@ unittest
 
 
 
-void oct2bin(string oct, byte[] bin, int skiplast, int flip)
+void oct2bin(Int)(string oct, Int[] bin, int skiplast, int flip)
 in{
     assert(bin.length <= oct.length * 3);
 }
 body{
-    auto tmp = new byte[oct.length * 3];
+    auto tmp = new Int[oct.length * 3];
     {
         auto sink = tmp;
-        sink.put(oct.map!"a - '0'"().toBinaryDigits!false(3).map!"cast(byte)(a ? -1 : 1)"());
+        sink.put(oct.map!"a - '0'"().toBinaryDigits!false(3).map!(a => cast(Int)(a ? -1 : 1))());
     }
 
     if(skiplast)

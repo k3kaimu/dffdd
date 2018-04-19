@@ -23,7 +23,7 @@ struct L1CACode
         r1[] = cast(byte)-1;
         r2[] = cast(byte)-1;
 
-        byte[codeLength] g1, g2;
+        int[codeLength] g1, g2;
         foreach(i; 0 .. codeLength){
             g1[i] = r1[9];
             g2[i] = r2[9];
@@ -47,7 +47,7 @@ struct L1CACode
 
   private static
   {
-    shared immutable byte[codeLength] _g1, _g2;
+    shared immutable int[codeLength] _g1, _g2;
 
     shared immutable short[] _delay = cast(short[])[ /* G2 delay (chips) */
           5,   6,   7,   8,  17,  18, 139, 140, 141, 251,   /*   1- 10 */
@@ -247,14 +247,14 @@ struct L2CMCode
     {
         import std.exception : assumeUnique;
 
-        auto code = new byte[codeLength];
+        auto code = new int[codeLength];
 
-        byte[27] r, t;
+        int[27] r, t;
         oct2bin(reg[prn-1], r[], 0, 0);     // initial state
         oct2bin("112225170", t[], 0, 0);    // polynomial coefficient
 
         foreach(i; 0 .. codeLength){
-            byte c = r[26];
+            int c = r[26];
             code[i] = -c;
 
             foreach(j; 0 .. 27) if(t[j] ==  -1) r[j] *= c;
@@ -262,17 +262,17 @@ struct L2CMCode
             r[0] = c;
         }
 
-        _code = assumeUnique(code);
+        _code = code.map!"cast(byte)a".array();
         _prn = prn;
         _i = 0;
     }
 
 
-    byte front() const @property { return _code[_i]; }
+    byte front() const @property { return cast(byte)(_code[_i]); }
     void popFront(){ ++_i; _i %= codeLength; }
     enum bool empty = false;
     L2CMCode save() const { return this; }
-    byte opIndex(size_t i) const { return _code[(_i + i)%$]; }
+    byte opIndex(size_t i) const { return cast(byte)(_code[(_i + i)%$]); }
     struct OpDollar{} enum opDollar = OpDollar();
     L2CMCode opSlice() const { return this; }
     L2CMCode opSlice(size_t i, OpDollar) const { auto dst = this.save; dst._i = (_i + i) % codeLength; return dst; }
