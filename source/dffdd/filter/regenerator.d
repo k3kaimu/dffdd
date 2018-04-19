@@ -15,6 +15,9 @@ import dffdd.filter.state;
 
 final class OverlapSaveRegenerator(C)
 {
+    alias R = typeof(C.init.re);
+
+
     this(Slice!(2, C*) freqResponse)
     {
         _freqResponse = freqResponse;
@@ -96,10 +99,10 @@ final class OverlapSaveRegenerator(C)
                 e = tx[i][p];
 
             // 信号xを周波数領域に変換しXを得る
-            auto ips = _fftw.inputs!float;
-            auto ops = _fftw.outputs!float;
+            auto ips = _fftw.inputs!R;
+            auto ops = _fftw.outputs!R;
             ips[] = _inputs[p][];
-            _fftw.fft!float();
+            _fftw.fft!R();
 
             // XとHの積を計算する
             foreach(i; 0 .. _freqResponse.length)
@@ -108,10 +111,10 @@ final class OverlapSaveRegenerator(C)
 
         // y = IFFT{XH}の計算
         // IFFT
-        _fftw.inputs!float[] = _buffer[];
-        _fftw.ifft!float();
+        _fftw.inputs!R[] = _buffer[];
+        _fftw.ifft!R();
         // 結果の後ろをoutputに足す
-        output[] += _fftw.outputs!float[$ - size .. $];
+        output[] += _fftw.outputs!R[$ - size .. $];
     }
 
 
