@@ -282,7 +282,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).toWrappedRange;
 
-    Voltage vsi = QAM(16).outputVoltage();
+    Voltage vsi = QAM!C(16).outputVoltage();
     vsi *= Gain.fromPowerGain(model.ofdm.numOfSubcarrier * 1.0 / model.ofdm.numOfFFT / model.ofdm.scaleOfUpSampling);
 
     dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
