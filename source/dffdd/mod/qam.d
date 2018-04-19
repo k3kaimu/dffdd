@@ -35,6 +35,7 @@ struct QAM(C)
 {
     alias InputElementType = ubyte;
     alias OutputElementType = C;
+    alias R = typeof(C.init.re);
 
 
     this(uint mary)
