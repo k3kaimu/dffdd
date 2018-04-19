@@ -162,9 +162,9 @@ real snrFromBerQAM(real ber, size_t M = 16)
 auto makeQAM(string scheme, C = Complex!float, T...)(T M)
 {
   static if(scheme == "BPSK")
-    return BPSK();
+    return BPSK!C();
   else static if(scheme == "QPSK")
-    return QPSK();
+    return QPSK!C();
   else static if(scheme == "QAM")
     return QAM!C(M);
   else static if(scheme == "16QAM")

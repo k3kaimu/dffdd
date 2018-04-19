@@ -2,10 +2,10 @@ module dffdd.mod.qpsk;
 
 import std.complex;
 
-struct QPSK
+struct QPSK(C)
 {
     alias InputElementType = ubyte;
-    alias OutputElementType = Complex!float;
+    alias OutputElementType = C;
 
     enum size_t symInputLength = 2;
     enum size_t symOutputLength = 1;
@@ -23,8 +23,8 @@ struct QPSK
             outputs.length = inputs.length/2;
 
         foreach(i; 0 .. inputs.length/2)
-            outputs[i] = Complex!float(inputs[i*2+0] != 0 ? -SQRT1_2 : SQRT1_2,
-                                       inputs[i*2+1] != 0 ? -SQRT1_2 : SQRT1_2);
+            outputs[i] = C(inputs[i*2+0] != 0 ? -SQRT1_2 : SQRT1_2,
+                           inputs[i*2+1] != 0 ? -SQRT1_2 : SQRT1_2);
 
         return outputs;
     }

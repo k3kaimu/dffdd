@@ -6,10 +6,10 @@ import std.math;
 import std.numeric;
 
 
-struct BPSK
+struct BPSK(C)
 {
     alias InputElementType = ubyte;
-    alias OutputElementType = Complex!float;
+    alias OutputElementType = C;
 
     enum size_t symInputLength = 1;
     enum size_t symOutputLength = 1;
@@ -22,7 +22,7 @@ struct BPSK
             outputs.length = inputs.length;
 
         foreach(i; 0 .. inputs.length)
-            outputs[i] = Complex!float(inputs[i] != 0 ? -1 : 1, 0);
+            outputs[i] = C(inputs[i] != 0 ? -1 : 1, 0);
 
         return outputs;
     }
