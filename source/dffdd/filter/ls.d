@@ -22,7 +22,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
   private
   {
     alias C = State.StateElementType;
-    alias F = typeof(C.init.re);
+    alias R = typeof(C.init.re);
 
     Slice!(Contiguous, [2], C*) _mx;
     C[] _yv;
@@ -65,7 +65,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
 
   static
   {
-    F[] sworkSpace;
+    R[] sworkSpace;
   }
 
     C[] leastSquare(size_t numOfParams)
@@ -74,7 +74,15 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
         static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
 
         adjustSize(sworkSpace, min(_L, numOfParams));
-        LAPACKE_cgelss(102, cast(int)_L, cast(int)numOfParams, 1, cast(float[2]*)&(_mx[0, 0]), cast(int)_L, cast(float[2]*)_yv.ptr, cast(int)max(_L, numOfParams), sworkSpace.ptr, 0.00001f, &rankN);
+
+        static if(is(R == float))
+            alias gelss = LAPACKE_cgelss;
+        else
+            alias gelss = LAPACKE_zgelss;
+
+
+        LAPACKE_cgelss(102, cast(int)_L, cast(int)numOfParams, 1, cast(R[2]*)&(_mx[0, 0]), cast(int)_L, cast(R[2]*)_yv.ptr, cast(int)max(_L, numOfParams), sworkSpace.ptr, 0.00001f, &rankN);
+
 
         return _yv[0 .. numOfParams];
     }
