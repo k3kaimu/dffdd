@@ -70,11 +70,11 @@ Parameters:
     + smpPerSym := 1シンボルあたりのサンプル数, ただし、OFDMなら1
     + thr := 捕捉しきい値[dB]
 */
-ConvResult!size_t findConvolutionPeak(FftObj)(
+ConvResult!size_t findConvolutionPeak(FftObj, C)(
                     FftObj fftObj,
-                    in Complex!float[] sendSpec,
-                    in Complex!float[] recvSpec,
-                    Complex!float[] convDst,
+                    in C[] sendSpec,
+                    in C[] recvSpec,
+                    C[] convDst,
                     real dBThreshold = 20,
                     bool onlyHalf = false)
 {
