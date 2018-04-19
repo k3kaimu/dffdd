@@ -31,10 +31,10 @@ ubyte[][] getGrayCode(size_t N)
 }
 
 
-struct QAM
+struct QAM(C)
 {
     alias InputElementType = ubyte;
-    alias OutputElementType = Complex!float;
+    alias OutputElementType = C;
 
 
     this(uint mary)
@@ -62,7 +62,7 @@ struct QAM
     size_t symOutputLength() const @property { return 1; }
 
 
-    ref Complex!float[] modulate(in ubyte[] inputs, return ref Complex!float[] outputs)
+    ref C[] modulate(in ubyte[] inputs, return ref C[] outputs)
     in{
         assert(inputs.length % _k == 0);
     }
@@ -73,14 +73,14 @@ struct QAM
             immutable indexRe = toInt(inputs[i*_k .. i*_k + _k/2]);
             immutable indexIm = toInt(inputs[i*_k + _k/2 .. (i+1)*_k]);
 
-            outputs[i] = Complex!float(_toSymbol[indexRe], _toSymbol[indexIm]);
+            outputs[i] = C(_toSymbol[indexRe], _toSymbol[indexIm]);
         }
 
         return outputs;
     }
 
 
-    ref ubyte[] demodulate(in Complex!float[] inputs, return ref ubyte[] outputs)
+    ref ubyte[] demodulate(in C[] inputs, return ref ubyte[] outputs)
     {
         outputs.length = inputs.length * _k;
 
@@ -121,7 +121,7 @@ struct QAM
     size_t _k, _M, _L;
     real _scale;
     ubyte[][] _grayCode;
-    float[] _toSymbol;
+    real[] _toSymbol;
 
 
     size_t toInt(I)(I[] bits)
@@ -159,20 +159,20 @@ real snrFromBerQAM(real ber, size_t M = 16)
 }
 
 
-auto makeQAM(string scheme, T...)(T M)
+auto makeQAM(string scheme, C = Complex!float, T...)(T M)
 {
   static if(scheme == "BPSK")
     return BPSK();
   else static if(scheme == "QPSK")
     return QPSK();
   else static if(scheme == "QAM")
-    return QAM(M);
+    return QAM!C(M);
   else static if(scheme == "16QAM")
-    return QAM(16);
+    return QAM!C(16);
   else static if(scheme == "64QAM")
-    return QAM(64);
+    return QAM!C(64);
   else static if(scheme == "256QAM")
-    return QAM(256);
+    return QAM!C(256);
   else
     static assert("Unsupported modulation: " ~ scheme);
 }
