@@ -85,8 +85,8 @@ struct QAM(C)
         outputs.length = inputs.length * _k;
 
         foreach(i; 0 .. inputs.length){
-            float inpRe = inputs[i].re,
-                  inpIm = inputs[i].im;
+            R inpRe = inputs[i].re,
+              inpIm = inputs[i].im;
 
             inpRe = round((_L - 1) - (inpRe * _scale + (_L - 1))/2.0);
             inpIm = round((_L - 1) - (inpIm * _scale + (_L - 1))/2.0);
