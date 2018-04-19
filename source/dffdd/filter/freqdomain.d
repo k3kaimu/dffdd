@@ -753,20 +753,6 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
             import std.stdio;
             auto model = originalModel;
 
-            with(model){
-                useDesiredBaseband = false;
-                useTxBaseband = false;
-                useTxBasebandSWP = true;        // 使う
-                useDesiredPADirect = false;
-                usePADirect = false;
-                usePADirectSWP = false;
-                useReceivedDesired = false;
-                useReceivedSI = false;
-                useReceivedSISWP = true;        // 使う
-                useReceived = false;
-                useNoise = true;                // 使う
-            }
-
             if(testcase == 0)
             {
                 // 同軸線路を使用するように設定する
@@ -776,13 +762,9 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
             // 最初にノイズ電力の計測
             {
-                model.useTxBasebandSWP = false;
-                model.useReceivedSISWP = false;
                 auto signals = genSignal(model);
                 signals.useSWPOFDM = true;
                 signals.ignoreDesired = true;
-                model.useTxBasebandSWP = true;
-                model.useReceivedSISWP = true;
 
                 auto n = signals.noise.save;
                 R[] buf = new R[_nFFT * _nOS];

@@ -92,17 +92,17 @@ struct Model
     bool useSRXIQ = true;
     bool useSRXQZ = true;
 
-    bool useDesiredBaseband = true;
-    bool useTxBaseband = true;
-    bool useTxBasebandSWP = true;
-    bool useDesiredPADirect = true;
-    bool usePADirect = true;
-    bool usePADirectSWP = true;
-    bool useReceivedDesired = true;
-    bool useReceivedSI = true;
-    bool useReceivedSISWP = true;
-    bool useReceived = true;
-    bool useNoise = true;
+    // bool useDesiredBaseband = true;
+    // bool useTxBaseband = true;
+    // bool useTxBasebandSWP = true;
+    // bool useDesiredPADirect = true;
+    // bool usePADirect = true;
+    // bool usePADirectSWP = true;
+    // bool useReceivedDesired = true;
+    // bool useReceivedSI = true;
+    // bool useReceivedSISWP = true;
+    // bool useReceived = true;
+    // bool useNoise = true;
 
     bool doNoiseElimination = false;
 

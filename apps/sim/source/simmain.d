@@ -203,20 +203,6 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     if(resultDir !is null)
         mkdirRecurse(resultDir);
 
-    with(model){
-        useDesiredBaseband = false;
-        useTxBaseband = true;           // 使う
-        useTxBasebandSWP = true;        // 使う
-        useDesiredPADirect = false;
-        usePADirect = false;
-        usePADirectSWP = false;
-        useReceivedDesired = false;
-        useReceivedSI = true;           // 使う
-        useReceivedSISWP = true;        // 使う
-        useReceived = true;             // 使う
-        useNoise = true;                // 使う
-    }
-
     auto signals = makeSimulatedSignals(model, resultDir);
     signals.trainAGC();
 
