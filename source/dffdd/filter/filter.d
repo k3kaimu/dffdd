@@ -224,7 +224,7 @@ if(isBlockConverter!(Dist, C, C[]))
     {
         auto numOfFIR = dist.outputDim;
         _distorter = dist;
-        _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
+        _state = MultiFIRState!C(numOfFIR, numOfTaps);
         _adaptor = genAdaptor(_state);
         _buffer = new C[][](this.inputBlockLength, dist.outputDim);
     }
@@ -298,7 +298,7 @@ if(isBlockConverter!(Dist, C, C[]))
 
   private:
     Dist _distorter;
-    MultiFIRState!(Complex!float) _state;
+    MultiFIRState!C _state;
     typeof(genAdaptor(_state)) _adaptor;
     C[][] _buffer;
 }
@@ -311,7 +311,7 @@ if(isBlockConverter!(Dist, C, C[]))
         auto numOfFIR = dist.outputDim;
 
         _distorter = dist;
-        _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
+        _state = MultiFIRState!C(numOfFIR, numOfTaps);
 
         foreach(i; 0 .. numOfFIR)
             _adapters ~= genAdaptor(_state.subFIRState[i]);
@@ -374,7 +374,7 @@ if(isBlockConverter!(Dist, C, C[]))
 
   private:
     Dist _distorter;
-    MultiFIRState!(Complex!float) _state;
+    MultiFIRState!C _state;
     typeof(genAdaptor(_state))[] _adapters;
     C[][] _buffer;
 }
@@ -389,7 +389,7 @@ if(isBlockConverter!(Dist, C, C[]))
     }
     body {
         _distorter = dist;
-        _state = MultiFIRState!(Complex!float)(numOfFIR, numOfTaps);
+        _state = MultiFIRState!C(numOfFIR, numOfTaps);
 
         foreach(i; 0 .. numOfFIR)
             _adapters ~= genAdaptor(i, _state.subFIRState(i));
@@ -452,7 +452,7 @@ if(isBlockConverter!(Dist, C, C[]))
 
   private:
     Dist _distorter;
-    MultiFIRState!(Complex!float) _state;
+    MultiFIRState!C _state;
     typeof(genAdaptor(0, _state))[] _adapters;
     C[][] _buffer;
 }
@@ -461,6 +461,7 @@ if(isBlockConverter!(Dist, C, C[]))
 final class SimpleFrequencyDomainParallelHammersteinFilter(C, Dist, Adapter)
 if(isBlockConverter!(Dist, C, C[]))
 {
+    alias R = typeof(C.init.re);
     enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
 
     import dffdd.filter.regenerator : OverlapSaveRegenerator;
@@ -479,7 +480,7 @@ if(isBlockConverter!(Dist, C, C[]))
         _regenerator = new OverlapSaveRegenerator!C(sliceState);
 
         foreach(i; 0 .. nFFT * nOS){
-            auto state = MultiFIRState!(Complex!float)(dim, 1);
+            auto state = MultiFIRState!C(dim, 1);
             // state.weight = sliceState[i .. (i+1), 0 .. $];
             _states ~= state;
             _adapters ~= genAdapter(i, subcarrierMap[i], state);
@@ -544,13 +545,13 @@ if(isBlockConverter!(Dist, C, C[]))
                 C[][] freqX = new C[][](_nEstH, _nFFT * _nOS);
                 C[][] freqY = new C[][](_nEstH, _nFFT * _nOS);
                 foreach(idxOfEstH; 0 .. _nEstH){
-                    fftw.inputs!float[] = input[idxOfEstH * (_nFFT + _nCP) * _nOS .. $][_nCP * _nOS .. (_nFFT + _nCP) * _nOS];
-                    fftw.fft!float();
-                    freqX[idxOfEstH][] = fftw.outputs!float[];
+                    fftw.inputs!R[] = input[idxOfEstH * (_nFFT + _nCP) * _nOS .. $][_nCP * _nOS .. (_nFFT + _nCP) * _nOS];
+                    fftw.fft!R();
+                    freqX[idxOfEstH][] = fftw.outputs!R[];
 
-                    fftw.inputs!float[] = desired[idxOfEstH * (_nFFT + _nCP) * _nOS .. $][_nCP * _nOS .. (_nFFT + _nCP) * _nOS];
-                    fftw.fft!float();
-                    freqY[idxOfEstH][] = fftw.outputs!float[];
+                    fftw.inputs!R[] = desired[idxOfEstH * (_nFFT + _nCP) * _nOS .. $][_nCP * _nOS .. (_nFFT + _nCP) * _nOS];
+                    fftw.fft!R();
+                    freqY[idxOfEstH][] = fftw.outputs!R[];
                 }
 
                 // MMSE推定する
@@ -568,12 +569,12 @@ if(isBlockConverter!(Dist, C, C[]))
                 }
 
                 foreach(f; 0 .. _nFFT * _nOS){
-                    float h = freqH[f].sqAbs;
-                    float hinv = freqH[$-1-f].sqAbs;
+                    R h = freqH[f].sqAbs;
+                    R hinv = freqH[$-1-f].sqAbs;
 
                     foreach(p; 0 .. Dist.outputDim){
                         // 重要度と受信信号電力の積が，推定された干渉電力になる
-                        immutable float ip = (){
+                        immutable R ip = (){
                                 real y = 0;
                                 foreach(idxOfEstH; 0 .. _nEstH)
                                     y += freqY[idxOfEstH][f].sqAbs;
@@ -614,7 +615,7 @@ if(isBlockConverter!(Dist, C, C[]))
                     }
 
                     // _states, _adaptersを更新する
-                    _states[f] = MultiFIRState!(Complex!float)(cnt, 1);
+                    _states[f] = MultiFIRState!C(cnt, 1);
                     _adapters[f] = _genAdapter(f, _scMap[f], _states[f]);
                 }
 
@@ -639,16 +640,16 @@ if(isBlockConverter!(Dist, C, C[]))
                     // 非線形送信信号を周波数領域に変換
                     foreach(p; 0 .. dim){
                         foreach(k; 0 .. _nFFT * _nOS)
-                            _fftw.inputs!float[k] = bsym[k][p];
+                            _fftw.inputs!R[k] = bsym[k][p];
 
-                        _fftw.fft!float();
-                        _fftedBuffer[p][] = _fftw.outputs!float[];
+                        _fftw.fft!R();
+                        _fftedBuffer[p][] = _fftw.outputs!R[];
                     }
 
                     // 受信信号の周波数成分
-                    _fftw.inputs!float[] = dsym[];
-                    _fftw.fft!float();
-                    auto rxFFTed = _fftw.outputs!float();
+                    _fftw.inputs!R[] = dsym[];
+                    _fftw.fft!R();
+                    auto rxFFTed = _fftw.outputs!R();
 
                     // 全周波数で，適応フィルタにかける
                     C[] vX = new C[dim];
@@ -686,7 +687,7 @@ if(isBlockConverter!(Dist, C, C[]))
                             _regenerator.frequencyResponse[f, p] = _states[f].weight[0, cnt];
                             cnt += 1;
                         }else{
-                            _regenerator.frequencyResponse[f, p] = cast(C)Complex!float(0, 0);
+                            _regenerator.frequencyResponse[f, p] = Complex!R(0, 0);
                         }
                     }
                 }else{
@@ -760,7 +761,7 @@ if(isBlockConverter!(Dist, C, C[]))
 
                 auto n = signals.noise.save;
                 auto fftw = globalBankOf!(makeFFTWObject)[_nFFT * _nOS];
-                float[] buf = new float[_nFFT * _nOS];
+                R[] buf = new R[_nFFT * _nOS];
             
                 foreach(ref e; buf)
                     e = 0;
@@ -768,13 +769,13 @@ if(isBlockConverter!(Dist, C, C[]))
                 // auto buf = new Complex!float[_nOS * _nFFT];
                 foreach(i; 0 .. 1024){
                     foreach(j; 0 .. _nOS * _nFFT){
-                        fftw.inputs!float[j] = cast(Complex!float)n.front;
+                        fftw.inputs!R[j] = cast(Complex!R)n.front;
                         n.popFront();
                     }
 
-                    fftw.fft!float();
+                    fftw.fft!R();
                     foreach(j; 0 .. _nOS * _nFFT)
-                        buf[j] += fftw.outputs!float[j].sqAbs;
+                        buf[j] += fftw.outputs!R[j].sqAbs;
                 }
 
                 foreach(j; 0 .. _nOS * _nFFT)
@@ -848,20 +849,20 @@ if(isBlockConverter!(Dist, C, C[]))
                 // 非線形送信信号を周波数領域に変換
                 foreach(p; 0 .. _distorter.outputDim){
                     foreach(k; 0 .. _nFFT * _nOS)
-                        _fftw.inputs!float[k] = disted[_nCP * _nOS + k][p];
+                        _fftw.inputs!R[k] = disted[_nCP * _nOS + k][p];
 
-                    _fftw.fft!float();
+                    _fftw.fft!R();
 
                     foreach(k; 0 .. _nFFT * _nOS){
-                        if(i == 0) firstPowerOfSI[k][p] = _fftw.outputs!float[k].sqAbs;
-                        disted[k][p] = _fftw.outputs!float[k] * weight[k][p];
+                        if(i == 0) firstPowerOfSI[k][p] = _fftw.outputs!R[k].sqAbs;
+                        disted[k][p] = _fftw.outputs!R[k] * weight[k][p];
                     }
                 }
 
                 // 受信信号の周波数成分
-                _fftw.inputs!float[] = testRX[_nCP * _nOS .. $];
-                _fftw.fft!float();
-                auto rxFFTed = _fftw.outputs!float();
+                _fftw.inputs!R[] = testRX[_nCP * _nOS .. $];
+                _fftw.fft!R();
+                auto rxFFTed = _fftw.outputs!R();
 
                 // 電力に足し合わせる
                 foreach(f; 0 .. _nFFT * _nOS){
@@ -997,7 +998,7 @@ if(isBlockConverter!(Dist, C, C[]))
     // 重要度計算
     real[][] _importance;
     bool[][] _selectedBasisFuncs;
-    float _noiseFloor = 0;
+    R _noiseFloor = 0;
     // 重要度でのログ
     bool[] _selectingIsSuccess;     // 各周波数で，重要度が指標として使用可能ならtrue, それ以外ならfalse
     real[][] _estimatedPower;       // 重要度から推定された各基底の電力
@@ -1009,6 +1010,7 @@ if(isBlockConverter!(Dist, C, C[]))
 final class SimpleFrequencyDomainDCMHammersteinFilterType2(C, Dist, alias genAdaptor, Flag!"isParallel" isParallel = No.isParallel)
 if(isBlockConverter!(Dist, C, C[]))
 {
+    alias R = typeof(C.init.re);
     enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
 
     import dffdd.filter.regenerator : OverlapSaveRegenerator;
@@ -1025,10 +1027,10 @@ if(isBlockConverter!(Dist, C, C[]))
         _regenerator = new OverlapSaveRegenerator!C(sliceState);
 
         foreach(i; 0 .. nFFT * nOS){
-            MultiFIRState!(Complex!float)[] sts;
+            MultiFIRState!C[] sts;
             typeof(_adapters[0]) ads;
             foreach(p; 0 .. dim){
-                auto state = MultiFIRState!(Complex!float)(1, 1);
+                auto state = MultiFIRState!C(1, 1);
                 // state.weight = sliceState[i .. (i+1), 0 .. $];
                 sts ~= state;
                 ads ~= genAdaptor(i, subcarrierMap[i], p, state);
@@ -1098,16 +1100,16 @@ if(isBlockConverter!(Dist, C, C[]))
                     // 非線形送信信号を周波数領域に変換
                     foreach(p; 0 .. dim){
                         foreach(k; 0 .. _nFFT * _nOS)
-                            _fftw.inputs!float[k] = bsym[k][p];
+                            _fftw.inputs!R[k] = bsym[k][p];
 
-                        _fftw.fft!float();
-                        _fftedBuffer[p][] = _fftw.outputs!float[];
+                        _fftw.fft!R();
+                        _fftedBuffer[p][] = _fftw.outputs!R[];
                     }
 
                     // 受信信号の周波数成分
-                    _fftw.inputs!float[] = dsym[];
-                    _fftw.fft!float();
-                    auto rxFFTed = _fftw.outputs!float();
+                    _fftw.inputs!R[] = dsym[];
+                    _fftw.fft!R();
+                    auto rxFFTed = _fftw.outputs!R();
 
                     // 全周波数で，適応フィルタにかける
                     C[] vX = new C[dim];
@@ -1189,7 +1191,7 @@ if(isBlockConverter!(Dist, C, C[]))
     OverlapSaveRegenerator!C _regenerator;
     immutable(bool[]) _scMap;
     immutable size_t _nFFT, _nCP, _nOS;
-    MultiFIRState!(Complex!float)[][] _states;
+    MultiFIRState!C[][] _states;
     typeof(genAdaptor(0, true, 0, _states[0][0]))[][] _adapters;
     C[][] _distortedBuffer;
     C[][] _fftedBuffer;
@@ -1198,6 +1200,7 @@ if(isBlockConverter!(Dist, C, C[]))
 
 final class SimpleFrequencyDomainDCMHammersteinFilterType1(C, Dist, alias genAdaptor, Flag!"isParallel" isParallel = No.isParallel)
 {
+    alias R = typeof(C.init.re);
     enum bool doesDistHaveLearn = is(typeof((Dist dist, C[] r){ dist.learn(r); }));
 
     this(Dist dist, in bool[] subcarrierMap, size_t nFFT, size_t nCP, size_t nOS)
