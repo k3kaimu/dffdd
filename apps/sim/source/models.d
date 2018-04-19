@@ -331,15 +331,11 @@ struct Model
 
 auto randomBits(uint prn, Model model)
 {
-    import dffdd.gps.code;
+    import dffdd.utils.binary;
 
     Random rnd;
-    rnd.seed(model.rndSeed);
-    foreach(i; 0 .. __LINE__) rnd.popFront();
-
-    auto dst = L2CLCode(prn).map!"cast(ubyte)(a < 0 ? 1 : 0)";
-    dst.popFrontN(rnd.front % L2CLCode.codeLength);
-    return dst;
+    rnd.seed(prn * model.rndSeed);
+    return dffdd.utils.binary.randomBits(rnd);
 }
 
 
