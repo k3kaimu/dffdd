@@ -7,7 +7,7 @@ import std.stdio;
 import dffdd.utils.fft;
 import dffdd.filter.state;
 
-// __EOF__
+__EOF__
 
 final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
 {
