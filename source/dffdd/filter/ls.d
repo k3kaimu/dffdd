@@ -80,9 +80,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
         else
             alias gelss = LAPACKE_zgelss;
 
-
-        LAPACKE_cgelss(102, cast(int)_L, cast(int)numOfParams, 1, cast(R[2]*)&(_mx[0, 0]), cast(int)_L, cast(R[2]*)_yv.ptr, cast(int)max(_L, numOfParams), sworkSpace.ptr, 0.00001f, &rankN);
-
+        gelss(102, cast(int)_L, cast(int)numOfParams, 1, cast(R[2]*)&(_mx[0, 0]), cast(int)_L, cast(R[2]*)_yv.ptr, cast(int)max(_L, numOfParams), sworkSpace.ptr, 0.00001f, &rankN);
 
         return _yv[0 .. numOfParams];
     }
