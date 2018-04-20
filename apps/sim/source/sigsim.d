@@ -171,6 +171,12 @@ final class SimulatedSignals
     }
 
 
+    void ignoreNoise(bool b) @property
+    {
+        _noiseCoef = b ? C(0) : C(1);
+    }
+
+
     void useSWPOFDM(bool b) @property
     {
         *_useSWPOFDM = b;
