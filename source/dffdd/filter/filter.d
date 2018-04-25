@@ -262,23 +262,6 @@ if(isBlockConverter!(Dist, C, C[]))
     }
 
 
-//   static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-//   {
-//     private void learningFromTX(R)(R txs)
-//     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
-//     {
-//         _distorter.learn(txs);
-//     }
-//   }
-
-
-//     void preLearning(R1, R2, R3)(R1 digitalTx, R2 paDirects, R3 exampleSI)
-//     {
-//         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-//             learningFromTX(digitalTx);
-//     }
-
-
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     // if(isModelParameterSet!M)
     {
@@ -293,6 +276,12 @@ if(isBlockConverter!(Dist, C, C[]))
             sig.fillBuffer!(["txBaseband"])(buf);
             _distorter.learn(buf);
         }
+    }
+
+
+    ref MultiFIRState!C state() return @property 
+    {
+        return _state;
     }
 
 
