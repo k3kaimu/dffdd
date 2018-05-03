@@ -118,9 +118,14 @@ final class SimulatedSignals
             txvgas = _tempbuf[4][0 .. len],
             txpas = _tempbuf[5][0 .. len];
 
-        _txIQMixer(xs, txiqs);
+        // 自端末の送信機のIQインバランス
+        if(_model.useSTXIQ) _txIQMixer(xs, txiqs);
+        else                txiqs[] = xs[];
+
+        // 自端末の送信機のPAの歪み
         _txPAVGA(txiqs, txvgas);
-        _txPARapp(txvgas, txpas);
+        if(_model.useSTXPA) _txPARapp(txvgas, txpas);
+        else                txpas[] = txvgas[];
 
         C[] rxants = _tempbuf[6][0 .. len],
             rxvgas = _tempbuf[7][0 .. len],
@@ -140,10 +145,19 @@ final class SimulatedSignals
                 rxvgas[i] = rxvgas[i] * _selfInterferenceCoef + ds[i] * _desiredCoef + ns[i] * _noiseCoef;
         }
 
-        _rxLNARapp(rxvgas, rxlnas);
-        _rxIQMixer(rxlnas, rxiqs);
+        // 自端末の受信機のLNAの歪み
+        if(_model.useSRXLN) _rxLNARapp(rxvgas, rxlnas);
+        else                rxlnas[] = rxvgas[];
+
+        // 自端末の受信機のIQインバランス
+        if(_model.useSRXIQ) _rxIQMixer(rxlnas, rxiqs);
+        else                rxiqs[] = rxlnas[];
+
         _rxQZVGA(rxiqs, rxqzvgas);
-        _rxQZ(rxqzvgas, rxqzs);
+
+        // 自端末の受信機のAD変換器の量子化誤差
+        if(_model.useSRXQZ) _rxQZ(rxqzvgas, rxqzs);
+        else                rxqzs[] = rxqzvgas[];
 
         static foreach(i, m; aliasSeqOf!ms) {
             static if(m == "txBaseband")

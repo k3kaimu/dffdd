@@ -83,11 +83,9 @@ struct Model
     bool useDTXIQ = true;
     bool useDTXPN = false;
     bool useDTXPA = true;
-    bool useDTXIQ2 = false;
     bool useSTXIQ = true;
     bool useSTXPN = false;
     bool useSTXPA = true;
-    bool useSTXIQ2 = false;
     bool useSRXLN = true;
     bool useSRXIQ = true;
     bool useSRXQZ = true;
