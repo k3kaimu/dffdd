@@ -188,29 +188,12 @@ auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Mo
 }
 
 
-JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
+auto makeFilter(string filterType)(Model model)
 {
-    JSONValue infoResult = ["type": filterType];
+    enum string filterStructure = filterType.split("_")[0];
+    enum string filterOptimizer = filterType.split("_")[1];
 
-    immutable bool* alwaysFalsePointer = new bool(false);
-    immutable bool* alwaysTruePointer = new bool(true);
-
-    immutable ofdmModSignalPower = (){
-        auto _modOFDMTest = modOFDM(model);
-        return randomBits(1, model).connectToModulator(_modOFDMTest, alwaysFalsePointer, model).measurePower(1024*1024);
-    }();
-
-    if(resultDir !is null)
-        mkdirRecurse(resultDir);
-
-    auto signals = makeSimulatedSignals(model, resultDir);
-    signals.trainAGC();
-
-    // フィルタの学習
-  enum string filterStructure = filterType.split("_")[0];
-  enum string filterOptimizer = filterType.split("_")[1];
-
-  enum bool isOrthogonalized = filterStructure[0] == 'O';
+    enum bool isOrthogonalized = filterStructure[0] == 'O';
 
   static if(filterStructure.startsWith("PreIQI"))
   {
@@ -234,10 +217,10 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, true, isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
-//   else static if(filterStructure.endsWith("CWLH"))
-//     auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-//   else static if(filterStructure.endsWith("CWL1H"))
-//     auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  // else static if(filterStructure.endsWith("CWLH"))
+  //   auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  // else static if(filterStructure.endsWith("CWL1H"))
+  //   auto filter = makeCascadeWL1HammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("IterativeFreqSIC"))
   {
     import dffdd.filter.freqdomain;
@@ -322,6 +305,34 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else
     static assert("Cannot identify filter model.");
+
+    return filter;
+}
+
+
+JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
+{
+    enum string filterStructure = filterType.split("_")[0];
+    enum string filterOptimizer = filterType.split("_")[1];
+
+
+    JSONValue infoResult = ["type": filterType];
+
+    immutable bool* alwaysFalsePointer = new bool(false);
+    immutable bool* alwaysTruePointer = new bool(true);
+
+    immutable ofdmModSignalPower = (){
+        auto _modOFDMTest = modOFDM(model);
+        return randomBits(1, model).connectToModulator(_modOFDMTest, alwaysFalsePointer, model).measurePower(1024*1024);
+    }();
+
+    if(resultDir !is null)
+        mkdirRecurse(resultDir);
+
+    auto signals = makeSimulatedSignals(model, resultDir);
+    signals.trainAGC();
+
+    auto filter = makeFilter!filterType(model);
 
     // フィルタの学習
     auto recvs = new Complex!float[model.blockSize],
