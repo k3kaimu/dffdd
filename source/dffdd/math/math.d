@@ -6,7 +6,7 @@ import std.traits;
 /**
 sin(pi * x) / (pi * x)を計算します
 */
-F sinc(F)(F x)
+F sinc(F)(F x) pure nothrow @safe @nogc
 if(isFloatingPoint!F)
 {
     if(abs(x) < 1E-3){
