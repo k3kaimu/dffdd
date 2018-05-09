@@ -10,23 +10,28 @@ import std.traits;
 F besselI0(F)(F x) pure nothrow @safe @nogc
 if(isFloatingPoint!F)
 {
-    if(x.isNaN) return F.nan;
-    if(x.isInfinity) return x > 0 ? F.infinity : F.nan;
+    static if(is(F == const) || is(F == immutable))
+        return besselI0!(Unqual!F)(x);
+    else
+    {
+        if(x.isNaN) return F.nan;
+        if(x.isInfinity) return x > 0 ? F.infinity : F.nan;
 
-    x *= 0.5;
+        x *= 0.5;
 
-    F dst = 0;
-    F r = 1;
-    size_t cnt = 0;
-    while(abs(r) > F.epsilon){
-        dst += r;
-        ++cnt;
+        F dst = 0;
+        F r = 1;
+        size_t cnt = 0;
+        while(abs(r) > F.epsilon){
+            dst += r;
+            ++cnt;
 
-        immutable s = x / cnt;
-        r *= s * s;
+            immutable s = x / cnt;
+            r *= s * s;
+        }
+
+        return dst;
     }
-
-    return dst;
 }
 
 unittest
