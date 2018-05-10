@@ -101,6 +101,7 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
     void opCall(in C[] inputs, C[] outputs)
     in {
         assert(inputs.length == outputs.length);
+        assert(inputs.length == _nchannel);
     }
     do {
         static if(isAnalysis)
@@ -225,13 +226,6 @@ unittest
         sfb(b2, b1);
         dst[i*nCH .. (i+1)*nCH] = b1[];
     }
-
-    writeln(chirp[0 .. 10]);
-    writeln(dst[delay+0 .. delay+10]);
-
-    // foreach(ref e; dst) e *= 1024*1024/64;
-    writeln(chirp[0 .. 10]);
-    writeln(dst[delay+0 .. delay+10]);
 
     dst = dst[delay .. $];
     chirp = chirp[0 .. dst.length];
