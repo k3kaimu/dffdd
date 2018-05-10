@@ -45,7 +45,7 @@ F[] designMultirateFIR(F)(size_t nchannel, size_t halfPolyphaseTaps, real attdB)
 
     F[] kw = kaiser!F(N, beta);
     foreach(i; 0 .. N)
-        sincpulse[i] *= kw[i] *  nchannel;
+        sincpulse[i] *= kw[i];
     
     return sincpulse;
 }
@@ -60,10 +60,13 @@ unittest
 
     real[] res = designMultirateFIR!real(2, 3, 200);
     foreach(i; 0 .. res.length)
-        assert(approxEqual(numpyResults[i] * 2, res[i]));
+        assert(approxEqual(numpyResults[i], res[i]));
 }
 
 
+/**
+DFTフィルタバンクを構成します．
+*/
 final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
 {
     alias R = typeof(C.init.re);
@@ -121,7 +124,8 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
 
             // 各チャネルの出力でIFFTをかける
             _fftw.ifft!R();
-            outputs[] = _fftw.outputs!R[];
+            foreach(i, e; _fftw.outputs!R)
+                outputs[i] = e * _nchannel;
         }
         else    // isSynthesis
         {
@@ -143,6 +147,8 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
                 e = 0;
                 foreach(it; 0 .. _ntaps)
                     e += _inputs[ic, it] * _coefs[ic, it];
+                
+                e *= _nchannel;
             }
         }
     }
@@ -157,31 +163,38 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
 }
 
 
+/// ditto
 alias DFTAnalysisFilterBank(C) = DFTFilterBank!(C, Yes.isAnalysis);
+
+
+/// ditto
 alias DFTSynthesisFilterBank(C) = DFTFilterBank!(C, No.isAnalysis);
 
-// unittest
-// {
-//     alias C = Complex!double;
-//     auto afb = new DFTAnalysisFilterBank!C(2, [C(1), C(1)]);
 
-//     C[] inputs = new C[2],
-//         outputs = new C[2];
+// 
+unittest
+{
+    alias C = Complex!double;
+    auto afb = new DFTAnalysisFilterBank!C(2, [C(0.5), C(0.5)]);
+
+    C[] inputs = new C[2],
+        outputs = new C[2];
     
-//     inputs[0] = C(1);
-//     inputs[1] = C(2);
+    inputs[0] = C(1);
+    inputs[1] = C(2);
 
-//     afb(inputs, outputs);
+    afb(inputs, outputs);
 
-//     auto sfb = new DFTSynthesisFilterBank!C(2, [C(1), C(1)]);
-//     sfb(outputs, inputs);
+    auto sfb = new DFTSynthesisFilterBank!C(2, [C(0.5), C(0.5)]);
+    sfb(outputs, inputs);
 
-//     assert(inputs[0].re.approxEqual(1));
-//     assert(inputs[1].re.approxEqual(2));
-//     assert(inputs[0].im.approxEqual(0));
-//     assert(inputs[1].im.approxEqual(0));
-// }
+    assert(inputs[0].re.approxEqual(1));
+    assert(inputs[1].re.approxEqual(2));
+    assert(inputs[0].im.approxEqual(0));
+    assert(inputs[1].im.approxEqual(0));
+}
 
+// 
 unittest
 {
     import std.stdio;
@@ -225,14 +238,12 @@ unittest
 
     real sum = 0, P = 0;
     foreach(e; dst.zip(chirp)){
-        // assert(approxEqual(e[0].re, e[1].re));
-        // assert(approxEqual(e[0].im, e[1].im));
         sum += (e[0] - e[1]).sqAbs;
         P += e[0].sqAbs;
     }
 
-    writeln(10*log10(sum / P));
-
+    // reconstruction error is less than -50 dB.
+    assert(10*log10(sum / P) < -50);
 }
 
 
