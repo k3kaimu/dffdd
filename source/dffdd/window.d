@@ -9,7 +9,7 @@ import dffdd.math.math;
 阻止帯域での減衰量からカイザー窓のパラメータbetaを算出します
 See also: https://jp.mathworks.com/help/signal/ref/kaiser.html
 */
-real kaiserBetaFromStopbandAttdB(real attdB)
+real kaiserBetaFromStopbandAttdB(real attdB) pure nothrow @safe @nogc
 {
     real beta;
     if(attdB >= 50)
