@@ -221,6 +221,7 @@ F[] designRootRaisedCosine(F = real)(size_t nchannel, size_t polyPhaseTaps, F be
     immutable size_t N = nchannel * polyPhaseTaps;
     immutable F M = F(nchannel);
 
+    
     F[] coefs = new F[N];
     foreach(i, ref e; coefs){
         immutable real n = F(i) - F(N)/2;
@@ -255,3 +256,21 @@ unittest
     foreach(i; 0 .. coefs.length)
         assert(approxEqual(coefs[i], testResults[i]));
 }
+
+
+
+/**
+*/
+F[] designKaiserBesselDrived(F = real)(size_t nchannel, size_t polyphaseTaps, F beta = 14)
+in{
+    assert(polyphaseTaps % 2 == 0);
+}
+do {
+    auto kbdw = kaiserBesselDerived!F(polyphaseTaps, beta);
+    F[] freqResp = new F[nchannel * polyphaseTaps / 2];
+
+    freqResp[] = 0;
+    freqResp[0 .. polyphaseTaps/2] = kbdw[$/2 .. $];
+    return designPrototypeFromFreqResponse(freqResp);
+}
+
