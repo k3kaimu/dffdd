@@ -92,6 +92,39 @@ unittest
 
 
 /**
+0~PIまでの所望の周波数応答を達成するプロトタイプフィルタを設計します
+*/
+F[] designPrototypeFromFreqResponse(F = real)(in F[] freqResp)
+in{
+    import carbon.math : isPowOf2;
+    assert(freqResp.length.isPowOf2);
+}
+do {
+    import std.algorithm : stdmap = map;
+
+    immutable size_t N = freqResp.length * 2;
+
+    auto fftw = globalBankOf!makeFFTWObject[N];
+    auto ips = fftw.inputs!F;
+    foreach(i, ref e; ips[0 .. N/2])
+        e = freqResp[i];
+
+    foreach(i; 1 .. N/2)
+        ips[$-i] = ips[i];
+
+    ips[$/2] = 0;
+
+    fftw.ifft!F();
+    auto dst = fftw.outputs!F.stdmap!"a.re".array();
+    swapHalf(dst);
+    dst[] /= sum(dst);
+
+    return dst;
+}
+
+
+
+/**
 See also: https://jp.mathworks.com/matlabcentral/fileexchange/15813-near-perfect-reconstruction-polyphase-filterbank
 */
 F[] designRootRaisedERF(F = real)(size_t nchannel, size_t polyPhaseTaps, F k = F.nan, F cutoffCoef = 1)
@@ -124,27 +157,13 @@ F[] designRootRaisedERF(F = real)(size_t nchannel, size_t polyPhaseTaps, F k = F
     }
 
     immutable size_t N = nchannel * polyPhaseTaps;
-    C[] freqResp = new C[N];
+    F[] freqResp = new F[N/2];
     foreach(i; 0 .. N/2) {
         immutable F freq = F(i) / N / cutoffCoef;
-        freqResp[i] = C(sqrt(erfc(k * (2*nchannel*freq - 0.5)) * 0.5), 0);
+        freqResp[i] = sqrt(erfc(k * (2*nchannel*freq - 0.5)) * 0.5);
     }
-    foreach(i; 1 .. N/2)
-        freqResp[$-i] = freqResp[i];
-
-    freqResp[$/2] = 0;
-
-    C[] impResp = new C[N];
-    .ifft!F(globalBankOf!makeFFTWObject[freqResp.length], freqResp, impResp);
-    swapHalf(impResp);
-    impResp[] /= sum(impResp);
-
-    foreach(e; impResp){
-        assert(approxEqual(e.im, 0));
-    }
-
-    import std.algorithm : stdmap = map;
-    return impResp.stdmap!"a.re".array();
+    
+    return designPrototypeFromFreqResponse!F(freqResp);
 }
 
 unittest
@@ -224,16 +243,15 @@ F[] designRootRaisedCosine(F = real)(size_t nchannel, size_t polyPhaseTaps, F be
 unittest
 {
     import std.stdio;
-    auto coefs = designRootRaisedCosine!real(4, 10, 0.5);
+    auto coefs = designRootRaisedCosine!real(4, 8, 0.5);
 
     auto testResults = [
-        -0.000160341, 0.00147022, 0.00124716, -0.000952882, -0.00251964, -0.000952882, 0.00267249, 0.00410222,
-        0.000755893, -0.00410222, -0.00374148, 0.0038569, 0.0105825, 0.0038569, -0.0187074, -0.0391078,
-        -0.0264563, 0.0391078, 0.144279, 0.242985, 0.28341, 0.242985, 0.144279, 0.0391078,
-        -0.0264563, -0.0391078, -0.0187074, 0.0038569, 0.0105825, 0.0038569, -0.00374148, -0.00410222,
-        0.000755893, 0.00410222, 0.00267249, -0.000952882, -0.00251964, -0.000952882, 0.00124716, 0.00147022
+        -0.00252179, -0.000953692, 0.00267476, 0.00410571, 0.000756536, -0.00410571, -0.00374466, 0.00386018,
+        0.0105915, 0.00386018, -0.0187233, -0.0391411, -0.0264787, 0.0391411, 0.144401, 0.243191,
+        0.283651, 0.243191, 0.144401, 0.0391411, -0.0264787, -0.0391411, -0.0187233, 0.00386018,
+        0.0105915, 0.00386018, -0.00374466, -0.00410571, 0.000756536, 0.00410571, 0.00267476, -0.000953692
     ];
 
-    foreach(i; 0 .. 40)
+    foreach(i; 0 .. coefs.length)
         assert(approxEqual(coefs[i], testResults[i]));
 }
