@@ -1,5 +1,6 @@
 module dffdd.window;
 
+import std.algorithm;
 import std.math;
 import std.traits;
 import dffdd.math.math;
@@ -73,4 +74,31 @@ unittest
 
     foreach(i; 0 .. window.length)
         assert(approxEqual(window[i], numpyResults[i]));
+}
+
+
+/**
+点数Nのカイザー・ベッセル派生窓を作成します
+*/
+F[] kaiserBesselDerived(F)(size_t N, F beta)
+in{
+    assert(N % 2 == 0);
+}
+do {
+    immutable size_t M = N / 2;
+
+    auto kwin = kaiser!F(M+1, beta);
+    auto dst = new F[N];
+
+    immutable F sumk = kwin.sum();
+
+    F partsum = 0;
+    foreach(i; 0 .. N/2){
+        partsum += kwin[i];
+        dst[i] = sqrt(partsum / sumk);
+        dst[$ - 1 - i] = dst[i];
+    }
+
+
+    return dst;
 }
