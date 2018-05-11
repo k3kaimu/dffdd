@@ -5,6 +5,30 @@ import std.traits;
 import dffdd.math.math;
 
 
+/**
+阻止帯域での減衰量からカイザー窓のパラメータbetaを算出します
+See also: https://jp.mathworks.com/help/signal/ref/kaiser.html
+*/
+real kaiserBetaFromStopbandAttdB(real attdB)
+{
+    real beta;
+    if(attdB >= 50)
+        beta = 0.1102 * (attdB - 8.7);
+    else if(attdB > 21)
+        beta = 0.5842 * (attdB - 21)^^0.4 + 0.07886 * (attdB - 21);
+    else
+        beta = 0;
+
+    return beta;
+}
+
+unittest
+{
+    assert(approxEqual(kaiserBetaFromStopbandAttdB(0), 0));
+    assert(approxEqual(kaiserBetaFromStopbandAttdB(22), 0.5842 + 0.07886));
+    assert(approxEqual(kaiserBetaFromStopbandAttdB(50), 4.55126));
+}
+
 
 /**
 点数Nのカイザー窓を作成します
