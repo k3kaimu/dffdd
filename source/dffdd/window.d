@@ -45,7 +45,6 @@ if(isFloatingPoint!F)
     foreach(i; 0 .. N){
         immutable F r = F(2)*i / (N-1) - 1;
         immutable F num = sqrt(1-r^^2) * beta;
-        // immutable F num = beta * sqrt(1 - ((i - hn)/hn)^^2);
         coefs[i] = besselI0(num) / bI0;
     }
 
