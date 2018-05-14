@@ -127,12 +127,12 @@ do {
 /**
 See also: https://jp.mathworks.com/matlabcentral/fileexchange/15813-near-perfect-reconstruction-polyphase-filterbank
 */
-F[] designRootRaisedERF(F = real)(size_t nchannel, size_t polyPhaseTaps, F k = F.nan, F cutoffCoef = 1)
+F[] designRootRaisedERF(F = real)(size_t nchannel, size_t polyphaseTaps, F k = F.nan, F cutoffCoef = 1)
 {
     alias C = Complex!F;
 
     if(k.isNaN){
-        switch(polyPhaseTaps){
+        switch(polyphaseTaps){
             case 8:     k = 4.853; break;
             case 10:    k = 4.775; break;
             case 12:    k = 5.257; break;
@@ -156,14 +156,7 @@ F[] designRootRaisedERF(F = real)(size_t nchannel, size_t polyPhaseTaps, F k = F
         }
     }
 
-    immutable size_t N = nchannel * polyPhaseTaps;
-    F[] freqResp = new F[N/2];
-    foreach(i; 0 .. N/2) {
-        immutable F freq = F(i) / N / cutoffCoef;
-        freqResp[i] = sqrt(erfc(k * (2*nchannel*freq - 0.5)) * 0.5);
-    }
-    
-    return designPrototypeFromFreqResponse!F(freqResp);
+    return designPrototypeFromFreqDomainWindow!F(2*nchannel, polyphaseTaps/2, (F x) => erfc(k*x)*0.5, cutoffCoef);
 }
 
 unittest
@@ -207,8 +200,11 @@ unittest
         4.20E-09, 6.10E-09, -9.78E-09, -7.00E-08, -1.95E-07, -2.63E-07, 2.33E-06, 1.09E-05, -1.96E-05, -0.000111263, 0.000179298, 0.000594324, -0.001289535, -0.001787326, 0.008219373, 0.017672083, 0.009936617, -0.001169811, -0.001644602, 0.000523636, 0.000260979, -0.00010998, -3.06E-05, 1.11E-05, 3.18E-06, -2.02E-07, -2.16E-07, -8.15E-08, -1.44E-08, 5.63E-09, 4.64E-09, 2.27E-09,
         4.31E-09, 6.01E-09, -1.09E-08, -7.28E-08, -2.00E-07, -2.51E-07, 2.53E-06, 1.10E-05, -2.22E-05, -0.000111584, 0.000199149, 0.00058102, -0.001379679, -0.00165215, 0.008650144, 0.017703103, 0.00950964, -0.001343505, -0.001557582, 0.000545759, 0.000240048, -0.000110969, -2.77E-05, 1.11E-05, 2.96E-06, -2.21E-07, -2.11E-07, -7.85E-08, -1.32E-08, 5.77E-09, 4.53E-09, 2.27E-09];
 
+
+    import std.algorithm : stdmap = map;
+    auto p = sqrt(testResult.stdmap!"a^^2".sum());
     foreach(a, b; lockstep(coeff, testResult.sliced(32, 32).transposed.flattened)){
-        assert(abs(a - b)/b < 1E-2);
+        assert(abs(a - b)/p < 1E-6);
     }
 }
 
@@ -261,16 +257,73 @@ unittest
 
 /**
 */
-F[] designKaiserBesselDrived(F = real)(size_t nchannel, size_t polyphaseTaps, F beta = 14)
+F[] designKaiserBesselDrived(F = real)(size_t nchannel, size_t polyphaseTaps, F beta = 14, F cutoffCoef = 1)
 in{
     assert(polyphaseTaps % 2 == 0);
 }
 do {
-    auto kbdw = kaiserBesselDerived!F(polyphaseTaps, beta);
-    F[] freqResp = new F[nchannel * polyphaseTaps / 2];
+    immutable F i0beta = besselI0(beta);
 
-    freqResp[] = 0;
-    freqResp[0 .. polyphaseTaps/2] = kbdw[$/2 .. $];
+    /**
+    int [0 .. x] (1-4t^2)^k dt を計算します
+    */
+    static
+    F int1m4t(F x, F k)
+    {
+        F dst = x * hypgeom21!F(0.5, -k, 3.0/2.0L, 4.0L*x^^2);
+        return dst;
+    }
+
+    /*
+    w(x) = I0(beta * sqrt(1-4x^2)) / I0(beta) について
+    int [0 .. x] w(x) dxを計算します
+    */
+    static
+    F integralKaiser(F beta, F x, F i0beta)
+    {
+        if(x > 0.5)
+            return integralKaiser(beta, 0.5, i0beta);
+        else if(x < -0.5)
+            return integralKaiser(beta, -0.5, i0beta);
+
+        F sum = 0;
+        F r = 1;
+        size_t k = 0;
+        do {
+            ++k;
+            r *= (beta/k/2)^^2;
+            sum += r * int1m4t(x, k);
+        } while(abs(r) > F.epsilon);
+
+        return sum / i0beta;
+    }
+
+    // int[-0.5 .. 0.5] w(x) dx
+    immutable F intAllKaiser = integralKaiser(beta, 0.5, i0beta) * 2;
+
+    // w(x) = I0(beta * sqrt(1-4x^2)) / I0(beta)を積分して周波数領域上で窓関数を構築
+    return
+    designPrototypeFromFreqDomainWindow!F(
+        nchannel, polyphaseTaps,
+        (real x) => 0.5 - integralKaiser(beta, x, i0beta) / intAllKaiser,
+        cutoffCoef);
+}
+
+
+/**
+wI(x) = int[x -> infty] w(x) dx = int[-\infty -> -x] w(x) dx という窓関数を積分した関数wI(x)からナイキストフィルタを構築します．
+ただし，wI(infty)=1でありw(x)は偶関数でw(0)で最大値を取るような窓関数を前提にアルゴリズムが構築されています．
+また，一つのチャネル（バンド）に対してw(x)はx=-0.5 ~ 0.5が相当し，全バンドではx=-nchannel/2 ~ nchannel/2まで動きます．
+*/
+F[] designPrototypeFromFreqDomainWindow(F = real, Fn)(size_t nchannel, size_t polyphaseTaps, scope Fn wI, F cutoffCoef = 1.0)
+{
+    immutable size_t N = nchannel * polyphaseTaps;
+    F[] freqResp = new F[N / 2];
+    foreach(i; 0 .. N/2) {
+        immutable F freq = F(i) / N / cutoffCoef;
+        freqResp[i] = sqrt(wI(freq*nchannel - 0.5));
+    }
+
     return designPrototypeFromFreqResponse(freqResp);
 }
 
