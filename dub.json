@@ -6,7 +6,7 @@
     "targetType": "library",
 
     "__foo": "/usr/local/opt/openblas/lib",
-    "libs": ["openblas"],
+    "libs": ["openblas", "nlopt", "stdc++"],
     "lflags-osx": ["-L/usr/local/opt/openblas/lib"],
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
     "dflags-ldc":["-oq"],
@@ -15,6 +15,7 @@
         "carbon": {"path": "../carbon"},
         "dfftw3": "~>1.0.1",
         "cblas": "~>1.0.0",
-        "mir-algorithm": "~>1.0.0-alpha4"
+        "mir-algorithm": "~>1.0.0-alpha4",
+        "libnlopt": "~>0.2.0"
     }
 }
