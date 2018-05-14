@@ -293,6 +293,7 @@ unittest
     import std.stdio;
     import std.algorithm : stdmap = map;
     import std.range;
+    import dffdd.window;
 
     alias R = real;
     alias C = Complex!R;
@@ -300,7 +301,7 @@ unittest
     immutable nCH = 64,
               nTap = 32;
 
-    auto proto = designKaiserBesselDrived!R(nCH, nTap/2, 20, 1).stdmap!(a => complex!R(a, 0)).array();
+    auto proto = designKaiserBesselDrived!R(nCH, nTap/2, kaiserBetaFromStopbandAttdB(200), 1).stdmap!(a => complex!R(a, 0)).array();
     // auto proto = designRootRaisedERF!R(nCH/2, nTap).stdmap!(a => complex!R(a, 0)).array();
     // auto proto = designKaiserSincPulse!R(nCH/2, nTap, 50, 1.9125).stdmap!(a => complex!R(a, 0)).array();
     // auto proto = designRootRaisedCosine!R(nCH, nTap/2, 0.5).stdmap!(a => complex!R(a, 0)).array();
@@ -332,6 +333,6 @@ unittest
         P += e[0].sqAbs;
     }
 
-    writeln(10*log10(sum / P));
-    // assert(10*log10(sum / P) < -130);
+    // writeln(10*log10(sum / P));
+    assert(10*log10(sum / P) < -150);
 }
