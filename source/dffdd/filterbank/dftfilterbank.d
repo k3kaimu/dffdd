@@ -300,7 +300,7 @@ unittest
     immutable nCH = 64,
               nTap = 32;
 
-    auto proto = designKaiserBesselDrived!R(nCH/2, nTap, 20).stdmap!(a => complex!R(a, 0)).array();
+    auto proto = designKaiserBesselDrived!R(nCH, nTap/2, 20, 1).stdmap!(a => complex!R(a, 0)).array();
     // auto proto = designRootRaisedERF!R(nCH/2, nTap).stdmap!(a => complex!R(a, 0)).array();
     // auto proto = designKaiserSincPulse!R(nCH/2, nTap, 50, 1.9125).stdmap!(a => complex!R(a, 0)).array();
     // auto proto = designRootRaisedCosine!R(nCH, nTap/2, 0.5).stdmap!(a => complex!R(a, 0)).array();
