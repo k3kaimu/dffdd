@@ -22,7 +22,7 @@ if(isFloatingPoint!F)
         F dst = 0;
         F r = 1;
         size_t cnt = 0;
-        while(abs(r) > F.epsilon){
+        while(abs(r) > abs(F.epsilon * dst)){
             dst += r;
             ++cnt;
 
