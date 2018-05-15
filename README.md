@@ -9,15 +9,14 @@ $ brew install dmd
 $ brew install dub
 ~~~~~
 
-This library requires `FFTW` and `OpenBLAS`.
+This library requires `FFTW`, `OpenBLAS`, and `NLopt`.
 They can be installed by `homebrew`.
 
 ~~~~~
-$ brew install fftw
-$ brew install homebrew/science/openblas
+$ brew install fftw openblas nlopt
 ~~~~~
 
-In addition, you should clone this library from gitlab, `dranges` and `carbon` from github.
+In addition, you should clone this library and carbon from gitlab and github, respectively.
 
 ~~~~~
 $ mkdir workdir && cd workdir
