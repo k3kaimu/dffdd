@@ -103,6 +103,12 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
     }
 
 
+    size_t numOfDelay() const @property
+    {
+        return _nchannel * _ntaps - _nchannel;
+    }
+
+
   private:
     size_t _nchannel;
     size_t _ntaps;
@@ -272,6 +278,13 @@ final class OversampledDFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
                 e -= _buf0[i];
         }
     }
+
+
+    size_t numOfDelay() const @property
+    {
+        return _bank0.numOfDelay;
+    }
+
 
   private:
     DFTFilterBank!(C, isAnalysis) _bank0, _bank1;
