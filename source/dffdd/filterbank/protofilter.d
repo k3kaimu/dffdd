@@ -321,7 +321,7 @@ F[] designPrototypeFromFreqDomainWindow(F = real, Fn)(size_t nchannel, size_t po
     F[] freqResp = new F[N / 2];
     foreach(i; 0 .. N/2) {
         immutable F freq = F(i) / N / cutoffCoef;
-        freqResp[i] = sqrt(wI(freq*nchannel - 0.5));
+        freqResp[i] = sqrt(wI(freq*nchannel - 0.5) - wI(freq*nchannel + 0.5));
     }
 
     return designPrototypeFromFreqResponse(freqResp);
