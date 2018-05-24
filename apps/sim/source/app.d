@@ -271,7 +271,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         scope(success)
             models ~= model;
 
-        model.rndSeed = iTrial + 0xDEAD + 0xBEAF;
+        model.rndSeed = iTrial + 0xDEAD + 0xBEEF;
         model.SNR = modelSeed.SNR;
         model.INR = modelSeed.INR;
         // model.pa.TX_POWER = modelSeed.txPower;
