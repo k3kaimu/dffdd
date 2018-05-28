@@ -75,12 +75,14 @@ final class SimulatedSignals
         immutable oldUseSWP = *_useSWPOFDM;
         *_useSWPOFDM = false;
 
-        this.popFrontN(_model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol);
+        while(!this.isConvergedAllVGA){
+            this.popFrontN(_model.ofdm.numOfSamplesOf1Symbol);
+        }
 
         _nowTrainingMode = false;
         *_useSWPOFDM = oldUseSWP;
 
-        this.popFrontN(_model.numOfModelTrainingSymbols * _model.ofdm.numOfSamplesOf1Symbol);
+        this.popFrontN(_model.ofdm.numOfSamplesOf1Symbol * 4);
     }
 
 
@@ -248,6 +250,28 @@ final class SimulatedSignals
     }
 
 
+    bool isConvergedAllVGA() @property
+    {
+        static
+        bool _isconverged(X)(X* v)
+        {
+            static if(is(typeof((X x){ return x.isConverged; })))
+                return v.isConverged;
+            else
+                return true;
+        }
+
+        bool dst = true;
+
+        // .isConvergedをメンバとして持つメンバ変数を列挙してチェック
+        foreach(m; __traits(allMembers, typeof(this)))
+            static if(is(typeof(mixin(m))) && is(typeof(&mixin(m)) == typeof(mixin(m))*))
+                dst = dst && _isconverged(&mixin(m));
+
+        return dst;
+    }
+
+
   private:
     Model _model;
 
@@ -307,7 +331,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
     vsi *= dst._txIQMixer.gain();
-    dst._txPAVGA = PowerControlAmplifierConverter!C((model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm, model.numOfModelTrainingSymbols/3 * model.ofdm.numOfSamplesOf1Symbol, 2);
+    dst._txPAVGA = PowerControlAmplifierConverter!C((model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm, 1e-2);
     // auto vpainput = (model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm;
     // dst._txPAVGA = VGAConverter!C(vpainput / vsi);
     // vsi = vpainput;
@@ -316,7 +340,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst._channel = FIRFilterConverter!C(model.channel.impulseResponse[0 .. model.channel.taps]);
     auto vlnainput = model.thermalNoise.power(model) * model.lna.NF * model.INR;
-    dst._rxLNAVGA = PowerControlAmplifierConverter!C(vlnainput, model.numOfModelTrainingSymbols/3 * model.ofdm.numOfSamplesOf1Symbol, 2);
+    dst._rxLNAVGA = PowerControlAmplifierConverter!C(vlnainput, 1e-2);
     vsi = Voltage(sqrt(vlnainput.volt^^2 + (model.thermalNoise.power(model) * model.lna.NF).volt^^2));
     dst._rxLNARapp = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3.dBm - 36).dB.gain);
     vsi = dst._rxLNARapp.outputVoltage(vsi);
