@@ -115,11 +115,11 @@ struct RappModelConverter(C)
 
 
     /**
-    入力信号が複素正規分布に従うと仮定して，出力電力を算出する
+    線形領域での利得を返します
     */
-    Voltage outputVoltage(Voltage x) const
+    Gain linearGain() const @property
     {
-        return x;
+        return Gain.fromVoltageGain(_g);
     }
 
 

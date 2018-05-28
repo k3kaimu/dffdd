@@ -152,13 +152,13 @@ struct Gain
 
     Gain opBinary(string op : "*")(Gain g)
     {
-        return this(_g1V * g._g1V);
+        return typeof(this)(_g1V * g._g1V);
     }
 
 
     Gain opBinary(string op : "/")(Gain g)
     {
-        return this(_g1V / g._g1V);
+        return typeof(this)(_g1V / g._g1V);
     }
 
 
