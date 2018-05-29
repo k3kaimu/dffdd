@@ -115,11 +115,11 @@ struct RappModelConverter(C)
 
 
     /**
-    入力信号が複素正規分布に従うと仮定して，出力電力を算出する
+    線形領域での利得を返します
     */
-    Voltage outputVoltage(Voltage x) const
+    Gain linearGain() const @property
     {
-        return x;
+        return Gain.fromVoltageGain(_g);
     }
 
 
@@ -264,37 +264,54 @@ struct PowerControlAmplifierConverter(C)
     alias OutputElementType = C;
 
 
-    this(Voltage op, size_t avgSize = 512, size_t totalCount = 30)
+    /**
+    64サンプルからスタートして,
+    64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 32768, 32768, ...サンプルごとに平均電力値の計算をし，増幅率を更新します
+    前回，前々回からのゲインの増減率が1±rtol以下であれば停止します
+    */
+    this(Voltage op, real rtol = 1E-2, size_t startSamples = 64, size_t totalCount = 10)
     {
-        _power = op.volt^^2;
-        _alpha = 1;
+        _targetPower = op.volt^^2;
+        _gain = 1;
+        _lastGain = 0;
         _cnt = 0;
-        _avgSize = avgSize;
+        _rtol = rtol;
         _sumPower = 0;
-        _avgCount = 0;
-        _totalCount = totalCount;
+        _avgTotal = startSamples;
+        _maxTotal = 64 << totalCount;
     }
 
 
     void opCall(InputElementType input, ref OutputElementType output)
     {
-        _sumPower += input.re^^2 + input.im^^2;
-        ++_cnt;
-        if(_cnt == _avgSize){
-            if(_avgCount < _totalCount){
-                if(_sumPower == 0)
-                    _alpha = _alpha;
-                else
-                    _alpha = sqrt(_power / (_sumPower / _avgSize));
+        if(!_isConverged){
+            _sumPower += input.re^^2 + input.im^^2;
+            ++_cnt;
+            if(_cnt == _avgTotal) {
+                if(_sumPower != 0){
+                    real lastGain = _lastGain;
+                    real nowGain = _gain;
+                    real newGain = sqrt(_targetPower / (_sumPower / _avgTotal));
 
-                ++_avgCount;
+                    if(abs(lastGain / newGain - 1) < _rtol
+                    && abs(nowGain / newGain - 1) < _rtol)
+                    {
+                        _isConverged = true;
+                    }
+
+                    _gain = newGain;
+                    _lastGain = nowGain;
+                }
+                
+                if(_avgTotal < _maxTotal)
+                    _avgTotal *= 2;
+
+                _cnt = 0;
+                _sumPower = 0;
             }
-
-            _sumPower = 0;
-            _cnt = 0;
         }
 
-        output = input * _alpha;
+        output = input * _gain;
     }
 
 
@@ -309,7 +326,13 @@ struct PowerControlAmplifierConverter(C)
 
     Gain gain() @property const
     {
-        return Gain.fromVoltageGain(_alpha);
+        return Gain.fromVoltageGain(_gain);
+    }
+
+
+    bool isConverged() @property const
+    {
+        return _isConverged;
     }
 
 
@@ -322,19 +345,21 @@ struct PowerControlAmplifierConverter(C)
     JSONValue dumpInfoToJSON() const
     {
         return JSONValue([
-            "gain": _alpha
+            "gain": _gain
         ]);
     }
 
 
   private:
-    real _power;
-    real _alpha;
-    size_t _cnt;
-    size_t _avgSize;
-    size_t _avgCount;
-    size_t _totalCount;
+    real _targetPower;
+    real _gain;
+    real _rtol;
+    real _lastGain;
     real _sumPower;
+    size_t _cnt;
+    size_t _avgTotal;
+    size_t _maxTotal;
+    bool _isConverged;
 }
 
 
@@ -342,11 +367,11 @@ struct PowerControlAmplifierConverter(C)
 struct PowerControlAmplifier
 {
     static
-    auto makeBlock(R)(R r, Voltage op, size_t avgSize = 512, size_t totalCount = 30)
+    auto makeBlock(R)(R r, Voltage op, real rtol = 1E-2, size_t startSamples = 64, size_t totalCount = 10)
     {
         import dffdd.blockdiagram.utils : connectTo;
         alias E = Unqual!(ElementType!R);
-        return r.connectTo!(PowerControlAmplifierConverter!E)(op, avgSize, totalCount);
+        return r.connectTo!(PowerControlAmplifierConverter!E)(op, rtol, startSamples, totalCount);
     }
 }
 

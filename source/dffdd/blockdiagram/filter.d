@@ -118,7 +118,7 @@ struct FIRFilterConverter(C)
     }
 
 
-    const(C)[] coeficients() const @property
+    const(C)[] coefficients() const @property
     {
         return _coefs;
     }

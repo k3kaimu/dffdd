@@ -456,9 +456,6 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
     }
 
-    //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
-    //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
-
 
     signals.ignoreDesired = false;
     if(model.outputBER)
