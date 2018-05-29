@@ -6,7 +6,7 @@
     "targetType": "library",
 
     "__foo": "/usr/local/opt/openblas/lib",
-    "libs": ["openblas", "nlopt", "stdc++"],
+    "libs": ["openblas", "nlopt"],
     "lflags-osx": ["-L/usr/local/opt/openblas/lib"],
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
     "dflags-ldc":["-oq"],
