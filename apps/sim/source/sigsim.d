@@ -69,7 +69,13 @@ final class SimulatedSignals
 
 
     void trainAGC()
-    {
+    out {
+        import std.meta : AliasSeq;
+        foreach(obj; AliasSeq!(_txPAVGA, _rxLNAVGA, _rxQZVGA))
+            if(!obj.isNull)
+                assert(obj.isConverged);
+    }
+    do {
         _nowTrainingMode = true;
 
         immutable oldUseSWP = *_useSWPOFDM;
@@ -218,17 +224,17 @@ final class SimulatedSignals
         dst._selfInterferenceCoef = this._selfInterferenceCoef;
         dst._noiseCoef = this._noiseCoef;
 
-        dst._txIQMixer = this._txIQMixer.dup;
-        dst._txPAVGA = this._txPAVGA.dup;
-        dst._txPARapp = this._txPARapp.dup;
+        if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.dup;
+        if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.dup;
+        if(!this._txPARapp.isNull)      dst._txPARapp = this._txPARapp.dup;
         
-        dst._channel = this._channel.dup;
+        if(!this._channel.isNull)       dst._channel = this._channel.dup;
 
-        dst._rxLNAVGA = this._rxLNAVGA.dup;
-        dst._rxLNARapp = this._rxLNARapp.dup;
-        dst._rxIQMixer = this._rxIQMixer.dup;
-        dst._rxQZVGA = this._rxQZVGA.dup;
-        dst._rxQZ = this._rxQZ.dup;
+        if(!this._rxLNAVGA.isNull)      dst._rxLNAVGA = this._rxLNAVGA.dup;
+        if(!this._rxLNARapp.isNull)     dst._rxLNARapp = this._rxLNARapp.dup;
+        if(!this._rxIQMixer.isNull)     dst._rxIQMixer = this._rxIQMixer.dup;
+        if(!this._rxQZVGA.isNull)       dst._rxQZVGA = this._rxQZVGA.dup;
+        if(!this._rxQZ.isNull)          dst._rxQZ = this._rxQZ.dup;
 
         return dst;
     }
@@ -237,15 +243,15 @@ final class SimulatedSignals
     JSONValue info()
     {
         JSONValue dst = JSONValue(string[string].init);
-        dst["txIQMixer"] = _txIQMixer.dumpInfoToJSON();
-        dst["txPAVGA"] = _txPAVGA.dumpInfoToJSON();
-        dst["txPARapp"] = _txPARapp.dumpInfoToJSON();
-        dst["channel"] = _channel.dumpInfoToJSON();
-        dst["rxLNAVGA"] = _rxLNAVGA.dumpInfoToJSON();
-        dst["rxLNARapp"] = _rxLNARapp.dumpInfoToJSON();
-        dst["rxIQMixer"] = _rxIQMixer.dumpInfoToJSON();
-        dst["rxQZVGA"] = _rxQZVGA.dumpInfoToJSON();
-        dst["rxQZ"] = _rxQZ.dumpInfoToJSON();
+        if(!_txIQMixer.isNull)  dst["txIQMixer"] = _txIQMixer.dumpInfoToJSON();
+        if(!_txPAVGA.isNull)    dst["txPAVGA"] = _txPAVGA.dumpInfoToJSON();
+        if(!_txPARapp.isNull)   dst["txPARapp"] = _txPARapp.dumpInfoToJSON();
+        if(!_channel.isNull)    dst["channel"] = _channel.dumpInfoToJSON();
+        if(!_rxLNAVGA.isNull)   dst["rxLNAVGA"] = _rxLNAVGA.dumpInfoToJSON();
+        if(!_rxLNARapp.isNull)  dst["rxLNARapp"] = _rxLNARapp.dumpInfoToJSON();
+        if(!_rxIQMixer.isNull)  dst["rxIQMixer"] = _rxIQMixer.dumpInfoToJSON();
+        if(!_rxQZVGA.isNull)    dst["rxQZVGA"] = _rxQZVGA.dumpInfoToJSON();
+        if(!_rxQZ.isNull)       dst["rxQZ"] = _rxQZ.dumpInfoToJSON();
         return dst;
     }
 
@@ -255,10 +261,17 @@ final class SimulatedSignals
         static
         bool _isconverged(X)(X* v)
         {
-            static if(is(typeof((X x){ return x.isConverged; })))
-                return v.isConverged;
-            else
-                return true;
+            static if(is(X : Nullable!Y, Y)){
+                if(v.isNull)
+                    return true;
+                else
+                    return _isconverged(&(v.get()));
+            }else{
+                static if(is(typeof((X x){ return x.isConverged; })))
+                    return v.isConverged;
+                else
+                    return true;
+            }
         }
 
         bool dst = true;
@@ -277,13 +290,13 @@ final class SimulatedSignals
         C[] channel = _channel.coefficients.dup;
 
         Gain g = Gain.fromPowerGain(1);
-        g *= _txIQMixer.gain;
-        g *= _txPAVGA.gain;
-        g *= _txPARapp.linearGain;
-        g *= _rxLNAVGA.gain;
-        g *= _rxLNARapp.linearGain;
-        g *= _rxIQMixer.gain;
-        g *= _rxQZVGA.gain;
+        if(!_txIQMixer.isNull)  g *= _txIQMixer.gain;
+        if(!_txPAVGA.isNull)    g *= _txPAVGA.gain;
+        if(!_txPARapp.isNull)   g *= _txPARapp.linearGain;
+        if(!_rxLNAVGA.isNull)   g *= _rxLNAVGA.gain;
+        if(!_rxLNARapp.isNull)  g *= _rxLNARapp.linearGain;
+        if(!_rxIQMixer.isNull)  g *= _rxIQMixer.gain;
+        if(!_rxQZVGA.isNull)    g *= _rxQZVGA.gain;
 
         foreach(ref e; channel)
             e *= g.gain;
@@ -310,17 +323,17 @@ final class SimulatedSignals
     C _selfInterferenceCoef = C(1);
     C _noiseCoef = C(1);
 
-    IQImbalanceConverter!C _txIQMixer;
-    PowerControlAmplifierConverter!C _txPAVGA;
-    RappModelConverter!C _txPARapp;
+    Nullable!(IQImbalanceConverter!C) _txIQMixer;
+    Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
+    Nullable!(RappModelConverter!C) _txPARapp;
 
-    FIRFilterConverter!C _channel;
+    Nullable!(FIRFilterConverter!C) _channel;
 
-    PowerControlAmplifierConverter!C _rxLNAVGA;
-    RappModelConverter!C _rxLNARapp;
-    IQImbalanceConverter!C _rxIQMixer;
-    PowerControlAmplifierConverter!C _rxQZVGA;
-    SimpleQuantizerConverter!C _rxQZ;
+    Nullable!(PowerControlAmplifierConverter!C) _rxLNAVGA;
+    Nullable!(RappModelConverter!C) _rxLNARapp;
+    Nullable!(IQImbalanceConverter!C) _rxIQMixer;
+    Nullable!(PowerControlAmplifierConverter!C) _rxQZVGA;
+    Nullable!(SimpleQuantizerConverter!C) _rxQZ;
 }
 
 
