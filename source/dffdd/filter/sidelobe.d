@@ -26,7 +26,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
     static assert(P == 2);
 
 
-    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS)
+    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX)
     {
         _nTr = trainingSymbols;
         _nIter = nIter;
@@ -34,6 +34,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
         _nFFT = nFFT;
         _nCP = nCP;
         _nOS = nOS;
+        _isInvertRX = cast(bool)isInvertRX;
 
         _fftw = makeFFTWObject!Complex(_nFFT * _nOS);
         _regenerator = new OverlapSaveRegenerator2!C(1, _nFFT * _nOS);
@@ -99,6 +100,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
     immutable size_t _nTr;
     immutable size_t _nIter;
     immutable size_t _nCP, _nFFT, _nOS, _nSC;
+    immutable bool _isInvertRX;
 
     FFTWObject!Complex _fftw;
     OverlapSaveRegenerator2!C _regenerator;
@@ -131,12 +133,15 @@ final class SidelobeIterativeWLNL(C, size_t P)
             }
         }
 
-        // // 受信信号を出力にコピーして
-        // // 受信IQミキサと受信アンプの歪みの逆特性を与える
+        // 受信信号を出力にコピーして
         outputs[] = receives[];
-        foreach(ref e; outputs) {
-            e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
-            e -= _lnaCoefs[1] * e * e.sqAbs;
+
+        // 受信IQミキサと受信アンプの歪みの逆特性を与える
+        if(_isInvertRX){
+            foreach(ref e; outputs) {
+                e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
+                e -= _lnaCoefs[1] * e * e.sqAbs;
+            }
         }
 
         // 推定解を用いて送信信号に歪みを与えていく
@@ -152,10 +157,13 @@ final class SidelobeIterativeWLNL(C, size_t P)
         auto reconsted = new C[outputs.length];
         _regenerator.apply(state, _buffer4Regen.map!"[a]".array(), reconsted);
 
-        // foreach(ref e; reconsted) {
-        //     e += _lnaCoefs[1] * e * e.sqAbs;
-        //     e += e.conj * _iqRX;
-        // }
+        // 受信機側の非線形性を再現する
+        if(!_isInvertRX){
+            foreach(ref e; reconsted) {
+                e += _lnaCoefs[1] * e * e.sqAbs;
+                e += e.conj * _iqRX;
+            }
+        }
 
         // 干渉除去
         foreach(i, ref e; outputs)
