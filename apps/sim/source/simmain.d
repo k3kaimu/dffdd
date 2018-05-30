@@ -226,10 +226,15 @@ auto makeFilter(string filterType)(Model model)
     import dffdd.filter.freqdomain;
     auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
   }
-  else static if(filterStructure.endsWith("Sidelobe"))
+  else static if(filterStructure.endsWith("SidelobeInv"))
   {
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, Yes.isInvertRX);
+  }
+  else static if(filterStructure.endsWith("SidelobeFwd"))
+  {
+    import dffdd.filter.sidelobe;
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, No.isInvertRX);
   }
   else static if(filterStructure.endsWith("WLFHF"))
   {
