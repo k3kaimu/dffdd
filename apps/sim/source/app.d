@@ -107,9 +107,8 @@ void mainJob()
                                     "OPH_LS",
                                     // "OPH_LMS",
                                     
-                                    // "WL_LS",
-                                    
-                                    // "L_LS",
+                                    "WL_LS",
+                                    "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
                                     "SidelobeFwd_X",
@@ -127,7 +126,7 @@ void mainJob()
         /// inr vs cancellation
         // static if(methodName.endsWith("_LS") || methodName == "IterativeFreqSIC_X")
         foreach(learningSymbols; [10])
-        foreach(inr; iota(20, 75, 5))
+        foreach(inr; iota(20, 95, 2))
         foreach(sf; [1])
         {
             ModelSeed modelSeed;
@@ -143,6 +142,10 @@ void mainJob()
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
     }
+
+    import std.stdio;
+    import dffdd.mod.qam;
+    writefln("BER = %s at SNR = %sdB", berQAMFromSNR(11, 16), 11);
 
     //writefln("%s tasks will be submitted.", taskList.length);
     JobEnvironment env;
