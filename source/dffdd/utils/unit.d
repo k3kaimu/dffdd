@@ -127,7 +127,7 @@ struct Gain
     }
 
 
-    private this(real g1V)
+    private this(real g1V) pure nothrow @safe @nogc
     {
         _g1V = g1V;
     }
@@ -154,19 +154,19 @@ struct Gain
   }
 
 
-    Gain opBinary(string op : "*")(Gain g)
+    Gain opBinary(string op : "*")(Gain g) const pure nothrow @safe @nogc
     {
         return typeof(this)(_g1V * g._g1V);
     }
 
 
-    Gain opBinary(string op : "/")(Gain g)
+    Gain opBinary(string op : "/")(Gain g) const pure nothrow @safe @nogc
     {
         return typeof(this)(_g1V / g._g1V);
     }
 
 
-    void opOpAssign(string op)(Gain g)
+    void opOpAssign(string op)(Gain g) pure nothrow @safe @nogc
     if(op == "*" || op == "/")
     {
         this = this.opBinary!op(g);
@@ -212,7 +212,7 @@ struct Voltage
     }
 
 
-    this(real v1V)
+    this(real v1V) pure nothrow @safe @nogc
     {
         _g1V = v1V;
     }
@@ -246,25 +246,25 @@ struct Voltage
     }
 
 
-    Voltage opBinary(string op : "*")(Gain g)
+    Voltage opBinary(string op : "*")(Gain g) const pure nothrow @safe @nogc
     {
         return Voltage(this._g1V * g.gain());
     }
 
 
-    Voltage opBinary(string op : "/")(Gain g)
+    Voltage opBinary(string op : "/")(Gain g) const pure nothrow @safe @nogc
     {
         return Voltage(this._g1V / g.gain());
     }
 
 
-    Gain opBinary(string op : "/")(Voltage v)
+    Gain opBinary(string op : "/")(Voltage v) const pure nothrow @safe @nogc
     {
         return Gain.fromVoltageGain(this._g1V / v._g1V);
     }
 
 
-    void opOpAssign(string op)(Gain g)
+    void opOpAssign(string op)(Gain g) pure nothrow @safe @nogc
     if(op == "*" || op == "/")
     {
         this = this.opBinary!op(g);

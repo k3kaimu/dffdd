@@ -140,17 +140,19 @@ final class SimulatedSignals
             rxlnas = _tempbuf[8][0 .. len],
             rxiqs = _tempbuf[9][0 .. len],
             rxqzvgas = _tempbuf[10][0 .. len],
-            rxqzs = _tempbuf[11][0 .. len];
+            rxqzs = _tempbuf[11][0 .. len],
+            rxds = _tempbuf[12][0 .. len];
 
         _channel(txpas, rxants);
         _rxLNAVGA(rxants, rxvgas);
+        _rxDESVGA(ds, rxds);
 
         if(_nowTrainingMode){
             foreach(i; 0 .. len)
                 rxvgas[i] = rxvgas[i] * _selfInterferenceCoef + ns[i] * _noiseCoef;
         }else{
             foreach(i; 0 .. len)
-                rxvgas[i] = rxvgas[i] * _selfInterferenceCoef + ds[i] * _desiredCoef + ns[i] * _noiseCoef;
+                rxvgas[i] = rxvgas[i] * _selfInterferenceCoef + rxds[i] * _desiredCoef + ns[i] * _noiseCoef;
         }
 
         // 自端末の受信機のLNAの歪み
@@ -230,6 +232,7 @@ final class SimulatedSignals
         
         if(!this._channel.isNull)       dst._channel = this._channel.dup;
 
+        if(!this._rxDESVGA.isNull)      dst._rxDESVGA = this._rxDESVGA.dup;
         if(!this._rxLNAVGA.isNull)      dst._rxLNAVGA = this._rxLNAVGA.dup;
         if(!this._rxLNARapp.isNull)     dst._rxLNARapp = this._rxLNARapp.dup;
         if(!this._rxIQMixer.isNull)     dst._rxIQMixer = this._rxIQMixer.dup;
@@ -329,6 +332,7 @@ final class SimulatedSignals
 
     Nullable!(FIRFilterConverter!C) _channel;
 
+    Nullable!(PowerControlAmplifierConverter!C) _rxDESVGA;
     Nullable!(PowerControlAmplifierConverter!C) _rxLNAVGA;
     Nullable!(RappModelConverter!C) _rxLNARapp;
     Nullable!(IQImbalanceConverter!C) _rxIQMixer;
@@ -369,6 +373,11 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     dst._rxIQMixer = IQImbalanceConverter!C(0.dB, model.rxIQMixer.imbCoef);
     dst._rxQZVGA = PowerControlAmplifierConverter!C((30 - model.ofdm.PAPR.dB + 4.76).dBm, 1e-2);
     dst._rxQZ = SimpleQuantizerConverter!C(model.quantizer.numOfBits);
+
+    immutable snScaleOFDM = Gain.fromPowerGain(1.0L * model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier);
+    immutable noisePowerPerSubcarrier = model.thermalNoise.power(model) * model.lna.NF / snScaleOFDM;
+
+    dst._rxDESVGA = PowerControlAmplifierConverter!C(noisePowerPerSubcarrier * model.SNR, 1e-2);
 
     return dst;
 }
