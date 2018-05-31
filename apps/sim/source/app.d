@@ -111,7 +111,7 @@ void mainJob()
                                     
                                     // "L_LS",
                                     
-                                    "IterativeFreqSIC_X",
+                                    // "IterativeFreqSIC_X",
                                     "SidelobeFwd_X",
                                     "SidelobeInv_X"
             ))
@@ -231,7 +231,9 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 
             // ベースバンド信号波形の出力
             model.outputWaveform = false;
-            model.outputBER = false;
+
+            // BERの出力
+            model.outputBER = true;
 
             if(methodName.canFind("DCM")) {
                 model.learningSymbols = 10;
@@ -329,103 +331,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 
     JSONValue jv = cast(JSONValue[string])null;
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
-
-    if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF"))
-        jv["selecting"] = (){
-            immutable nFFT = models[0].ofdm.numOfFFT * models[0].ofdm.scaleOfUpSampling;
-
-            JSONValue[string] vv;
-            vv["selectingRatio"] = sumOfSuccFreq / cast(float)(nFFT * nTrials);
-            vv["selectingRatioList"] = selectingRatioList;
-
-            size_t selectedBF;
-            size_t failedCNT, failedCNTPLQ;
-            size_t matchCNT, matchCNTPLQ;
-            size_t overCNT, overCNTPLQ;
-            real idealCostRLS = 0;
-            real idealCostLMS = 0;
-            real actualCostRLS = 0;
-            real actualCostLMS = 0;
-            size_t distDim = 0;
-            foreach(k, ref ev; resList){
-                auto reqs = ev["filterSpec"]["actualRequiredBasisFuncs"].array;
-                auto used = ev["filterSpec"]["selectedBasisFuncs"].array;
-                foreach(f; 0 .. nFFT){
-                    auto r = reqs[f].array;
-                    auto u = used[f].array;
-
-                    if(distDim == 0) distDim = r.length;
-
-                    // idealCostに追加する
-                    size_t reqsP, usedP;
-                    foreach(p; 0 .. r.length){
-                        if(r[p].type == JSON_TYPE.TRUE) ++reqsP;
-                        if(u[p].type == JSON_TYPE.TRUE) ++usedP;
-                    }
-                    idealCostRLS += 4*(reqsP^^2) + 4*reqsP;
-                    idealCostLMS += 2*reqsP;
-                    actualCostRLS += 4*(usedP^^2) + 4*usedP;
-                    actualCostLMS += 2*usedP;
-
-                    // 推定ミスした周波数のカウント
-                    foreach(p; 0 .. r.length) if(r[p].type == JSON_TYPE.TRUE && u[p].type == JSON_TYPE.FALSE) { ++failedCNT; break; }
-
-                    // 過大評価した周波数のカウント
-                    foreach(p; 0 .. r.length) if(r[p].type == JSON_TYPE.FALSE && u[p].type == JSON_TYPE.TRUE){ ++overCNT; break; }
-                    
-                    // 完全推定できた周波数のカウント
-                    foreach(p; 0 .. r.length){
-                        if(r[p].type != u[p].type) break;
-                        if(p == r.length - 1) ++matchCNT;
-                    }
-
-                    // p>qについて
-                    // 推定ミスした周波数のカウント
-                    foreach(p; 0 .. r.length) if(CompleteDistorter!().indexOfConjugated(p) >= p) if(r[p].type == JSON_TYPE.TRUE && u[p].type == JSON_TYPE.FALSE) { ++failedCNTPLQ; break; }
-
-                    // 過大評価した周波数のカウント
-                    foreach(p; 0 .. r.length) if(CompleteDistorter!().indexOfConjugated(p) >= p) if(r[p].type == JSON_TYPE.FALSE && u[p].type == JSON_TYPE.TRUE){ ++overCNTPLQ; break; }
-                    
-                    // 完全推定できた周波数のカウント
-                    bool bBreaked = false;
-                    foreach(p; 0 .. r.length) if(CompleteDistorter!().indexOfConjugated(p) >= p) {
-                        if(r[p].type != u[p].type){
-                            bBreaked = true;
-                            break;
-                        }
-                    }
-                    if(!bBreaked) ++matchCNTPLQ;
-                }
-
-                foreach(f; 0 .. nFFT)
-                    foreach(b; used[f].array)
-                        if(b.type == JSON_TYPE.TRUE)
-                            ++selectedBF;
-            }
-            vv["selectedBFRatio"] = selectedBF / cast(float)(nFFT * nTrials * distDim);
-            vv["avgSelectedBF"] = selectedBF / cast(float)(nFFT * nTrials);
-            vv["failedRatio"] = failedCNT / cast(float)(nFFT * nTrials);
-            vv["matchRatio"] = matchCNT / cast(float)(nFFT * nTrials);
-            vv["overRatio"] = overCNT / cast(float)(nFFT * nTrials);
-
-            vv["failedPLQRatio"] = failedCNTPLQ / cast(float)(nFFT * nTrials);
-            vv["matchPLQRatio"] = matchCNTPLQ / cast(float)(nFFT * nTrials);
-            vv["overPLQRatio"] = overCNTPLQ / cast(float)(nFFT * nTrials);
-
-            immutable size_t nsym = models[0].ofdm.numOfSamplesOf1Symbol;
-            vv["idealCostRLS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (idealCostRLS / nTrials))/nsym;
-            vv["idealCostLMS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (idealCostLMS / nTrials))/nsym;
-            vv["actualCostRLS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (actualCostRLS / nTrials))/nsym;
-            vv["actualCostLMS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + (actualCostLMS / nTrials))/nsym;
-            vv["nonSelCostRLS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 4*(distDim^^2 + distDim) * nFFT)/nsym;
-            vv["nonSelCostLMS"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 2 * distDim * nFFT)/nsym;
-            vv["nonSelCostRLS2"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 4*(2^^2 + 2) * nFFT)/nsym;
-            vv["nonSelCostLMS2"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 2 * 2 * nFFT)/nsym;
-            vv["nonSelCostRLS3"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 4*(3^^2 + 2) * nFFT)/nsym;
-            vv["nonSelCostLMS3"] = (0.25 * (distDim + 2) * nFFT * log2(nFFT) + 3 * 2 * nFFT)/nsym;
-
-            return vv;
-        }();
+    jv["bers"] = resList.map!(a => a["ber"]).array();
     
     auto file = File(buildPath(dir, "allResult.json"), "w");
     file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));

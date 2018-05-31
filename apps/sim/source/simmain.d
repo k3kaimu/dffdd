@@ -462,9 +462,11 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     }
 
 
-    signals.ignoreDesired = false;
     if(model.outputBER)
     {
+        signals.ignoreDesired = false;
+        scope(exit) signals.ignoreDesired = true;
+
         size_t inpSize, outSize;
         {
             auto mod = modOFDM(model);
