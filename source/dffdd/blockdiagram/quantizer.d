@@ -7,6 +7,7 @@ import std.complex;
 import std.json;
 
 import dffdd.utils.json;
+import dffdd.utils.unit;
 
 
 struct Quantizer(R)
@@ -96,24 +97,7 @@ struct SimpleQuantizerConverter(C)
 
     void opCall(InputElementType input, ref OutputElementType output)
     {
-        auto f = input * (1 << (_nbit - 1));
-        long ivr, ivi;
-
-        if(f.re >= long.max)
-            ivr = long.max;
-        else if(f.re <= long.min)
-            ivr = long.min;
-        else
-            ivr = cast(long)f.re;
-
-        if(f.im >= long.max)
-            ivi = long.max;
-        else if(f.im <= long.min)
-            ivi = long.min;
-        else
-            ivi = cast(long)f.im;
-
-        output = C(ivr, ivi) / (1 << (_nbit - 1));
+        output = C(quantizeReal(input.re), quantizeReal(input.im));
     }
 
 
@@ -142,6 +126,15 @@ struct SimpleQuantizerConverter(C)
 
   private:
     size_t _nbit;
+
+
+    typeof(C.init.re) quantizeReal(typeof(C.init.re) x)
+    {
+        // 正・負の両方で_nbit-1ビットだけ精度を持つため，全体では_nbitの精度
+        immutable long scale = 1L << (_nbit - 1);
+        immutable real maxAmp = 30.dBm.volt;
+        return floor(x / maxAmp * scale) / scale * maxAmp;
+    }
 }
 
 

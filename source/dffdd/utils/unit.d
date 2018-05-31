@@ -3,6 +3,10 @@ module dffdd.utils.unit;
 import std.math;
 
 
+// 系の基準となるインピーダンス
+enum real IMPEDANCE = 1.0;
+
+
 private
 bool isNaNCTFE(real x)
 {
@@ -202,9 +206,9 @@ struct Voltage
     Voltage fromdBm(real dbm)
     {
         if(__ctfe)
-            return Voltage(sqrt(50.0) * expCTFE((dbm - 30)/20 * log(10.0)));
+            return Voltage(sqrt(IMPEDANCE) * expCTFE((dbm - 30)/20 * log(10.0)));
         else
-            return Voltage(sqrt(50.0) * 10^^((dbm - 30)/20));
+            return Voltage(sqrt(IMPEDANCE) * 10^^((dbm - 30)/20));
     }
 
 
@@ -218,7 +222,7 @@ struct Voltage
   {
     real dBm() pure nothrow @safe @nogc
     {
-        auto w = _g1V^^2 / 50;
+        auto w = _g1V^^2 / IMPEDANCE;
         return 10*log10(w) + 30;
     }
 
@@ -226,6 +230,12 @@ struct Voltage
     real volt() pure nothrow @safe @nogc
     {
         return _g1V;
+    }
+
+
+    real watt() pure nothrow @safe @nogc
+    {
+        return _g1V^^2 / IMPEDANCE;
     }
   }
 
@@ -267,14 +277,14 @@ struct Voltage
 
 unittest
 {
-    assert(approxEqual((-10).dBm.volt, sqrt(50.0)*0.01));
-    assert(approxEqual((10).dBm.volt, sqrt(50.0)*0.1));
+    assert(approxEqual((-10).dBm.volt, sqrt(IMPEDANCE)*0.01));
+    assert(approxEqual((10).dBm.volt, sqrt(IMPEDANCE)*0.1));
     assert(approxEqual((10).dBm.dBm, 10));
     assert(approxEqual((-10).dBm.dBm, -10));
 
     enum Voltage g1 = (-10).dBm;
-    assert(approxEqual(g1.volt, sqrt(50.0)*0.01));
+    assert(approxEqual(g1.volt, sqrt(IMPEDANCE)*0.01));
 
     enum Voltage g2 = 10.dBm;
-    assert(approxEqual(g2.volt, sqrt(50.0)*0.1));
+    assert(approxEqual(g2.volt, sqrt(IMPEDANCE)*0.1));
 }
