@@ -2,7 +2,8 @@ module simmain;
 
 import std.algorithm;
 import std.complex;
-import std.datetime;
+import core.time;
+import std.datetime.stopwatch;
 import std.json;
 import std.math;
 import std.mathspecial;
@@ -11,6 +12,7 @@ import std.path;
 import std.range;
 import std.random;
 import std.stdio;
+import std.typecons;
 
 import carbon.math : nextPowOf2;
 
@@ -301,8 +303,10 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         return randomBits(1, model).connectToModulator(_modOFDMTest, alwaysFalsePointer, model).measurePower(1024*1024);
     }();
 
-    if(resultDir !is null)
+    if(resultDir !is null){
+        import std.file : mkdirRecurse;
         mkdirRecurse(resultDir);
+    }
 
     auto signals = makeSimulatedSignals(model, resultDir);
     signals.trainAGC();
@@ -384,7 +388,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         }
 
 
-        infoResult["training_symbols_per_second"] = model.numOfFilterTrainingSymbols / ((cast(real)sw.peek.usecs) / 1_000_000);
+        infoResult["training_symbols_per_second"] = model.numOfFilterTrainingSymbols / ((cast(real)sw.peek.total!"usecs") / 1_000_000);
     }
 
     {
@@ -433,7 +437,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
         sumRemainPower /= cancCNT * model.blockSize;
         sumSI /= cancCNT * model.blockSize;
-        infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.usecs) / 1_000_000);
+        infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.total!"usecs") / 1_000_000);
         // infoResult["cancellation_dB"] = sicv;
 
         // 雑音電力を測る
@@ -449,14 +453,14 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         if(sumRemainSI < 0) sumRemainSI = 1E-6;
         Gain RINR = Gain.fromPowerGain(sumRemainSI / sumNoisePower),
              INR = Gain.fromPowerGain(sumSI / sumNoisePower),
-             canc = Gain.fromPowerGain((INR.gain^^2 + 1) / (RINR.gain^^2 + 1));
+             canc = Gain.fromPowerGain((INR.asP + 1) / (RINR.asP + 1));
 
-        infoResult["cancellation_dB"] = canc.dB;
-        infoResult["RINR_dB"] = RINR.dB;
-        infoResult["INR_dB"] = INR.dB;
+        infoResult["cancellation_dB"] = canc.asdB;
+        infoResult["RINR_dB"] = RINR.asdB;
+        infoResult["INR_dB"] = INR.asdB;
         if(resultDir !is null){
-            File(buildPath(resultDir ,"cancellation_value.csv"), "w").writeln(canc.dB);
-            File(buildPath(resultDir ,"RINR_value.csv"), "w").writeln(RINR.dB);
+            File(buildPath(resultDir ,"cancellation_value.csv"), "w").writeln(canc.asdB);
+            File(buildPath(resultDir ,"RINR_value.csv"), "w").writeln(RINR.asdB);
         }
 
     }
@@ -547,8 +551,10 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
     infoResult["modelSpec"] = signals.info();
 
-    if(resultDir !is null)
-        std.file.write(buildPath(resultDir, "info.json"), infoResult.toPrettyString(JSONOptions.specialFloatLiterals));
+    if(resultDir !is null){
+        import std.file : filewrite = write;
+        filewrite(buildPath(resultDir, "info.json"), infoResult.toPrettyString(JSONOptions.specialFloatLiterals));
+    }
 
     return infoResult;
 }

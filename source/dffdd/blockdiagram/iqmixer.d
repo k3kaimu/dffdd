@@ -25,14 +25,14 @@ struct IQImbalanceConverter(C)
 
     this(Gain gain, Gain irr, real theta)
     {
-        this(gain, (1.0L/irr.gain) * std.complex.expi(theta));
+        this(gain, (1.0L/irr.asV) * std.complex.expi(theta));
     }
 
 
     this(Gain gain, Complex!real coef)
     {
-        _g1V = gain.gain;
-        _g2V = gain.gain * coef;
+        _g1V = gain.asV;
+        _g2V = gain.asV * coef;
     }
 
 

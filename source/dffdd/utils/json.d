@@ -228,7 +228,7 @@ template JSONEnv(alias overloads)
 
     private string createFromJSONValueExceptionMsg(T)(JSONValue json)
     {
-        return "cannot convert to '" ~ T.stringof ~ "' from "`"` ~ toJSON(json) ~ `"`;
+        return "cannot convert to '" ~ T.stringof ~ "' from " ~ `"` ~ toJSON(json) ~ `"`;
     }
 
 

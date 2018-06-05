@@ -125,8 +125,8 @@ void mainJob()
 
         /// inr vs cancellation
         // static if(methodName.endsWith("_LS") || methodName == "IterativeFreqSIC_X")
-        foreach(learningSymbols; [10])
-        foreach(inr; iota(20, 95, 2))
+        foreach(learningSymbols; [100])
+        foreach(inr; iota(0, 12, 2))
         foreach(sf; [1])
         {
             ModelSeed modelSeed;
@@ -196,13 +196,13 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* TX IQ Mixer の設定 */
         {
             Random rnd = uniqueRandom(iTrial, "TXIQMixer");
-            model.txIQMixer.imbCoef = (1.0L / modelSeed.txIRR.gain) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
+            model.txIQMixer.imbCoef = (1.0L / modelSeed.txIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
         }
 
         /* RX IQ Mixer の設定 */
         {
             Random rnd = uniqueRandom(iTrial, "RXIQMixer");
-            model.rxIQMixer.imbCoef = (1.0L / modelSeed.rxIRR.gain) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
+            model.rxIQMixer.imbCoef = (1.0L / modelSeed.rxIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
         }
 
         /* チャネルの設定 */

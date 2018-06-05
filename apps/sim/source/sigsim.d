@@ -302,7 +302,7 @@ final class SimulatedSignals
         if(!_rxQZVGA.isNull)    g *= _rxQZVGA.gain;
 
         foreach(ref e; channel)
-            e *= g.gain;
+            e *= g.asV;
 
         return channel;
     }
@@ -363,16 +363,34 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).toWrappedRange;
 
-    dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
-    dst._txPAVGA = PowerControlAmplifierConverter!C((model.pa.TX_POWER.dBm - model.pa.GAIN.dB).dBm, 1e-2);
-    dst._txPARapp = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
+    if(model.useSTXIQ)
+        dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
+
+    if(model.useSTXPA){
+        dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
+        dst._txPARapp = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
+    }else{
+        dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
+    }
+
 
     dst._channel = FIRFilterConverter!C(model.channel.impulseResponse[0 .. model.channel.taps]);
-    dst._rxLNAVGA = PowerControlAmplifierConverter!C(model.thermalNoise.power(model) * model.lna.NF * model.INR, 1e-2);
-    dst._rxLNARapp = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3.dBm - 36).dB.gain);
-    dst._rxIQMixer = IQImbalanceConverter!C(0.dB, model.rxIQMixer.imbCoef);
-    dst._rxQZVGA = PowerControlAmplifierConverter!C((30 - model.ofdm.PAPR.dB + 4.76).dBm, 1e-2);
-    dst._rxQZ = SimpleQuantizerConverter!C(model.quantizer.numOfBits);
+    
+    Voltage receivedSIPower = model.thermalNoise.power(model) * model.lna.NF * model.INR;
+    if(model.useSRXLN){
+        dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
+        dst._rxLNARapp = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3 / 36.dBm).asV);
+    }else{
+        dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower * model.lna.GAIN, 1e-2);
+    }
+
+    if(model.useSRXIQ)
+        dst._rxIQMixer = IQImbalanceConverter!C(0.dB, model.rxIQMixer.imbCoef);
+
+    dst._rxQZVGA = PowerControlAmplifierConverter!C((30 - model.ofdm.PAPR.asdB + 4.76).dBm, 1e-2);
+
+    if(model.useSRXQZ)
+        dst._rxQZ = SimpleQuantizerConverter!C(model.quantizer.numOfBits);
 
     immutable snScaleOFDM = Gain.fromPowerGain(1.0L * model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier);
     immutable noisePowerPerSubcarrier = model.thermalNoise.power(model) * model.lna.NF / snScaleOFDM;

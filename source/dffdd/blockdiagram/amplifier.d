@@ -84,7 +84,7 @@ struct RappModelConverter(C)
 
     this(Gain gain, real smoothFactor, real saturation)
     {
-        _g = gain.gain;
+        _g = gain.asV;
         _s = smoothFactor;
         _o = saturation;
     }
@@ -168,7 +168,7 @@ struct VGAConverter(C)
 
     this(Gain gain)
     {
-        _gain1V = gain.gain;
+        _gain1V = gain.asV;
     }
 
 
