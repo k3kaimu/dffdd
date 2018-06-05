@@ -7,107 +7,9 @@ import std.math;
 enum real IMPEDANCE = 1.0;
 
 
-private
-bool isNaNCTFE(real x)
-{
-    return x != x;
-}
-
-unittest
-{
-    assert(!isNaNCTFE(1.0L));
-    assert(!isNaNCTFE(real.infinity));
-    assert(isNaNCTFE(real.nan));
-}
-
-
-private
-bool isInfinityCTFE(real x)
-{
-    return !isNaNCTFE(x) && x - x != 0;
-}
-
-unittest
-{
-    assert(!isInfinityCTFE(1.0L));
-    assert(!isInfinityCTFE(real.nan));
-    assert(isInfinityCTFE(real.infinity));
-    assert(isInfinityCTFE(-real.infinity));
-}
-
-
-private
-long floorStupid(real x)
-{
-    if(x % 1 == 0)
-        return cast(long)x;
-    else{
-        return (cast(long)x) + (x < 0 ? -1 : 0);
-    }
-}
-
-unittest
-{
-    assert(floorStupid(0) == 0);
-    assert(floorStupid(0.999) == 0);
-    assert(floorStupid(1) == 1);
-    assert(floorStupid(-1) == -1);
-    assert(floorStupid(-1.00001) == -2);
-    assert(floorStupid(-2.99999) == -3);
-}
-
-
-private
-real expCTFE(real x)
-{
-    if(isNaNCTFE(x))
-        return real.nan;
-    else if(x < 0)
-        return 1.0L / (expCTFE(-x));
-    else if(isInfinityCTFE(x) || x > int.max)
-        return real.infinity;
-    else if(x <= 1){
-        real r = 0;
-        real d = 1;
-
-        // マクローリン展開
-        foreach(i; 0 .. 10){
-            if(i != 0){
-                d *= x;
-                d /= i;
-            }
-            r += d;
-        }
-
-        return r;
-    }else{
-        immutable long n = floorStupid(x);
-        real r = 1;
-
-        // 整数部分の計算
-        foreach(i; 0 .. n)
-            r *= E;
-
-        // 整数部分と小数点以下の結果を掛け合わせる
-        return r * expCTFE(x - n);
-    }
-}
-
-unittest
-{
-    foreach(i; 0 .. 2000){
-        real r = i / 10.0L - 100;
-        assert(approxEqual(expCTFE(r), exp(r)));
-    }
-}
-
-
 Gain dB(real db)
 {
-    if(__ctfe)
-        return Gain(expCTFE(db / 20 * log(10.0L)));
-    else
-        return Gain(10.0^^(db/20));
+    return Gain(10.0^^(db/20));
 }
 
 
@@ -205,10 +107,7 @@ struct Voltage
     static
     Voltage fromdBm(real dbm)
     {
-        if(__ctfe)
-            return Voltage(sqrt(IMPEDANCE) * expCTFE((dbm - 30)/20 * log(10.0)));
-        else
-            return Voltage(sqrt(IMPEDANCE) * 10^^((dbm - 30)/20));
+        return Voltage(sqrt(IMPEDANCE) * 10^^((dbm - 30)/20));
     }
 
 
