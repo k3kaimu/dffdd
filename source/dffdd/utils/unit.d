@@ -15,6 +15,8 @@ Gain dB(real db)
 
 struct Gain
 {
+  pure nothrow @safe @nogc
+  {
     static
     Gain fromPowerGain(real g)
     {
@@ -29,50 +31,68 @@ struct Gain
     }
 
 
-    private this(real g1V) pure nothrow @safe @nogc
+    private this(real g1V)
     {
         _g1V = g1V;
     }
+  }
 
 
-  @property const
+  @property const pure nothrow @safe @nogc
   {
-    real dB() pure nothrow @safe @nogc
+    deprecated
+    real dB()
     {
         return 20 * log10(_g1V);
     }
 
 
+    deprecated
     real gain() pure nothrow @safe @nogc
     {
         return _g1V;
     }
 
 
-    // real gainP() pure nothrow @safe @nogc
-    // {
-    //    return _g1P;
-    // }
+    real asV() pure nothrow @safe @nogc
+    {
+        return _g1V;
+    }
+
+
+    real asP() pure nothrow @safe @nogc
+    {
+       return _g1V^^2;
+    }
+
+
+    real asdB() pure nothrow @safe @nogc
+    {
+        return 20 * log10(_g1V);
+    }
   }
 
 
-    Gain opBinary(string op : "*")(Gain g) const pure nothrow @safe @nogc
+  pure nothrow @safe @nogc 
+  {
+    Gain opBinary(string op : "*")(Gain g) const
     {
         return typeof(this)(_g1V * g._g1V);
     }
 
 
-    Gain opBinary(string op : "/")(Gain g) const pure nothrow @safe @nogc
+    Gain opBinary(string op : "/")(Gain g) const
     {
         return typeof(this)(_g1V / g._g1V);
     }
 
 
-    void opOpAssign(string op)(Gain g) pure nothrow @safe @nogc
+    void opOpAssign(string op)(Gain g)
     if(op == "*" || op == "/")
     {
         this = this.opBinary!op(g);
     }
+  }
 
 
     string toString() const
@@ -89,9 +109,9 @@ struct Gain
 unittest
 {
     import std.stdio;
-    assert(approxEqual(20.dB.gain, 10));
-    assert(approxEqual(Gain.fromPowerGain(100).gain, 10));
-    assert(approxEqual(Gain.fromVoltageGain(123).gain, 123));
+    assert(approxEqual(20.dB.asV, 10));
+    assert(approxEqual(Gain.fromPowerGain(100).asV, 10));
+    assert(approxEqual(Gain.fromVoltageGain(123).asV, 123));
 }
 
 
@@ -147,13 +167,13 @@ struct Voltage
 
     Voltage opBinary(string op : "*")(Gain g) const pure nothrow @safe @nogc
     {
-        return Voltage(this._g1V * g.gain());
+        return Voltage(this._g1V * g.asV);
     }
 
 
     Voltage opBinary(string op : "/")(Gain g) const pure nothrow @safe @nogc
     {
-        return Voltage(this._g1V / g.gain());
+        return Voltage(this._g1V / g.asV);
     }
 
 
