@@ -332,6 +332,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     }
 
     signals.ignoreDesired = true;
+    signals.ignoreSI = !model.withSI;
     {
         //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
         //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -467,72 +468,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
 
     if(model.outputBER)
-    {
-        signals.ignoreDesired = false;
-        scope(exit) signals.ignoreDesired = true;
-
-        size_t inpSize, outSize;
-        {
-            auto mod = modOFDM(model);
-            inpSize = mod.symInputLength;
-            outSize = mod.symOutputLength;
-        }
-
-        // 復調器の学習に必要
-        immutable numOfTrainingBits = model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / outSize * inpSize;
-
-        auto refBits = signals.desiredBaseband.save.connectToDemodulator(modOFDM(model), model);
-
-        real berResult = -1;
-        auto berCounter = makeInstrument(delegate void (FiberRange!(Complex!float) r){
-            auto bits = r
-            .connectTo!PowerControlAmplifier(Voltage(ofdmModSignalPower.sqrt))
-            .connectToDemodulator(modOFDM(model), model);
-
-            // 慣らし運転
-            bits.popFrontN(numOfTrainingBits);
-            refBits.popFrontN(numOfTrainingBits);
-
-            berResult = measureBER(bits, refBits, model.berCounter.totalBits);
-        });
-
-        auto rcvAfterSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_afterSIC.csv", resultDir, 0, model);
-        auto rcvBeforeSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_beforeIC.csv", resultDir, 0, model);
-
-        size_t loopCount;
-        while(berResult == -1){
-            ++loopCount;
-
-            signals.fillBuffer!(["txBaseband", "received"])(refrs, recvs);
-
-            if(model.withSIC && model.withSI)
-                filter.apply!(No.learning)(refrs, recvs, outps);
-            else
-                outps[] = recvs[];
-
-            foreach(e; outps){
-                berCounter.put(Complex!float(e.re, e.im));
-
-                // loopCountが10以上になるまで，慣らし運転する
-                if(loopCount > 10)
-                    rcvAfterSICPSD.put(e);
-            }
-
-            // loopCountが10以上になるまで，慣らし運転する
-            if(loopCount > 10)
-                foreach(e; recvs)
-                    rcvBeforeSICPSD.put(e);
-        }
-
-        if(resultDir !is null){
-            File file = File(buildPath(resultDir, "ber.csv"), "w");
-            file.writeln(berResult);
-        }
-
-        infoResult["ber"] = berResult;
-
-        // writefln("%s,%s,%2.0f,%2.0f,%s", model.withSI ? 1 : 0, model.withSIC ? 1 : 0, model.SNR.dB, model.INR.dB, berResult);
-    }
+        simulateMeasureBERImpl(filter, signals, model, infoResult, resultDir);
 
     // ノイズ電力
     auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
@@ -557,4 +493,134 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     }
 
     return infoResult;
+}
+
+
+
+void simulateMeasureBERImpl(Filter, Signals)(ref Filter filter, ref Signals signals, ref Model model, ref JSONValue infoResult, string resultDir)
+{
+    alias C = Complex!float;
+
+    signals.ignoreDesired = false;
+    scope(exit)
+        signals.ignoreDesired = true;
+
+    size_t inpSize, outSize;
+    {
+        auto mod = modOFDM(model);
+        inpSize = mod.symInputLength;
+        outSize = mod.symOutputLength;
+    }
+
+    // フィルタの学習
+    auto recvs = new C[model.blockSize],
+         refrs = new C[model.blockSize],
+         outps = new C[model.blockSize];
+
+    // 復調器の学習に必要
+    immutable numOfTrainingBits = model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / outSize * inpSize;
+
+    auto refBits = signals.desiredBaseband.save.connectToDemodulator(modOFDM(model), model);
+    auto refDes = signals.desiredBaseband.save;
+
+    real berResult = -1;
+    auto berCounter = makeInstrument(delegate void (FiberRange!C r){
+        auto bits = r
+        .connectTo(VGAConverter!C(Gain.fromVoltageGain(1 / signals.desiredSignalGain.asV)))
+        .connectToDemodulator(modOFDM(model), model);
+
+        // 慣らし運転
+        bits.popFrontN(numOfTrainingBits);
+        refBits.popFrontN(numOfTrainingBits);
+
+        berResult = measureBER(bits, refBits, model.berCounter.totalBits);
+    });
+
+
+    auto sumPs = new real[model.ofdm.numOfSubcarrier];
+    auto diffPs = new real[model.ofdm.numOfSubcarrier];
+    auto evms = new real[model.ofdm.numOfSubcarrier];
+    sumPs[] = 0;
+    diffPs[] = 0;
+    evms[] = 0;
+
+    real evmResult = -1;
+    auto evmOutput = makeInstrument(delegate void (FiberRange!C r){
+        import dffdd.mod.ofdm;
+        auto recdes = r.connectTo(VGAConverter!C(Gain.fromVoltageGain(1 / signals.desiredSignalGain.asV)));
+
+        immutable size_t N = model.numOfModelTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol;
+        auto ofdmmod = new OFDM!C(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+
+        auto buf1 = new C[model.ofdm.numOfSamplesOf1Symbol];
+        auto buf2 = new C[model.ofdm.numOfSamplesOf1Symbol];
+        auto scs1 = new C[model.ofdm.numOfSubcarrier];
+        auto scs2 = new C[model.ofdm.numOfSubcarrier];
+        recdes.popFrontN(N);
+        refDes.popFrontN(N);
+
+        foreach(i; 0 .. model.berCounter.evmSymbols)
+        {
+            // auto a = recdes.front;
+            // auto b = refDes.front;
+            foreach(j; 0 .. model.ofdm.numOfSamplesOf1Symbol){
+                buf1[j] = recdes.front;
+                recdes.popFront();
+                buf2[j] = refDes.front;
+                refDes.popFront();
+            }
+
+            ofdmmod.demodulate(buf1, scs1);
+            ofdmmod.demodulate(buf2, scs2);
+
+            foreach(j; 0 .. model.ofdm.numOfSubcarrier){
+                diffPs[j] += (scs1[j] - scs2[j]).sqAbs;
+                sumPs[j] += scs2[j].sqAbs;
+            }
+        }
+
+        evmResult = diffPs.sum() / sumPs.sum();
+        foreach(j; 0 .. model.ofdm.numOfSubcarrier)
+            evms[j] = diffPs[j] / sumPs[j];
+    });
+
+    auto rcvAfterSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_afterSIC.csv", resultDir, 0, model);
+    auto rcvBeforeSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_beforeIC.csv", resultDir, 0, model);
+
+    size_t loopCount;
+    while(berResult == -1 || evmResult == -1){
+        ++loopCount;
+
+        signals.fillBuffer!(["txBaseband", "received"])(refrs, recvs);
+
+        if(model.withSIC && model.withSI)
+            filter.apply!(No.learning)(refrs, recvs, outps);
+        else
+            outps[] = recvs[];
+
+        foreach(e; outps){
+            berCounter.put(Complex!float(e.re, e.im));
+            evmOutput.put(Complex!float(e.re, e.im));
+
+            // loopCountが10以上になるまで，慣らし運転する
+            if(loopCount > 10)
+                rcvAfterSICPSD.put(e);
+        }
+
+        // loopCountが10以上になるまで，慣らし運転する
+        if(loopCount > 10)
+            foreach(e; recvs)
+                rcvBeforeSICPSD.put(e);
+    }
+
+    if(resultDir !is null){
+        File file = File(buildPath(resultDir, "ber.csv"), "w");
+        file.writeln(berResult);
+        
+        file = File(buildPath(resultDir, "evm.csv"), "w");
+        file.writefln!"%(%s\n%)"(evms.map!(a => 10*log10(a)));
+    }
+
+    infoResult["ber"] = berResult;
+    infoResult["evm"] = evms;
 }

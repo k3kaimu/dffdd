@@ -150,6 +150,7 @@ struct Model
     struct BERCounter
     {
         ulong totalBits = 10_000_000;
+        ulong evmSymbols = 100_000;
     }
     BERCounter berCounter;
 

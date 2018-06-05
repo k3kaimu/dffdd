@@ -288,6 +288,17 @@ final class SimulatedSignals
     }
 
 
+    Gain desiredSignalGain() @property
+    {
+        Gain g = Gain.fromPowerGain(1);
+        if(!_rxDESVGA.isNull)   g *= _rxDESVGA.gain;
+        if(!_rxLNARapp.isNull)  g *= _rxLNARapp.linearGain;
+        if(!_rxIQMixer.isNull)  g *= _rxIQMixer.gain;
+        if(!_rxQZVGA.isNull)    g *= _rxQZVGA.gain;
+        return g;
+    }
+
+
     C[] linearSIChannel() @property
     {
         C[] channel = _channel.coefficients.dup;

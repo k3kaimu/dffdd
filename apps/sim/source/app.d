@@ -66,6 +66,9 @@ struct ModelSeed
 
     /* frequency domain iterative */
     uint iterNumOfIteration = 10;
+
+    /* measure only desired signal */
+    bool onlyDesired = false;
 }
 
 
@@ -91,7 +94,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 100;
+    enum numOfTrials = 1;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -107,12 +110,12 @@ void mainJob()
                                     "OPH_LS",
                                     // "OPH_LMS",
                                     
-                                    "WL_LS",
-                                    "L_LS",
+                                    // "WL_LS",
+                                    // "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
-                                    "SidelobeFwd_X",
-                                    "SidelobeInv_X"
+                                    // "SidelobeFwd_X",
+                                    // "SidelobeInv_X"
             ))
     {
         bool[string] dirset;
@@ -126,17 +129,24 @@ void mainJob()
         /// inr vs cancellation
         // static if(methodName.endsWith("_LS") || methodName == "IterativeFreqSIC_X")
         foreach(learningSymbols; [100])
-        foreach(inr; iota(0, 12, 2))
+        // foreach(inr; iota(0, 12, 2))
+        foreach(snr; iota(0, 21, 5))
         foreach(sf; [1])
+        foreach(siflag; [false, true])
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = inr.dB;
+            modelSeed.INR = 20.dB;
+            modelSeed.SNR = snr.dB;
+            modelSeed.onlyDesired = siflag;
+            import dffdd.mod.qam;
+            writefln("BER = %s at SNR = %sdB", berQAMFromSNR(snr, 16), snr);
+
             modelSeed.lnaSmoothFactor = sf;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ALL_inr_vs_canc", dir);
+            dir = buildPath("results_ALL_inr_vs_canc", dir ~ "_%s".format(siflag ? "withSI" : "onlyDesired"));
             dirset[dir] = true;
 
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
@@ -144,12 +154,12 @@ void mainJob()
     }
 
     import std.stdio;
-    import dffdd.mod.qam;
-    writefln("BER = %s at SNR = %sdB", berQAMFromSNR(11, 16), 11);
 
     //writefln("%s tasks will be submitted.", taskList.length);
     JobEnvironment env;
     tuthpc.taskqueue.run(taskList, env);
+    // foreach(i; 0 .. taskList.length)
+        // taskList[i]();
 }
 
 
@@ -170,6 +180,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         // model.rxIQMixer.IRR = modelSeed.rxIRR;
         model.basisFuncsSelection.noiseMargin = modelSeed.gamma;
         model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
+
+        model.withSI = !modelSeed.onlyDesired;
 
         // model.withSI = false;
         // model.withSIC = false;
@@ -263,9 +275,10 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     string dir;
     if(modelSeed.cancellerType.split("_")[0].endsWith("FHF"))
     {
-        dir = "TXP%s_inr%s_%s_SF%s_G%s_IRR%s_%s"
+        dir = "TXP%s_inr%s_snr%s_%s_SF%s_G%s_IRR%s_%s"
             .format(modelSeed.txPower,
                     modelSeed.INR,
+                    modelSeed.SNR,
                     modelSeed.cancellerType,
                     modelSeed.lnaSmoothFactor,
                     modelSeed.bfsNoiseMargin,
@@ -274,9 +287,10 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     }
     else
     {
-        dir = "TXP%s_inr%s_%s_SF%s_IRR%s_%s"
+        dir = "TXP%s_inr%s_snr%s_%s_SF%s_IRR%s_%s"
             .format(modelSeed.txPower,
                     modelSeed.INR,
+                    modelSeed.SNR,
                     modelSeed.cancellerType,
                     modelSeed.lnaSmoothFactor,
                     modelSeed.txIRR,

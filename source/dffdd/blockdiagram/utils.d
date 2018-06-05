@@ -31,6 +31,12 @@ template connectTo(alias Block)
 }
 
 
+auto connectTo(R, Block)(R r, Block block)
+{
+    return RangeAdapter!(Block, R)(r, block);
+}
+
+
 auto consume(R, X)(ref R range, X x)
 {
     import std.range;
