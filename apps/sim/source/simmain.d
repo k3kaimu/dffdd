@@ -332,7 +332,6 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     }
 
     signals.ignoreDesired = true;
-    signals.ignoreSI = !model.withSI;
     {
         //received.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
         //txReplica.popFrontN(model.ofdm.numOfSamplesOf1Symbol/2*5);
@@ -501,9 +500,12 @@ void simulateMeasureBERImpl(Filter, Signals)(ref Filter filter, ref Signals sign
 {
     alias C = Complex!float;
 
+    if(!model.withSI) signals.ignoreSI = true;
     signals.ignoreDesired = false;
-    scope(exit)
+    scope(exit){
+        signals.ignoreSI = false;
         signals.ignoreDesired = true;
+    }
 
     size_t inpSize, outSize;
     {

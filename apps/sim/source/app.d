@@ -349,6 +349,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     JSONValue jv = cast(JSONValue[string])null;
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
     jv["bers"] = resList.map!(a => a["ber"]).array();
+    jv["evms"] = resList.map!(a => a["evm"]).array();
     
     auto file = File(buildPath(dir, "allResult.json"), "w");
     file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
