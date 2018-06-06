@@ -105,6 +105,7 @@ struct NLopt
     void removeEqualityConstraits()
     {
         nlopt_remove_equality_constraints(_nlopt.handle);
+        allocedEqConList.length = 0;
     }
 
 
@@ -144,6 +145,7 @@ struct NLopt
 
         nlopt_opt handle;
         void*[] allocedIneqConList;
+        void*[] allocedEqConList;
     }
 
 
