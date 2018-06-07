@@ -47,7 +47,7 @@ struct ModelSeed
     Gain paGain = 28.5.dB;
 
     /* LNA */
-    uint lnaSmoothFactor = 3;
+    uint lnaSmoothFactor = 1;
 
     /* Other */
     Gain SNR = 11.dB;
@@ -69,6 +69,9 @@ struct ModelSeed
 
     /* measure only desired signal */
     bool onlyDesired = false;
+
+    bool outputBER = false;
+    bool outputEVM = false;
 }
 
 
@@ -94,7 +97,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 1;
+    enum numOfTrials = 21;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -107,15 +110,16 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    "OPH_LS",
+                                    "PH_LS",
                                     // "OPH_LMS",
                                     
                                     // "WL_LS",
                                     // "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
-                                    // "SidelobeFwd_X",
-                                    // "SidelobeInv_X"
+                                    "SidelobeFwd_X",
+                                    "SidelobeInv_X",
+                                    "SidelobeInv2_X",
             ))
     {
         bool[string] dirset;
@@ -126,36 +130,69 @@ void mainJob()
         }
 
 
-        /// inr vs cancellation
-        // static if(methodName.endsWith("_LS") || methodName == "IterativeFreqSIC_X")
-        foreach(learningSymbols; [100])
-        // foreach(inr; iota(0, 12, 2))
-        foreach(snr; iota(0, 21, 5))
-        foreach(sf; [1])
-        foreach(siflag; [false, true])
+        // only desired signal
+        static if(methodName == "OPH_LS")
+        foreach(snr; iota(0, 21, 1))
+        {
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.INR = 20.dB;
+            modelSeed.SNR = snr.dB;
+            modelSeed.onlyDesired = true;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results_ber", dir ~ "_onlyDesired");
+            dirset[dir] = true;
+            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
+
+
+        // learning symbols vs (EVM / SIC / BER)
+        foreach(learningSymbols; [5, 10, 15, 20])
+        foreach(inr; [50, 60, 70])
+        foreach(snr; [20])
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = 20.dB;
+            modelSeed.INR = inr.dB;
             modelSeed.SNR = snr.dB;
-            modelSeed.onlyDesired = siflag;
-            import dffdd.mod.qam;
-            writefln("BER = %s at SNR = %sdB", berQAMFromSNR(snr, 16), snr);
-
-            modelSeed.lnaSmoothFactor = sf;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ALL_inr_vs_canc", dir ~ "_%s".format(siflag ? "withSI" : "onlyDesired"));
+            dir = buildPath("results_ber", dir);
             dirset[dir] = true;
+            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
 
+
+        // INR vs (EVM / SIC)
+        foreach(learningSymbols; [5, 10, 15, 20])
+        foreach(inr; [60, 70])
+        foreach(snr; [20])
+        {
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.INR = inr.dB;
+            modelSeed.SNR = snr.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = true;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results", dir);
+            dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
     }
 
     import std.stdio;
 
-    //writefln("%s tasks will be submitted.", taskList.length);
+    // writefln("%s tasks will be submitted.", taskList.length);
     JobEnvironment env;
     tuthpc.taskqueue.run(taskList, env);
     // foreach(i; 0 .. taskList.length)

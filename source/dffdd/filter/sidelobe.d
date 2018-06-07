@@ -26,7 +26,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
     static assert(P == 2);
 
 
-    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX)
+    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX, Flag!"useNewton" useNewton = No.useNewton)
     {
         _nTr = trainingSymbols;
         _nIter = nIter;
@@ -35,6 +35,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
         _nCP = nCP;
         _nOS = nOS;
         _isInvertRX = cast(bool)isInvertRX;
+        _useNewton = cast(bool)useNewton;
 
         _fftw = makeFFTWObject!Complex(_nFFT * _nOS);
         _regenerator = new OverlapSaveRegenerator2!C(1, _nFFT * _nOS);
@@ -100,7 +101,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
     immutable size_t _nTr;
     immutable size_t _nIter;
     immutable size_t _nCP, _nFFT, _nOS, _nSC;
-    immutable bool _isInvertRX;
+    immutable bool _isInvertRX, _useNewton;
 
     FFTWObject!Complex _fftw;
     OverlapSaveRegenerator2!C _regenerator;
@@ -140,7 +141,22 @@ final class SidelobeIterativeWLNL(C, size_t P)
         if(_isInvertRX){
             foreach(ref e; outputs) {
                 e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
-                e -= _lnaCoefs[1] * e * e.sqAbs;
+
+                // invert distortion of LNA
+                if(_useNewton){
+                    // solve x + ax|x|^2 = y by Newton's method
+                    // where y = e
+                    //       a = _lnaCoefs[1]
+                    immutable C y = e;
+                    foreach(i; 0 .. 10)
+                    {
+                        C fx = e + e * e.sqAbs * _lnaCoefs[1] - y;
+                        C dfx = 1 + 2 * _lnaCoefs[1] * e.sqAbs;
+                        e -= fx / dfx;
+                    }
+                }else{
+                    e -= _lnaCoefs[1] * e * e.sqAbs;
+                }
             }
         }
 

@@ -76,6 +76,7 @@ struct Model
     size_t swappedSymbols = 0;
     bool outputWaveform = false;
     bool outputBER = true;
+    bool outputEVM = true;
 
     uint rndSeed = 114514;
 
@@ -150,7 +151,7 @@ struct Model
     struct BERCounter
     {
         ulong totalBits = 10_000_000;
-        ulong evmSymbols = 100_000;
+        ulong evmSymbols = 1000;
     }
     BERCounter berCounter;
 

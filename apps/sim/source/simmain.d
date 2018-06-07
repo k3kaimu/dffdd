@@ -228,10 +228,15 @@ auto makeFilter(string filterType)(Model model)
     import dffdd.filter.freqdomain;
     auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
   }
+  else static if(filterStructure.endsWith("SidelobeInv2"))
+  {
+    import dffdd.filter.sidelobe;
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, Yes.isInvertRX, Yes.useNewton);
+  }
   else static if(filterStructure.endsWith("SidelobeInv"))
   {
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, Yes.isInvertRX);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, Yes.isInvertRX, No.useNewton);
   }
   else static if(filterStructure.endsWith("SidelobeFwd"))
   {
@@ -466,8 +471,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     }
 
 
-    if(model.outputBER)
-        simulateMeasureBERImpl(filter, signals, model, infoResult, resultDir);
+    if(model.outputBER || model.outputEVM)
+        simulateMeasureBEREVMImpl(filter, signals, model, infoResult, resultDir);
 
     // ノイズ電力
     auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
@@ -496,7 +501,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
 
 
-void simulateMeasureBERImpl(Filter, Signals)(ref Filter filter, ref Signals signals, ref Model model, ref JSONValue infoResult, string resultDir)
+void simulateMeasureBEREVMImpl(Filter, Signals)(ref Filter filter, ref Signals signals, ref Model model, ref JSONValue infoResult, string resultDir)
 {
     alias C = Complex!float;
 
@@ -589,6 +594,12 @@ void simulateMeasureBERImpl(Filter, Signals)(ref Filter filter, ref Signals sign
     auto rcvAfterSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_afterSIC.csv", resultDir, 0, model);
     auto rcvBeforeSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_beforeIC.csv", resultDir, 0, model);
 
+    if(!model.outputEVM)
+        evmResult = 1;
+
+    if(!model.outputBER)
+        berResult = 1;
+
     size_t loopCount;
     while(berResult == -1 || evmResult == -1){
         ++loopCount;
@@ -601,8 +612,8 @@ void simulateMeasureBERImpl(Filter, Signals)(ref Filter filter, ref Signals sign
             outps[] = recvs[];
 
         foreach(e; outps){
-            berCounter.put(Complex!float(e.re, e.im));
-            evmOutput.put(Complex!float(e.re, e.im));
+            if(model.outputBER) berCounter.put(Complex!float(e.re, e.im));
+            if(model.outputEVM) evmOutput.put(Complex!float(e.re, e.im));
 
             // loopCountが10以上になるまで，慣らし運転する
             if(loopCount > 10)
