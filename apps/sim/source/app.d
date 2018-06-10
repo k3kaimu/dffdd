@@ -65,7 +65,8 @@ struct ModelSeed
     uint bfsNumOfEst = 2;
 
     /* frequency domain iterative */
-    uint iterNumOfIteration = 10;
+    uint iterNumOfIteration = 3;
+    uint iterNumOfNewton = 1;
 
     /* measure only desired signal */
     bool onlyDesired = false;
@@ -85,10 +86,10 @@ void mainJob()
 
     auto setRLSLMSParam(ref ModelSeed model)
     {
-        if(model.cancellerType.startsWith("OPH")) {
+        if(model.cancellerType.startsWith("PH")) {
             model.rlsDelta = 0.1;
-            model.rlsLambda = 1 - 1.5E-3;
-            model.nlmsMu = 0.33;
+            model.rlsLambda = 1;
+            model.nlmsMu = 0.5;
         } else {
             model.rlsDelta = 4E-7;
             model.rlsLambda = 1;
@@ -97,7 +98,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 21;
+    enum numOfTrials = 101;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -110,7 +111,9 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    // "PH_LS",
+                                    "PH_LS",
+                                    // "PH_RLS",
+                                    // "PH_RLS",
                                     // "OPH_LMS",
                                     
                                     // "WL_LS",
@@ -118,7 +121,7 @@ void mainJob()
                                     
                                     // "IterativeFreqSIC_X",
                                     "SidelobeFwd_X",
-                                    "SidelobeInv_X",
+                                    // "SidelobeInv_X",
                                     "SidelobeInv2_X",
             ))
     {
@@ -127,6 +130,46 @@ void mainJob()
         scope(exit){
             enforce(appender.length == dirset.length);
             taskList ~= appender;
+        }
+
+
+        /* change the number of iterations */
+        static if(methodName == "SidelobeInv2_X")
+        foreach(nIters; iota(1, 11))
+        {
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfIteration = nIters;
+            modelSeed.iterNumOfNewton = 10;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results_estimate_iters", dir ~ format("_%s", nIters));
+            dirset[dir] = true;
+            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
+
+
+        /* change the number of newton's method loop */
+        static if(methodName == "SidelobeInv2_X")
+        foreach(newtonIters; iota(0, 11))
+        {
+            ModelSeed modelSeed;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfIteration = 10;
+            modelSeed.iterNumOfNewton = newtonIters;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results_newton_iters", dir ~ format("_%s", newtonIters));
+            dirset[dir] = true;
+            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
@@ -151,40 +194,35 @@ void mainJob()
 
 
         // learning symbols vs (EVM / SIC / BER)
-        foreach(learningSymbols; [5, 10, 15, 20])
-        foreach(inr; [50, 60, 70])
-        foreach(snr; [20])
+        foreach(learningSymbols; iota(2, 11))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = inr.dB;
-            modelSeed.SNR = snr.dB;
+            modelSeed.INR = 60.dB;
+            modelSeed.SNR = 20.dB;
             modelSeed.outputBER = true;
             modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ber_lastWL", dir);
+            dir = buildPath("results_ber", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
-        // INR vs (EVM / SIC)
-        foreach(learningSymbols; [5, 10, 15, 20])
-        foreach(inr; [50, 60, 70])
-        foreach(snr; [20])
+        // INR vs (EVM / SIC / BER)
+        foreach(inr; iota(20, 82, 2))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = inr.dB;
-            modelSeed.SNR = snr.dB;
-            modelSeed.outputBER = false;
+            modelSeed.outputBER = true;
             modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_lastWL", dir);
+            dir = buildPath("results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -285,7 +323,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
             model.outputWaveform = false;
 
             // BERの出力
-            model.outputBER = true;
+            model.outputBER = modelSeed.outputBER;
+            model.outputEVM = modelSeed.outputEVM;
 
             if(methodName.canFind("DCM")) {
                 model.learningSymbols = 10;
@@ -300,6 +339,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
             model.rlsAdapter.lambda = modelSeed.rlsLambda;
             model.nlmsAdapter.mu = modelSeed.nlmsMu;
             model.iterativeFreqSIC.iterations = modelSeed.iterNumOfIteration;
+            model.iterativeFreqSIC.newtonIterations = modelSeed.iterNumOfNewton;
         }
     }
 
@@ -385,8 +425,8 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 
     JSONValue jv = cast(JSONValue[string])null;
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
-    jv["bers"] = resList.map!(a => a["ber"]).array();
-    jv["evms"] = resList.map!(a => a["evm"]).array();
+    if(modelSeed.outputBER) jv["bers"] = resList.map!(a => a["ber"]).array();
+    if(modelSeed.outputEVM) jv["evms"] = resList.map!(a => a["evm"]).array();
     
     auto file = File(buildPath(dir, "allResult.json"), "w");
     file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));

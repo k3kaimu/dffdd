@@ -284,6 +284,7 @@ struct Model
     struct IterativeFreqSIC
     {
         size_t iterations = 2;
+        size_t newtonIterations = 2;
     }
     IterativeFreqSIC iterativeFreqSIC;
 
