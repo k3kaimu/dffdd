@@ -129,7 +129,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
             if(_nBufferedSymbols == _nTr) {
                 foreach(iIter; 0 .. _nIter) {
                     estimateWLModel();
-                    estimateNLCoefs();
+                    if(iIter != _nIter - 1) estimateNLCoefs();  // 最後は非線形学習を行わない
                 }
             }
         }

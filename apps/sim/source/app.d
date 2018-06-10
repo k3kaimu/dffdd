@@ -110,7 +110,7 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    "PH_LS",
+                                    // "PH_LS",
                                     // "OPH_LMS",
                                     
                                     // "WL_LS",
@@ -131,7 +131,7 @@ void mainJob()
 
 
         // only desired signal
-        static if(methodName == "OPH_LS")
+        static if(methodName == "PH_LS")
         foreach(snr; iota(0, 21, 1))
         {
             ModelSeed modelSeed;
@@ -164,7 +164,7 @@ void mainJob()
             modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ber", dir);
+            dir = buildPath("results_ber_lastWL", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -172,7 +172,7 @@ void mainJob()
 
         // INR vs (EVM / SIC)
         foreach(learningSymbols; [5, 10, 15, 20])
-        foreach(inr; [60, 70])
+        foreach(inr; [50, 60, 70])
         foreach(snr; [20])
         {
             ModelSeed modelSeed;
@@ -184,7 +184,7 @@ void mainJob()
             modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results", dir);
+            dir = buildPath("results_lastWL", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
