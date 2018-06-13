@@ -142,22 +142,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
         if(_isInvertRX){
             foreach(ref e; outputs) {
                 e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
-
-                // invert distortion of LNA
-                // if(_useNewton){
-                //     // solve x + ax|x|^2 = y by Newton's method
-                //     // where y = e
-                //     //       a = _lnaCoefs[1]
-                //     immutable C y = e;
-                //     foreach(i; 0 .. _nNewtonIter)
-                //     {
-                //         C fx = e + e * e.sqAbs * _lnaCoefs[1] - y;
-                //         C dfx = 1 + 2 * _lnaCoefs[1] * e.sqAbs;
-                //         e -= fx / dfx;
-                //     }
-                // }else{
-                //     e -= _lnaCoefs[1] * e * e.sqAbs;
-                // }
                 e = invertPoly(e, C(_lnaCoefs[1]));
             }
         }
@@ -191,48 +175,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
     C[][2] removeHighOrderNL() const
     {
-        // // IQミキサ
-        // void applyIQMixer(ref C[] s, Complex!real c) {
-        //     foreach(ref e; s) e += c * e.conj;
-        // }
-
-        // // アンプ
-        // void applyAmplifierNL(ref C[] s, size_t p, Complex!real c) {
-        //     foreach(ref e; s) e *= c * e.sqAbs^^p;
-        // }
-
-        // // チャネル (OWS法)
-        // void applyChannel(ref C[] s) {
-        //     auto regen = new OverlapSaveRegenerator2!C(1, _nFFT * _nOS);
-        //     auto state = RegeneratorMISOState(this, _nFFT * _nOS);
-        //     regen.apply(state, s.map!"[a]".array(), s);
-        // }
-
-        // // 除去
-        // void applyRemove(C[] from, C[] src) {
-        //     foreach(i, ref e; from) e -= src[i];
-        // }
-
-
-        // auto removed = _receives.dup;
-        // foreach(p; 1 .. P) {
-        //     // Mixer -> TXAmp -> Channel -> Mixerの成分を消す
-        //     auto signal = _transmits.dup;
-        //     applyIQMixer(signal, _iqTX);
-        //     applyAmplifierNL(signal, p, _paCoefs[p]);
-        //     applyChannel(signal);
-        //     applyIQMixer(signal, _iqRX);
-        //     applyRemove(removed, signal);
-
-        //     // Mixer -> Channel -> RXAmp -> Mixerの成分を消す
-        //     signal = _transmits.dup;
-        //     applyIQMixer(signal, _iqTX);
-        //     applyChannel(signal);
-        //     applyAmplifierNL(signal, p, _lnaCoefs[p]);
-        //     applyIQMixer(signal, _iqRX);
-        //     applyRemove(removed, signal);
-        // }
-
         auto txs = _transmits.dup;
         foreach(ref e; txs) {
             e += e.conj * _iqTX;
@@ -243,17 +185,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
         auto rxs = _receives.dup;
         foreach(ref e; rxs) {
             e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
-
-            // // newton's method
-            // immutable C y = e;
-            // foreach(i; 0 .. _nNewtonIter)
-            // {
-            //     C fx = e + e * e.sqAbs * _lnaCoefs[1] - y;
-            //     C dfx = 1 + 2 * _lnaCoefs[1] * e.sqAbs;
-            //     e -= fx / dfx;
-            // }
             e = invertPoly(e, C(_lnaCoefs[1]));
-
             e += e.conj * _iqRX;
         }
 
@@ -264,66 +196,77 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
     void estimateWLModel()
     {
-        // auto removedNLY = removeHighOrderNL()[_nCP*_nOS-1 .. $];   
+        import std.stdio;
+        immutable nSym = (_nFFT + _nCP) * _nOS;
         auto removedNLXY = removeHighOrderNL();
-        auto txs = removedNLXY[0];
-        auto rxs = removedNLXY[1][_nCP*_nOS-1 .. $];        // 先頭からnCP-1分は消す
+        auto txs = removedNLXY[0][_nCP*_nOS .. $];
+        auto rxs = removedNLXY[1][_nCP*_nOS .. $];        // 先頭からCPは消す
 
-        auto mx = slice!C(_nCP*_nOS*2, rxs.length);
-        foreach(i; 0 .. rxs.length) {
-            foreach(j; 0 .. _nCP*_nOS){
-                // j=0でi+_nCP-1にするためi+_nCP-1-jとなる
-                mx[j, i]      = txs[i+_nCP*_nOS-1-j];
-                mx[j+_nCP*_nOS, i] = txs[i+_nCP*_nOS-1-j].conj;
+
+        C[][] freqTX;
+        C[][] freqRX;
+        foreach(i; 0 .. _nTr) {
+            _fftw.inputs!R[] = txs[i*nSym .. i*nSym + _nFFT * _nOS];
+            _fftw.fft!R();
+            freqTX ~= _fftw.outputs!R.dup;
+
+            _fftw.inputs!R[] = rxs[i*nSym .. i*nSym + _nFFT * _nOS];
+            _fftw.fft!R();
+            freqRX ~= _fftw.outputs!R.dup;
+        }
+
+        // H_10(f), H_01(f)を推定する
+        C[2][size_t] hlist;
+        {
+            foreach(f; getSCIndex4IQ()){
+                immutable invf = (f == 0 ? 0 : (_nFFT * _nOS)-f);
+
+                auto h = leastSquareEstimate2(freqTX.map!(a => a[f]),
+                                              freqTX.map!(a => a[invf].conj),
+                                              freqRX.map!(a => a[f]));
+                
+                hlist[f] = h;
             }
         }
 
-        // 最小二乗法でWLのインパルス応答を求める
-        // [0 .. _nCP]にxに対するh_1[k], [_nCP .. 2*_nCP]にconj(x)に対するh_2[k]
-        auto estimatedWLH = leastSquareEstimate(mx, rxs.dup);
-        auto h1 = estimatedWLH[0 .. _nCP*_nOS];
-        auto h2 = estimatedWLH[_nCP*_nOS .. _nCP*_nOS * 2];
+        // H_10(f), H_01(f)から係数を推定する
+        {
+            auto ks = hlist.keys;
+            auto invks = ks.zip(repeat(_nFFT * _nOS)).map!"a[0] == 0 ? 0 : a[1] - a[0]";
+            auto iqtxrx = leastSquareEstimate2(ks.zip(hlist.repeat).map!"a[1][a[0]][0]",
+                                               invks.zip(hlist.repeat).map!(a => a[1][a[0]][0].conj),
+                                               ks.zip(hlist.repeat).map!"a[1][a[0]][1]");
+            _iqTX = iqtxrx[0];
+            _iqRX = iqtxrx[1];
+        }
 
-        // h1とh2からIQImbalanceの係数_iqTX, _iqRXを推定
-        auto iqTXRX = leastSquareEstimate2(h1, h1.map!conj, h2);
-        _iqTX = iqTXRX[0];
-        _iqRX = iqTXRX[1];
+        // 係数を使ってチャネルを推定する
+        {
+            txs = removedNLXY[0];
+            rxs = removedNLXY[1][_nCP*_nOS-1 .. $];        // 先頭からCPは消す
 
-        // h1, h2, iqTX, iqRXからチャネルhを推定
-        auto h = new Complex!double[_nCP*_nOS];
-        foreach(i; 0 .. _nCP*_nOS)
-            h[i] = (h1[i] - _iqTX.conj * _iqRX * h1[i].conj) / (1 - _iqTX.sqAbs * _iqRX.sqAbs);
+            foreach(ref e; txs)
+                e += e.conj * _iqTX;
+            
+            foreach(ref e; rxs)
+                e = (e - e.conj * _iqRX) / (1 -_iqRX.sqAbs);
 
-        // インパルス応答hから周波数応答Hに変換
-        _fftw.inputs!double[0 .. _nCP*_nOS] = h[0 .. $];
-        _fftw.inputs!double[_nCP*_nOS .. $] = complexZero!(Complex!double);
-        _fftw.fft!double();
-        _channelFreqResponse[] = _fftw.outputs!double[];
+            auto mx = slice!C(_nCP*_nOS, rxs.length);
+            foreach(i; 0 .. rxs.length) {
+                foreach(j; 0 .. _nCP*_nOS){
+                    mx[j, i] = txs[i+j];
+                }
+            }
+
+            auto estimatedH = leastSquareEstimate(mx, rxs);
+            estimatedH.reverse();
+            foreach(i, ref e; _fftw.inputs!double[0 .. _nCP*_nOS])
+                e = estimatedH[i];
+            _fftw.inputs!double[_nCP*_nOS .. $] = complexZero!(Complex!double);
+            _fftw.fft!double();
+            _channelFreqResponse[] = _fftw.outputs!double[];
+        }
         
-        // // 受信IQミキサの効果を打ち消す
-        // foreach(ref e; removedNLY) e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
-        // // 送信IQミキサの効果を付与
-        // auto txIQI = _transmits.dup;
-        // foreach(ref e; txIQI) e = e + _iqTX * e.conj;
-
-        // auto mxL = slice!C(_nCP*_nOS, removedNLY.length);
-        // foreach(i; 0 .. removedNLY.length) {
-        //     foreach(j; 0 .. _nCP*_nOS){
-        //         // j=0でi+_nCP-1にするためi+_nCP-1-jとなる
-        //         mxL[j, i]      = txIQI[i+_nCP*_nOS-1-j];
-        //     }
-        // }
-
-        // import std.algorithm : stdmap = map;
-        // auto estimatedL = leastSquareEstimate(mxL, removedNLY);
-        // auto h = estimatedL[0 .. _nCP*_nOS].stdmap!(a => Complex!double(a)).array();
-        // // インパルス応答hから周波数応答Hに変換
-        // _fftw.inputs!double[0 .. _nCP*_nOS] = h[0 .. $];
-        // _fftw.inputs!double[_nCP*_nOS .. $] = complexZero!(Complex!double);
-        // _fftw.fft!double();
-        // _channelFreqResponse[] = _fftw.outputs!double[];
-        // import std.stdio;
-        // writeln(_channelFreqResponse[0 .. 4]);
     }
 
 
@@ -386,6 +329,17 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 freqY[i][f] -= freqPsiY[p][i][f] * _lnaCoefs[p];
             }
         }
+    }
+
+
+    auto getSCIndex4IQ()
+    {
+        size_t n = _nSC;
+
+        n /= 2;
+        auto r1 = iota(1, 1 + n);
+        auto r2 = iota(_nFFT * _nOS - n, _nFFT * _nOS);
+        return r1.chain(r2);
     }
 
 

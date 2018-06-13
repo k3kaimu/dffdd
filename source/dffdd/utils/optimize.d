@@ -1,5 +1,6 @@
 module dffdd.utils.optimize;
 
+__EOF__
 
 import std.math;
 import std.complex;
@@ -75,7 +76,7 @@ struct NLopt
 
     void setUpperBounds1(double ub)
     {
-        nlopt_set_upper_bounds(_nlopt.handle, ub)
+        nlopt_set_upper_bounds(_nlopt.handle, ub);
     }
 
 
