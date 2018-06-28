@@ -133,6 +133,7 @@ void mainJob()
         }
 
 
+        
         /* change the number of iterations */
         static if(methodName == "SidelobeInv2_X")
         foreach(nIters; iota(1, 11))
@@ -191,15 +192,16 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-
+        
 
         // learning symbols vs (EVM / SIC / BER)
-        foreach(learningSymbols; iota(2, 11))
+        foreach(inr; iota(50, 62, 2))
+        foreach(learningSymbols; iota(2, 21))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = 60.dB;
+            modelSeed.INR = inr.dB;
             modelSeed.SNR = 20.dB;
             modelSeed.outputBER = true;
             modelSeed.outputEVM = true;
@@ -210,7 +212,7 @@ void mainJob()
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-
+        
         // INR vs (EVM / SIC / BER)
         foreach(inr; iota(20, 82, 2))
         {

@@ -97,11 +97,15 @@ struct QAM(C)
             if(inpIm <= 0) inpIm = 0;
             if(inpIm > _L-1) inpIm = _L-1;
 
+            import std.algorithm : min, max;
+            immutable ptrdiff_t rIdx = min(max(0, cast(ptrdiff_t)inpRe), _L-1);
+            immutable ptrdiff_t iIdx = min(max(0, cast(ptrdiff_t)inpIm), _L-1);
+
             //import std.stdio;
             //writeln(inpRe, ", ", inpIm);
 
-            outputs[i*_k .. i*_k + _k/2] = _grayCode[cast(size_t)inpRe];
-            outputs[i*_k + _k/2 .. (i+1)*_k] = _grayCode[cast(size_t)inpIm];
+            outputs[i*_k .. i*_k + _k/2] = _grayCode[rIdx];
+            outputs[i*_k + _k/2 .. (i+1)*_k] = _grayCode[iIdx];
         }
 
         return outputs;
