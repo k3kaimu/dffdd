@@ -98,7 +98,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 101;
+    enum numOfTrials = 11;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -111,7 +111,7 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    "PH_LS",
+                                    // "PH_LS",
                                     // "PH_RLS",
                                     // "PH_RLS",
                                     // "OPH_LMS",
@@ -120,7 +120,7 @@ void mainJob()
                                     // "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
-                                    "SidelobeFwd_X",
+                                    // "SidelobeFwd_X",
                                     // "SidelobeInv_X",
                                     "SidelobeInv2_X",
             ))
@@ -133,7 +133,6 @@ void mainJob()
         }
 
 
-        
         /* change the number of iterations */
         static if(methodName == "SidelobeInv2_X")
         foreach(nIters; iota(1, 11))
@@ -154,6 +153,7 @@ void mainJob()
         }
 
 
+        /+
         /* change the number of newton's method loop */
         static if(methodName == "SidelobeInv2_X")
         foreach(newtonIters; iota(0, 11))
@@ -172,8 +172,10 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
 
 
+        /+
         // only desired signal
         static if(methodName == "PH_LS")
         foreach(snr; iota(0, 21, 1))
@@ -192,8 +194,10 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        
+        +/
 
+
+        /+
         // learning symbols vs (EVM / SIC / BER)
         foreach(inr; iota(50, 62, 2))
         foreach(learningSymbols; iota(2, 21))
@@ -203,14 +207,15 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
             modelSeed.SNR = 20.dB;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("results_ber", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
 
         
         // INR vs (EVM / SIC / BER)
@@ -220,14 +225,33 @@ void mainJob()
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = inr.dB;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+
+        /+
+        // TXP vs (EVM. SIC /  BER)
+        foreach(txp; iota(10, 32, 1)) {
+            ModelSeed modelSeed;
+            modelSeed.txPower = txp.dBm;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.INR = ((txp - 23)+50).dB;
+            modelSeed.txPower = txp.dBm;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath("results_txp_vs_sic", dir);
+            dirset[dir] = true;
+            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
+        +/
     }
 
     import std.stdio;
@@ -297,13 +321,13 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channel.taps = 64;
+            model.channel.taps = 48;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
             foreach(i; 0 .. model.channel.taps){
-                // 64タップで40dB減衰
-                auto db = -1 * (40.0 / 64.0) * i;
+                // tapsのタップ数で40dB減衰
+                auto db = -1 * (40.0 / model.channel.taps) * i;
                 coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
                 gGen.popFront();
             }
@@ -314,7 +338,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* キャンセラの設定 */
         {
             model.orthogonalizer.numOfTrainingSymbols = 10000;
-            model.firFilter.taps = 64;
+            model.firFilter.taps = model.channel.taps;
 
             if(methodName[0] == 'O')
                 model.orthogonalizer.enabled = true;

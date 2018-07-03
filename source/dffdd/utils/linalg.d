@@ -392,6 +392,27 @@ Complex!R[] leastSquareEstimate(R : double)(Slice!(Contiguous, [2], Complex!R*) 
 
 
 /**
+y = mat * xを最小二乗法で求めます．
+つまり
+x = (mat^H * mat)^{-1} * mat^H * y
+を計算します．
+ここで，`*`は行列積を示します．
+leastSquareEstimateとの違いは，`mx`は`mat`を転置した行列になっています．
+*/
+C[] leastSquareEstimateSimple(C)(in C[][] mat, in C[] y)
+{
+    if(mat.length == 0 || mat[0].length == 0) return null;
+
+    auto mx = slice!C(mat[0].length, mat.length);
+    foreach(i; 0 .. mat[0].length)
+        foreach(j; 0 .. mat.length)
+            mx[i, j] = mat[j][i];
+
+    return leastSquareEstimate(mx, y.dup);
+}
+
+
+/**
 パラメータ数2個の最小二乗問題をときます
 */
 Unqual!(ElementType!R1)[2] leastSquareEstimate2(R1, R2, R3)(R1 x1, R2 x2, R3 y)

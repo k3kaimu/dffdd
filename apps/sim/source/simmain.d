@@ -231,17 +231,17 @@ auto makeFilter(string filterType)(Model model)
   else static if(filterStructure.endsWith("SidelobeInv2"))
   {
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, Yes.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations);
   }
   else static if(filterStructure.endsWith("SidelobeInv"))
   {
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, Yes.isInvertRX, No.useNewton, model.iterativeFreqSIC.newtonIterations);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, No.useNewton, model.iterativeFreqSIC.newtonIterations);
   }
   else static if(filterStructure.endsWith("SidelobeFwd"))
   {
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, No.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, No.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations);
   }
   else static if(filterStructure.endsWith("WLFHF"))
   {

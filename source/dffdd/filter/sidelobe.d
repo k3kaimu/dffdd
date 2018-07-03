@@ -26,7 +26,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
     static assert(P == 2);
 
 
-    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX, Flag!"useNewton" useNewton = No.useNewton, size_t nNewtonIter = 10)
+    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, size_t nImpulseTaps, Flag!"isChFreqEst" isChFreqEst = Yes.isChFreqEst, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX, Flag!"useNewton" useNewton = No.useNewton, size_t nNewtonIter = 10)
     {
         _nTr = trainingSymbols;
         _nIter = nIter;
@@ -35,6 +35,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
         _nFFT = nFFT;
         _nCP = nCP;
         _nOS = nOS;
+        _nImpulseTaps = nImpulseTaps;
+        _isChFreqEst = cast(bool)isChFreqEst;
         _isInvertRX = cast(bool)isInvertRX;
         _useNewton = cast(bool)useNewton;
 
@@ -102,7 +104,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
     immutable size_t _nTr;
     immutable size_t _nIter, _nNewtonIter;
     immutable size_t _nCP, _nFFT, _nOS, _nSC;
-    immutable bool _isInvertRX, _useNewton;
+    immutable size_t _nImpulseTaps;
+    immutable bool _isChFreqEst, _isInvertRX, _useNewton;
 
     FFTWObject!Complex _fftw;
     OverlapSaveRegenerator2!C _regenerator;
@@ -129,7 +132,10 @@ final class SidelobeIterativeWLNL(C, size_t P)
             // 学習用の信号が溜まったら，一度に学習する
             if(_nBufferedSymbols == _nTr) {
                 foreach(iIter; 0 .. _nIter) {
-                    estimateWLModel();
+                    // estimateChannel();
+                    // estimateIQImbalance();
+                    estimateIQImbalance();
+                    estimateChannel();
                     estimateNLCoefs();
                 }
             }
@@ -194,9 +200,87 @@ final class SidelobeIterativeWLNL(C, size_t P)
     }
 
 
-    void estimateWLModel()
+    void estimateChannel()
     {
-        import std.stdio;
+        immutable nSym = (_nFFT + _nCP) * _nOS;
+        auto removedNLXY = removeHighOrderNL();
+        auto txs = removedNLXY[0];
+        auto rxs = removedNLXY[1];        // 先頭からCPは消す
+
+        foreach(ref e; txs)
+            e += e.conj * _iqTX;
+        
+        foreach(ref e; rxs)
+            e = (e - e.conj * _iqRX) / (1 -_iqRX.sqAbs);
+
+        if(_isChFreqEst) {
+            txs = txs[_nCP*_nOS .. $];
+            rxs = rxs[_nCP*_nOS .. $];
+
+            C[][] txsFreq;
+            C[][] rxsFreq;
+            foreach(i; 0 .. _nTr) {
+                _fftw.inputs!R[] = txs[i*nSym .. i*nSym + _nFFT*_nOS];
+                _fftw.fft!R();
+                txsFreq ~= _fftw.outputs!R.dup;
+
+                _fftw.inputs!R[] = rxs[i*nSym .. i*nSym + _nFFT*_nOS];
+                _fftw.fft!R();
+                rxsFreq ~= _fftw.outputs!R.dup;
+            }
+
+            auto freqs = (){
+                auto fpos = iota(1, _nSC/2+1);
+                auto fs = fpos.array();
+                foreach(f; fpos)
+                    fs ~= _nFFT*_nOS - f;
+                return fs;
+            }();
+
+            // import std.stdio;
+            // writeln(freqs);
+
+            C[] estFreqResp;
+            foreach(k; freqs) {
+                C corrSum = C(0, 0);
+                C sqSum = C(0, 0);
+                foreach(i; 0 .. _nTr) {
+                    corrSum += rxsFreq[i][k] * txsFreq[i][k].conj;
+                    sqSum += txsFreq[i][k].sqAbs;
+                }
+
+                estFreqResp ~= corrSum / sqSum;
+            }
+
+            auto impResp = estimateImpulseResponseFromFrequencyResponse(_nFFT*_nOS, _nImpulseTaps, estFreqResp, freqs);
+            foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
+                e = impResp[i];
+            _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
+            _fftw.fft!double();
+            _channelFreqResponse[] = _fftw.outputs!double[];
+        }else{
+            rxs = rxs[_nImpulseTaps-1 .. $];
+
+            auto mx = slice!C(_nImpulseTaps, rxs.length);
+            foreach(i; 0 .. rxs.length) {
+                foreach(j; 0 .. _nImpulseTaps){
+                    mx[j, i] = txs[i+j];
+                }
+            }
+
+            auto estimatedH = leastSquareEstimate(mx, rxs);
+            estimatedH.reverse();
+            foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
+                e = estimatedH[i];
+            _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
+            _fftw.fft!double();
+            _channelFreqResponse[] = _fftw.outputs!double[];
+        }
+    }
+
+
+    void estimateIQImbalance()
+    {
         immutable nSym = (_nFFT + _nCP) * _nOS;
         auto removedNLXY = removeHighOrderNL();
         auto txs = removedNLXY[0][_nCP*_nOS .. $];
@@ -239,34 +323,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
             _iqTX = iqtxrx[0];
             _iqRX = iqtxrx[1];
         }
-
-        // 係数を使ってチャネルを推定する
-        {
-            txs = removedNLXY[0];
-            rxs = removedNLXY[1][_nCP*_nOS-1 .. $];        // 先頭からCPは消す
-
-            foreach(ref e; txs)
-                e += e.conj * _iqTX;
-            
-            foreach(ref e; rxs)
-                e = (e - e.conj * _iqRX) / (1 -_iqRX.sqAbs);
-
-            auto mx = slice!C(_nCP*_nOS, rxs.length);
-            foreach(i; 0 .. rxs.length) {
-                foreach(j; 0 .. _nCP*_nOS){
-                    mx[j, i] = txs[i+j];
-                }
-            }
-
-            auto estimatedH = leastSquareEstimate(mx, rxs);
-            estimatedH.reverse();
-            foreach(i, ref e; _fftw.inputs!double[0 .. _nCP*_nOS])
-                e = estimatedH[i];
-            _fftw.inputs!double[_nCP*_nOS .. $] = complexZero!(Complex!double);
-            _fftw.fft!double();
-            _channelFreqResponse[] = _fftw.outputs!double[];
-        }
-        
     }
 
 

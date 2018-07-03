@@ -1141,3 +1141,47 @@ Complex!float[] rawReadComplex(File file, cfloat[] buf, Complex!float[] output)
 
     return output[0 .. res.length];
 }
+
+
+/**
+周波数領域のチャネルの推定値freqRespから時間領域のインパルス応答を推定します．
+f
+*/
+C[] estimateImpulseResponseFromFrequencyResponse(C, Freqs)(size_t dftsize, size_t impsize, in C[] freqResp, Freqs freqIndexs)
+{
+    import dffdd.utils.linalg;
+
+    C[][] matW = new C[][](freqResp.length, impsize);
+    foreach(i, f; freqIndexs.enumerate)
+        foreach(j; 0 .. impsize)
+            matW[i][j] = std.complex.expi(-2*PI/dftsize * f * j);
+
+    return leastSquareEstimateSimple(matW, freqResp);
+}
+
+unittest
+{
+    alias C = Complex!double;
+
+    // インパルス応答の真値
+    Complex!double[] impResp = [C(1, 1), C(2, -2), C(0, 3), C(1, 0)];
+
+    // インパルス応答から周波数応答を生成
+    auto fftw = makeFFTWObject!Complex(64);
+    fftw.inputs!double[0 .. 4] = impResp[0 .. 4];
+    fftw.inputs!double[4 .. $] = C(0);
+    fftw.fft!double();
+
+    // 生成された周波数応答のうち，幾つかの周波数のみを抽出
+    auto sampledFreqResp = fftw.outputs!double[$/8 .. $/4].dup;
+
+    // 抽出した周波数の番号リスト
+    auto freqIndexs = iota(64/8, 64/4);
+
+    // 抽出した周波数応答からもとのインパルス応答を推定
+    auto result = estimateImpulseResponseFromFrequencyResponse(64, 4, sampledFreqResp, freqIndexs);
+    foreach(i; 0 .. 4) {
+        assert(result[i].re.approxEqual(impResp[i].re));
+        assert(result[i].im.approxEqual(impResp[i].im));
+    }
+}
