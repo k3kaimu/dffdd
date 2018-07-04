@@ -202,6 +202,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
     void estimateChannel()
     {
+        import std.stdio;
         immutable nSym = (_nFFT + _nCP) * _nOS;
         auto removedNLXY = removeHighOrderNL();
         auto txs = removedNLXY[0];
@@ -252,12 +253,17 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 estFreqResp ~= corrSum / sqSum;
             }
 
-            auto impResp = estimateImpulseResponseFromFrequencyResponse(_nFFT*_nOS, _nImpulseTaps, estFreqResp, freqs);
+            writeln(freqs);
+            writeln(estFreqResp);
+
+            auto impResp = estimateImpulseResponseFromFrequencyResponse(_nFFT*_nOS, _nImpulseTaps, estFreqResp, freqs, 1E-5);
+            writeln(impResp);
             foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
                 e = impResp[i];
             _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
             _fftw.fft!double();
             _channelFreqResponse[] = _fftw.outputs!double[];
+            writeln(_channelFreqResponse);
         }else{
             rxs = rxs[_nImpulseTaps-1 .. $];
 
@@ -272,9 +278,11 @@ final class SidelobeIterativeWLNL(C, size_t P)
             estimatedH.reverse();
             foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
                 e = estimatedH[i];
+            writeln(_fftw.inputs!double[0 .. _nImpulseTaps]);
             _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
             _fftw.fft!double();
             _channelFreqResponse[] = _fftw.outputs!double[];
+            writeln(_channelFreqResponse);
         }
     }
 
@@ -448,88 +456,88 @@ final class SidelobeIterativeWLNL(C, size_t P)
     }
 }
 
-unittest 
-{
-    import dffdd.mod.ofdm;
-    import std.random;
-    import std.stdio;
-    import std.math : PI;
+// unittest 
+// {
+//     import dffdd.mod.ofdm;
+//     import std.random;
+//     import std.stdio;
+//     import std.math : PI;
 
-    // 1シンボル52トーン，FFTサイズ64, CPサイズ16のOFDM
-    auto mod = new OFDM!(Complex!double)(64, 16, 52, 4);
+//     // 1シンボル52トーン，FFTサイズ64, CPサイズ16のOFDM
+//     auto mod = new OFDM!(Complex!double)(64, 16, 52, 4);
 
-    // 100シンボル分のBPSK
-    auto bpsk = Random().map!(a => Complex!double(a%2 == 0 ? 1 : -1, 0)).take(52*100).array();
-    Complex!double[] ofdm;
-    mod.modulate(bpsk, ofdm);
-    foreach(ref e; ofdm) e *= 10;
+//     // 100シンボル分のBPSK
+//     auto bpsk = Random().map!(a => Complex!double(a%2 == 0 ? 1 : -1, 0)).take(52*100).array();
+//     Complex!double[] ofdm;
+//     mod.modulate(bpsk, ofdm);
+//     foreach(ref e; ofdm) e *= 10;
 
-    Complex!double[] signal = ofdm.dup;
+//     Complex!double[] signal = ofdm.dup;
 
-    immutable Complex!real trueTXIQImb = 0.05 * std.complex.expi(0.1*PI);
-    foreach(ref e; signal)
-        e += e.conj * trueTXIQImb;
+//     immutable Complex!real trueTXIQImb = 0.05 * std.complex.expi(0.1*PI);
+//     foreach(ref e; signal)
+//         e += e.conj * trueTXIQImb;
 
-    immutable Complex!real trueTXPACoef = 0.03 * std.complex.expi(0.4*PI);
-    foreach(ref e; signal)
-        e += e * e.sqAbs * trueTXPACoef;
+//     immutable Complex!real trueTXPACoef = 0.03 * std.complex.expi(0.4*PI);
+//     foreach(ref e; signal)
+//         e += e * e.sqAbs * trueTXPACoef;
 
-    Random rnd;
-    rnd.seed(114514);
-    Complex!double[] channel = new Complex!double[64];
-    foreach(i; 0 .. 64)
-        channel[i] = std.complex.expi(uniform(-1.0f, 1.0f, rnd) * PI) / 8;
+//     Random rnd;
+//     rnd.seed(114514);
+//     Complex!double[] channel = new Complex!double[64];
+//     foreach(i; 0 .. 64)
+//         channel[i] = std.complex.expi(uniform(-1.0f, 1.0f, rnd) * PI) / 8;
 
-    {
-        auto newsignal = signal.dup;
-        newsignal[] = complexZero!(Complex!double);
+//     {
+//         auto newsignal = signal.dup;
+//         newsignal[] = complexZero!(Complex!double);
 
-        foreach(i; 64 .. signal.length)
-            foreach(j; 0 .. 64)
-            newsignal[i] += signal[i-j] * channel[j];
+//         foreach(i; 64 .. signal.length)
+//             foreach(j; 0 .. 64)
+//             newsignal[i] += signal[i-j] * channel[j];
         
-        signal = newsignal;
-    }
+//         signal = newsignal;
+//     }
 
-    immutable Complex!real trueRXLNACoef = 0.03 * std.complex.expi(-0.1*PI);
-    foreach(ref e; signal)
-        e += e * e.sqAbs * trueRXLNACoef;
+//     immutable Complex!real trueRXLNACoef = 0.03 * std.complex.expi(-0.1*PI);
+//     foreach(ref e; signal)
+//         e += e * e.sqAbs * trueRXLNACoef;
 
-    immutable Complex!real trueRXIQImb = 0.05 * std.complex.expi(-0.4*PI);
-    foreach(ref e; signal)
-        e += e.conj * trueRXIQImb;
+//     immutable Complex!real trueRXIQImb = 0.05 * std.complex.expi(-0.4*PI);
+//     foreach(ref e; signal)
+//         e += e.conj * trueRXIQImb;
 
-    alias Canceller = SidelobeIterativeWLNL!(Complex!double, 2);
-    auto canceller = new Canceller(100, 1, 64, 16, 52, 4);
-    canceller.apply!(Yes.learning)(ofdm, signal, signal.dup);
+//     alias Canceller = SidelobeIterativeWLNL!(Complex!double, 2);
+//     auto canceller = new Canceller(100, 1, 64, 16, 52, 4);
+//     canceller.apply!(Yes.learning)(ofdm, signal, signal.dup);
 
-    real relErr(Complex!real x, Complex!real t)
-    {
-        return std.complex.abs(t - x) / std.complex.abs(t);
-    }
+//     real relErr(Complex!real x, Complex!real t)
+//     {
+//         return std.complex.abs(t - x) / std.complex.abs(t);
+//     }
 
-    // // 相対誤差が0.1以下
-    // writefln!"%s : %s"(canceller._iqTX, trueTXIQImb);
-    // writefln!"%s : %s"(canceller._iqRX, trueRXIQImb);
-    // writefln!"%s : %s"(canceller._paCoefs[1], trueTXPACoef);
-    // writefln!"%s : %s"(canceller._lnaCoefs[1], trueRXLNACoef);
+//     // // 相対誤差が0.1以下
+//     // writefln!"%s : %s"(canceller._iqTX, trueTXIQImb);
+//     // writefln!"%s : %s"(canceller._iqRX, trueRXIQImb);
+//     // writefln!"%s : %s"(canceller._paCoefs[1], trueTXPACoef);
+//     // writefln!"%s : %s"(canceller._lnaCoefs[1], trueRXLNACoef);
 
-    canceller._fftw.inputs!double[] = canceller._channelFreqResponse[];
-    canceller._fftw.ifft!double();
-    // writeln(canceller._fftw.outputs!double[0 .. 8]);
-    // writeln(channel[0 .. 8]);
-    // assert(relErr(canceller._iqTX, trueTXIQImb) < 0.1);
-    // assert(relErr(canceller._iqRX, trueRXIQImb) < 0.1);
-    // assert(relErr(canceller._paCoefs[1], trueTXPACoef) < 0.1);
-    // assert(relErr(canceller._lnaCoefs[1], trueRXLNACoef) < 0.1);
+//     canceller._fftw.inputs!double[] = canceller._channelFreqResponse[];
+//     canceller._fftw.ifft!double();
+//     // writeln(canceller._fftw.outputs!double[0 .. 8]);
+//     // writeln(channel[0 .. 8]);
+//     // assert(relErr(canceller._iqTX, trueTXIQImb) < 0.1);
+//     // assert(relErr(canceller._iqRX, trueRXIQImb) < 0.1);
+//     // assert(relErr(canceller._paCoefs[1], trueTXPACoef) < 0.1);
+//     // assert(relErr(canceller._lnaCoefs[1], trueRXLNACoef) < 0.1);
 
-    import std.math : log10;
+//     import std.math : log10;
 
-    auto dst = signal.dup;
-    canceller.apply!(No.learning)(ofdm, signal, dst);
-    dst = dst[$/4 .. $/4*3];
-    auto rem = dst.fold!((a, b) => a + b.sqAbs)(0.0L);
-    auto si = signal.fold!((a, b) => a + b.sqAbs)(0.0L);
-    // writeln(10*log10(si/rem));
-    // assert(10*log10(si/rem) > 70);  // 70 dB以上の除去量
-}
+//     auto dst = signal.dup;
+//     canceller.apply!(No.learning)(ofdm, signal, dst);
+//     dst = dst[$/4 .. $/4*3];
+//     auto rem = dst.fold!((a, b) => a + b.sqAbs)(0.0L);
+//     auto si = signal.fold!((a, b) => a + b.sqAbs)(0.0L);
+//     // writeln(10*log10(si/rem));
+//     // assert(10*log10(si/rem) > 70);  // 70 dB以上の除去量
+// }

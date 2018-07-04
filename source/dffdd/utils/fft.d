@@ -1147,7 +1147,7 @@ Complex!float[] rawReadComplex(File file, cfloat[] buf, Complex!float[] output)
 周波数領域のチャネルの推定値freqRespから時間領域のインパルス応答を推定します．
 f
 */
-C[] estimateImpulseResponseFromFrequencyResponse(C, Freqs)(size_t dftsize, size_t impsize, in C[] freqResp, Freqs freqIndexs)
+C[] estimateImpulseResponseFromFrequencyResponse(C, Freqs)(size_t dftsize, size_t impsize, in C[] freqResp, Freqs freqIndexs, real diagonalLoading)
 {
     import dffdd.utils.linalg;
 
@@ -1156,7 +1156,7 @@ C[] estimateImpulseResponseFromFrequencyResponse(C, Freqs)(size_t dftsize, size_
         foreach(j; 0 .. impsize)
             matW[i][j] = std.complex.expi(-2*PI/dftsize * f * j);
 
-    return leastSquareEstimateSimple(matW, freqResp);
+    return leastSquareEstimateTikRegSimple(matW, freqResp, diagonalLoading);
 }
 
 unittest

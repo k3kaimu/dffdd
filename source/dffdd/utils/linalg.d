@@ -62,6 +62,20 @@ nothrow @trusted extern(C)
             int matrix_order, int n,
             double[2]* a, int lda, const int* ipiv
         );
+
+    int LAPACKE_zgesv(
+        int matrix_order,
+        int n, int nrhs,
+        double[2]* a, int lda, int* ipiv,
+        double[2]* b, int ldb
+    );
+
+    int LAPACKE_cgesv(
+        int matrix_order,
+        int n, int nrhs,
+        float[2]* a, int lda, int* ipiv,
+        float[2]* b, int ldb
+    );
 }
 
 
@@ -451,6 +465,89 @@ if(isInputRange!R1 && isInputRange!R2 && isInputRange!R3)
 
     immutable Complex!real det = a * d - b * c;
     return [cast(ElementType!R1)((d*e - b*f) / det), cast(ElementType!R1)((a*f - c*e) / det)];
+}
+
+
+/**
+y = mat * xのMMSE解を求めます
+つまり，
+x = (mat^H * mat + dig * I)^{-1} * mat^H * y
+を計算します．
+ここで，`*`は行列積を示します．
+*/
+C[] leastSquareEstimateTikRegSimple(C)(in C[][] mat, in C[] y, real dig)
+{
+    import std.conv : to;
+    alias R = typeof(C.init.re);
+
+    static if(is(R == float))
+        alias gesv = LAPACKE_cgesv;
+    else
+        alias gesv = LAPACKE_zgesv;
+
+    if(mat.length == 0 || mat[0].length == 0) return null;
+
+    immutable int
+        N = mat[0].length.to!int,  // 未知パラメータ数
+        M = mat.length.to!int;     // 観測データ数
+
+    auto mx = slice!C(N, N);
+    foreach(i; 0 .. N)
+        foreach(j; 0 .. N){
+            if(i == j)
+                mx[i, j] = C(dig, 0);
+            else
+                mx[i, j] = C(0, 0);
+
+            foreach(k; 0 .. M)
+                mx[i, j] += mat[k][i].conj * mat[k][j];
+        }
+
+    auto b = new C[N];
+    foreach(i; 0 .. N) {
+        b[i] = C(0);
+        foreach(k; 0 .. M)
+            b[i] += mat[k][i].conj * y[k];
+    }
+
+    auto ipiv = new int[N];
+    int info = gesv(Order.RowMajor, N, 1, cast(R[2]*)&(mx[0, 0]), N, &(ipiv[0]), cast(R[2]*)&(b[0]), 1);
+
+    if(info > 0) {
+        import std.stdio;
+        writefln( "The diagonal element of the triangular factor of A," );
+        writefln( "U(%s,%s) is zero, so that A is singular;", info, info );
+        writefln( "the solution could not be computed." );
+        b[0 .. N] = C(0);
+        return b;
+    }
+
+    return b;
+}
+
+unittest
+{
+    import std.random;
+    alias C = Complex!double;
+
+    // パラメータ数３，観測数１０
+    auto mat = new C[][](10, 3);
+    auto measured = new C[](10);
+
+    foreach(i; 0 .. 10) foreach(j; 0 .. 3)
+        mat[i][j] = C(uniform01(), uniform01());
+    
+    foreach(i; 0 .. 10)
+        measured[i] = C(uniform01(), uniform01());
+
+    auto estLS = leastSquareEstimateSimple(mat, measured);
+    auto estMMSE = leastSquareEstimateTikRegSimple(mat, measured, 0);
+
+    foreach(i; 0 .. 3) {
+        import std.math : approxEqual;
+        assert(estLS[i].re.approxEqual(estMMSE[i].re));
+        assert(estLS[i].im.approxEqual(estMMSE[i].im));
+    }
 }
 
 

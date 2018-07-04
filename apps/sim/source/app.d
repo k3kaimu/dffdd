@@ -98,7 +98,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 11;
+    enum numOfTrials = 1;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -133,6 +133,7 @@ void mainJob()
         }
 
 
+        /+
         /* change the number of iterations */
         static if(methodName == "SidelobeInv2_X")
         foreach(nIters; iota(1, 11))
@@ -151,6 +152,7 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
 
 
         /+
@@ -219,7 +221,7 @@ void mainJob()
 
         
         // INR vs (EVM / SIC / BER)
-        foreach(inr; iota(20, 82, 2))
+        foreach(inr; [60])
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
