@@ -380,7 +380,7 @@ unittest
 y[j] = sum_i mx[i, j] * a[i] のa[i]を最小二乗法で求める．
 結果は，y[0 .. P]に上書きされる．(P: mx.length!0)
 */
-Complex!R[] leastSquareEstimate(R : double)(Slice!(Contiguous, [2], Complex!R*) mx, Complex!R[] y)
+Complex!R[] leastSquareEstimateColumnMajor(R : double)(Slice!(Contiguous, [2], Complex!R*) mx, Complex!R[] y)
 {
     import std.algorithm : min, max;
 
@@ -400,6 +400,39 @@ Complex!R[] leastSquareEstimate(R : double)(Slice!(Contiguous, [2], Complex!R*) 
 
     adjustSize(sworkSpace, min(L, P));
     gelss(102, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)L, cast(R[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
+
+    return y[0 .. P];
+}
+
+
+deprecated("Please use `leastSquareEstimateColumnMajor`")
+alias leastSquareEstimate = leastSquareEstimateColumnMajor;
+
+
+/**
+y[i] = sum_j mx[i, j] * a[j] のa[j]を最小二乗法で求める．
+結果は，y[0 .. P]に上書きされる．(P: mx.length!1)
+*/
+Complex!R[] leastSquareEstimateRowMajor(R : double)(Slice!(Contiguous, [2], Complex!R*) mx, Complex!R[] y)
+{
+    import std.algorithm : min, max;
+
+    static if(is(R == float))
+        alias gelss = LAPACKE_cgelss;
+    else
+        alias gelss = LAPACKE_zgelss;
+
+
+    static R[] sworkSpace;
+
+    immutable L = y.length;
+    immutable P = mx.length!0;
+
+    int rankN = void;
+    static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
+
+    adjustSize(sworkSpace, min(L, P));
+    gelss(Order.RowMajor, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)L, cast(R[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
 
     return y[0 .. P];
 }

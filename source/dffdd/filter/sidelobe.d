@@ -253,17 +253,12 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 estFreqResp ~= corrSum / sqSum;
             }
 
-            writeln(freqs);
-            writeln(estFreqResp);
-
-            auto impResp = estimateImpulseResponseFromFrequencyResponse(_nFFT*_nOS, _nImpulseTaps, estFreqResp, freqs, 1E-5);
-            writeln(impResp);
+            auto impResp = estimateImpulseResponseFromFrequencyResponse(_nFFT*_nOS, _nImpulseTaps, estFreqResp, freqs, 0);
             foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
                 e = impResp[i];
             _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
             _fftw.fft!double();
             _channelFreqResponse[] = _fftw.outputs!double[];
-            writeln(_channelFreqResponse);
         }else{
             rxs = rxs[_nImpulseTaps-1 .. $];
 
@@ -274,15 +269,14 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 }
             }
 
-            auto estimatedH = leastSquareEstimate(mx, rxs);
+            auto estimatedH = leastSquareEstimateColumnMajor(mx, rxs);
             estimatedH.reverse();
             foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
                 e = estimatedH[i];
-            writeln(_fftw.inputs!double[0 .. _nImpulseTaps]);
+
             _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
             _fftw.fft!double();
             _channelFreqResponse[] = _fftw.outputs!double[];
-            writeln(_channelFreqResponse);
         }
     }
 
