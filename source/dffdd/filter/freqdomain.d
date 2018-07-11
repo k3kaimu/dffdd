@@ -570,6 +570,12 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
     Dist distorter() @property { return _distorter; }
 
 
+    /**
+    this.state.allWeight[f][p] で周波数f，基底pの周波数応答を取得
+    */
+    StateAdapter state() @property { return _stateAdapter; }
+
+
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     {
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
@@ -1053,6 +1059,15 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
         return jv;
     }
+
+
+    Canceller canceller() { return _canceller; }
+
+
+    /**
+    this.state.allWeight[f][p] で周波数f，基底pの周波数応答を取得
+    */
+    auto state() @property { return _canceller.state; }
 
 
   private:
