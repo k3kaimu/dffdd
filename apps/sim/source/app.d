@@ -98,7 +98,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 1;
+    enum numOfTrials = 101;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -111,17 +111,17 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    // "PH_LS",
+                                    "PH_LS",
                                     // "PH_RLS",
                                     // "PH_RLS",
                                     // "OPH_LMS",
                                     
-                                    // "WL_LS",
-                                    // "L_LS",
+                                    "WL_LS",
+                                    "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
-                                    // "SidelobeFwd_X",
-                                    // "SidelobeInv_X",
+                                    "SidelobeFwd_X",
+                                    "SidelobeInv_X",
                                     "SidelobeInv2_X",
             ))
     {
@@ -133,7 +133,6 @@ void mainJob()
         }
 
 
-        /+
         /* change the number of iterations */
         static if(methodName == "SidelobeInv2_X")
         foreach(nIters; iota(1, 11))
@@ -152,10 +151,8 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
 
 
-        /+
         /* change the number of newton's method loop */
         static if(methodName == "SidelobeInv2_X")
         foreach(newtonIters; iota(0, 11))
@@ -174,10 +171,8 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
 
 
-        /+
         // only desired signal
         static if(methodName == "PH_LS")
         foreach(snr; iota(0, 21, 1))
@@ -196,10 +191,8 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
 
 
-        /+
         // learning symbols vs (EVM / SIC / BER)
         foreach(inr; iota(50, 62, 2))
         foreach(learningSymbols; iota(2, 21))
@@ -209,26 +202,25 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
             modelSeed.SNR = 20.dB;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("results_ber", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
 
-        
+
         // INR vs (EVM / SIC / BER)
-        foreach(inr; [60])
+        foreach(inr; iota(20, 82, 2))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = inr.dB;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("results_inr_vs_sic", dir);
@@ -236,7 +228,7 @@ void mainJob()
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-        /+
+
         // TXP vs (EVM. SIC /  BER)
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
@@ -245,15 +237,14 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = ((txp - 23)+50).dB;
             modelSeed.txPower = txp.dBm;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("results_txp_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
     }
 
     import std.stdio;

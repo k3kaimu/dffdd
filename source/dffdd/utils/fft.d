@@ -1149,6 +1149,7 @@ f
 */
 C[] estimateImpulseResponseFromFrequencyResponse(C, Freqs)(size_t dftsize, size_t impsize, in C[] freqResp, Freqs freqIndexs, real diagonalLoading)
 {
+    alias R = typeof(C.init.re);
     import dffdd.utils.linalg;
 
     C[][] matW = new C[][](freqResp.length, impsize);
@@ -1179,7 +1180,7 @@ unittest
     auto freqIndexs = iota(64/8, 64/4);
 
     // 抽出した周波数応答からもとのインパルス応答を推定
-    auto result = estimateImpulseResponseFromFrequencyResponse(64, 4, sampledFreqResp, freqIndexs);
+    auto result = estimateImpulseResponseFromFrequencyResponse(64, 4, sampledFreqResp, freqIndexs, 0);
     foreach(i; 0 .. 4) {
         assert(result[i].re.approxEqual(impResp[i].re));
         assert(result[i].im.approxEqual(impResp[i].im));
