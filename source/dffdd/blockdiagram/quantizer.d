@@ -95,16 +95,17 @@ struct SimpleQuantizerConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(InputElementType input, ref OutputElementType output) @nogc
     {
         output = C(quantizeReal(input.re), quantizeReal(input.im));
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
-    {
-        output.length = input.length;
-
+    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    in {
+        assert(input.length == output.length);
+    }
+    do {
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -128,7 +129,7 @@ struct SimpleQuantizerConverter(C)
     size_t _nbit;
 
 
-    typeof(C.init.re) quantizeReal(typeof(C.init.re) x)
+    typeof(C.init.re) quantizeReal(typeof(C.init.re) x) @nogc
     {
         // 正・負の両方で_nbit-1ビットだけ精度を持つため，全体では_nbitの精度
         immutable long scale = 1L << (_nbit - 1);

@@ -51,14 +51,15 @@ struct FIRFilterConverter(C)
     }
 
 
-    void opCall(const(InputElementType)[] input, ref OutputElementType[] output)
-    {
+    void opCall(const(InputElementType)[] input, OutputElementType[] output) @nogc
+    in{
+        assert(input.length == output.length);
+    }
+    do {
         import std.stdio : writeln;
 
         immutable clen = _coefs.length;
         immutable size = _tempbuffer.length;
-
-        output.length = input.length;
 
         // 係数をFFT
         _fftw.inputs!F[0 .. clen] = _coefs[];

@@ -7,7 +7,7 @@ import std.math;
 enum real IMPEDANCE = 1.0;
 
 
-Gain dB(real db)
+Gain dB(real db) pure nothrow @safe @nogc
 {
     return Gain(10.0^^(db/20));
 }
@@ -116,7 +116,7 @@ unittest
 
 
 
-Voltage dBm(real dbm)
+Voltage dBm(real dbm) pure nothrow @safe @nogc
 {
     return Voltage.fromdBm(dbm);
 }
@@ -125,7 +125,7 @@ Voltage dBm(real dbm)
 struct Voltage
 {
     static
-    Voltage fromdBm(real dbm)
+    Voltage fromdBm(real dbm) pure nothrow @safe @nogc
     {
         return Voltage(sqrt(IMPEDANCE) * 10^^((dbm - 30)/20));
     }

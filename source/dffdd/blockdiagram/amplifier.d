@@ -105,10 +105,11 @@ struct RappModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
-    {
-        output.length = input.length;
-
+    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    in{
+        assert(input.length == output.length);
+    }
+    do {
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
