@@ -414,7 +414,7 @@ struct L2CLCode
 
         foreach(i; 0 .. codeLength){
             byte c = r[26];
-            code[i] = -c;
+            code[i] = cast(byte)(-cast(int)c);
 
             foreach(j; 0 .. 27) if(t[j] ==  -1) r[j] *= c;
             foreach_reverse(j; 1 .. 27) r[j] = r[j-1];
