@@ -392,7 +392,8 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
         dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
         dst._rxLNARapp = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3 / 36.dBm).asV);
     }else{
-        dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower * model.lna.GAIN, 1e-2);
+        dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
+        dst._rxLNARapp = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, real.infinity);
     }
 
     if(model.useSRXIQ)
