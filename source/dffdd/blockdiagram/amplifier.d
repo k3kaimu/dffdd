@@ -292,7 +292,7 @@ struct PowerControlAmplifierConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(InputElementType input, ref OutputElementType output) @nogc
     {
         if(!_isConverged){
             _sumPower += input.re^^2 + input.im^^2;
@@ -325,10 +325,11 @@ struct PowerControlAmplifierConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
-    {
-        output.length = input.length;
-
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    in{
+        assert(input.length == output.length);
+    }
+    do {
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
