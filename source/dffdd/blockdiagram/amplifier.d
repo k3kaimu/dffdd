@@ -148,10 +148,19 @@ struct RappModel
 {
     static
     auto makeBlock(R)(R range, Gain gain, real smoothFactor, real saturation)
+    if(isInputRange!R)
     {
         import dffdd.blockdiagram.utils : connectTo;
         alias E = Unqual!(ElementType!R);
         return range.connectTo!(RappModelConverter!E)(gain, smoothFactor, saturation);
+    }
+
+
+    static
+    auto makeBlock(C)(BufferedOutputTerminal!C src, size_t len, Gain gain, real smoothFactor, real saturation)
+    {
+        auto conv = RappModelConverter!C(gain, smoothFactor, saturation);
+        return new ConverterBlock!RappModelConverter(len, src, conv);
     }
 }
 

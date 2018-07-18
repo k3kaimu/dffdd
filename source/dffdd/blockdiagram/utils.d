@@ -13,6 +13,7 @@ import carbon.channel;
 template connectTo(alias Block)
 {
     auto connectTo(R, Params...)(R r, Params params)
+    if(isInputRange!R)
     {
       static if(is(typeof({static assert(isConverter!Block || isOneElementConverter!Block);})))
         return RangeAdapter!(Block, R)(r, Block(params));
