@@ -9,7 +9,6 @@
 
 	"dependencies":{
 		"dffdd": { "path": "../../" },
-		"uhd": { "path": "../../../uhd" },
-		"zmqd": "~>1.1.0",
+		"uhd": { "path": "../../../uhd" }
     }
 }

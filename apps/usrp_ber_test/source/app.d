@@ -28,7 +28,7 @@ import dffdd.mod.qpsk;
 import dffdd.mod.bpsk;
 import dffdd.utils.fft;
 
-import zmqd;
+//import zmqd;
 import preamble;
 import spec;
 import impl;
@@ -56,30 +56,11 @@ void main(string[] args)
     immutable isSimulation = (args.length > 6) && args[6] == "sim";
 
     immutable snr = ebn0 * (modmethod == ModMethod.bpsk ? 1 : 2);
-    immutable batchSize = isSimulation ? 100 : 100;   // # of transmit bits = 1024 * batchSize
+    immutable batchSize = isSimulation ? 1000 : 100;   // # of transmit bits = 1024 * batchSize
 
 
     //Random rnd;
     //rnd.seed(114514);
-
-    // check cycle is 1024bit
-    static if(!loadFromFile)
-    {
-        File txbin = File("TX.bin", "r");
-        size_t[] bits0, bits1;
-        bits0 = new size_t[1024 / 8 / size_t.sizeof];
-        bits1 = bits0.dup;
-
-        txbin.rawRead(bits0);
-
-        foreach(i; 0 .. 999){
-            txbin.rawRead(bits1);
-            if(bits0 != bits1){
-                writeln("It is not cycled");
-                return;
-            }
-        }
-    }
 
   static if(!loadFromFile)
     immutable data = (){
@@ -104,8 +85,8 @@ void main(string[] args)
 
     // writeln("Edit source/app.d to start your project.");
   static if(!loadFromFile)
-    foreach(i, Mod; AliasSeq!(BPSK, QPSK)){
-        if(modmethod.to!string == Mod.stringof.toLower){
+    foreach(i, Mod; AliasSeq!(BPSK!(Complex!float), QPSK!(Complex!float))){
+        if(modmethod.to!string == Mod.stringof[0..4].toLower){
             Mod mod;
 
             if(isSimulation)
@@ -448,7 +429,7 @@ void rxMain(Mod)(
         OFDM!C ofdm = new OFDM!C(Constant.OFDM.nFFT, Constant.OFDM.nCP, Constant.OFDM.nSC, Constant.nOverSampling);
         PreambleDetector detector = new PreambleDetector(preambles);
 
-        File file = File(format("baseband_%s_%s.dat", cast(int)round(10*log10(snr)), Mod.stringof), "w");
+        File file = File(format("baseband_%s_%s.dat", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
 
         size_t recvCount;
         size_t errorCount;
@@ -487,13 +468,14 @@ void rxMain(Mod)(
                 C[] receivedSubcarriers;
                 ubyte[] bins = demodulateRX(ofdm, mod, received, receivedSubcarriers);
 
-                immutable totalSC = data.length * typeof(data[0]).sizeof * 8 / (is(Mod == BPSK) ? 1 : 2);
+                immutable totalSC = data.length * typeof(data[0]).sizeof * 8 / Mod.symInputLength;
 
-                if(bins.length){
-                    writefln("received!: %s [bits]", bins.length * 8);
-                    assert(bins.length % size_t.sizeof == 0);
+                if(bins.length && bins.length % size_t.sizeof == 0){
+                    //assert(bins.length % size_t.sizeof == 0);
                     auto rcv = cast(const(size_t)[])bins;
                     if(rcv.length == data.length && receivedSubcarriers.length >= totalSC){
+                        writefln("received!: %s [bits]", bins.length * 8);
+
                         immutable bits = bins.length * 8;
 
                         BitArray rxbits = BitArray(cast(void[])rcv, bits);
@@ -512,15 +494,7 @@ void rxMain(Mod)(
                             list.length,
                             errorCount, recvCount, errorCount * 1.0 / recvCount);
 
-                        {
-                            static if(is(Mod == BPSK)){
-                                list ~= Result(partErrorCount, partRecvCount, receivedSubcarriers[0 .. data.length * typeof(data[0]).sizeof * 8].dup);
-                            }
-                            else static if(is(Mod == QPSK)){
-                                list ~= Result(partErrorCount, partRecvCount, receivedSubcarriers[0 ..  data.length * typeof(data[0]).sizeof * 8 / 2].dup);
-                            }
-                            else static assert(0);
-                        }
+                        list ~= Result(partErrorCount, partRecvCount, receivedSubcarriers[0 .. data.length * typeof(data[0]).sizeof * 8 / Mod.symInputLength].dup);
 
                         if(recvCount >= (totalBits*2)){
                             // 外れ値を抜く
@@ -542,7 +516,7 @@ void rxMain(Mod)(
                             }
                             // CSVファイルに先頭1000サンプル書き込む
                             {
-                                File csv = File(format("baseband_%s_%s.csv", cast(int)round(10*log10(snr)), Mod.stringof), "w");
+                                File csv = File(format("baseband_%s_%s.csv", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
                                 foreach(e; middle.map!"a.subcarriers".joiner.take(1000))
                                     csv.writefln("%s,%s", e.re, e.im);
                             }
@@ -608,7 +582,7 @@ if(is(Mod == BPSK))
         OFDM!C ofdm = new OFDM!C(Constant.OFDM.nFFT, Constant.OFDM.nCP, Constant.OFDM.nSC, Constant.nOverSampling);
         PreambleDetector detector = new PreambleDetector(preambles);
 
-        File file = File(format("baseband_%s_%s.dat", cast(int)round(10*log10(snr)), Mod.stringof), "w");
+        File file = File(format("baseband_%s_%s.dat", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
         size_t cnt;
 
         while(!endFlag){
@@ -633,7 +607,7 @@ if(is(Mod == BPSK))
                 demodulateSubcarriers(ofdm, mod, received, receivedSubcarriers);
                 if(receivedSubcarriers.length == signal.length){
                     if(cnt == 0){
-                        File csv = File(format("baseband_%s_%s.csv", cast(int)round(10*log10(snr)), Mod.stringof), "w");
+                        File csv = File(format("baseband_%s_%s.csv", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
                         foreach(e; receivedSubcarriers.take(1000))
                             csv.writefln("%s,%s", e.re, e.im);
                     }

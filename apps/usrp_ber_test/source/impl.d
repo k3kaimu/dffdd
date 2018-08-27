@@ -21,7 +21,7 @@ import dffdd.mod.qpsk;
 import dffdd.dsp.convolution;
 import dffdd.utils.fft;
 
-import zmqd;
+//import zmqd;
 import preamble;
 import spec;
 
@@ -86,11 +86,15 @@ C[] modulateImpl(Mod)(ref OFDM!C ofdm, ref Mod qpsk, const(ubyte)[] binary)
     immutable txbytes = binary.length;
 
 
-    BitArray bits = (){
+    BitArray bitsArray = (){
         ubyte[] bins = binary.dup;
         while(bins.length % size_t.sizeof) bins ~= cast(ubyte)0;
         return BitArray(bins, txbytes * 8);
     }();
+
+    ubyte[] bits;
+    foreach(e; bitsArray)
+        bits ~= e ? cast(ubyte)1 : cast(ubyte)0;
 
 
     C[] modQPSK;
@@ -136,7 +140,7 @@ C[] modulateSubcarriers(Mod)(ref OFDM!C ofdm, ref Mod qpsk, uint binSize, in Com
 }
 
 
-C[] modulateTX(ref OFDM!C ofdm, ref QPSK qpsk, in ubyte[] binary)
+C[] modulateTX(ref OFDM!C ofdm, ref QPSK!C qpsk, in ubyte[] binary)
 {
     C[] txsignal;
 
@@ -263,9 +267,14 @@ BitArray demodulateImpl(Mod)(ref OFDM!C ofdm, ref Mod mod, in C[] freqResponse, 
     foreach(i; 0 .. receivedSubcarriers.length)
         receivedSubcarriers[i] = receivedSubcarriers[i] / freqResponse[i % $];
 
-    BitArray bits;
+    //BitArray bits;
+    ubyte[] bits = new ubyte[receivedSubcarriers.length / mod.symInputLength];
     mod.demodulate(receivedSubcarriers, bits);
-    return bits;
+    BitArray arr;
+    foreach(e; bits)
+        arr ~= cast(bool)e;
+
+    return arr;
 }
 
 
