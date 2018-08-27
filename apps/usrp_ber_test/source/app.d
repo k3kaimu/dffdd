@@ -347,7 +347,7 @@ void receiveWorker(
             auto pw = buffer[0 .. nrecv].map!"a.re^^2+a.im^^2".sum();
             auto snr = pw / avgpower;
             if(rxcnt % 1000 == 0 && snr > 2) writefln("Recv: %s", 10*log10(snr));
-            if(md.errorCode != uhd_rx_metadata_error_code_t.UHD_RX_METADATA_ERROR_CODE_NONE)
+            if(md.errorCode != RxMetaData.ErrorCode.NONE)
             {
                 writeln(md.errorCode);
                 break;
