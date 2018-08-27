@@ -52,38 +52,19 @@ void main(string[] args)
     immutable clockSource = args[2];
     immutable sendOrReceive = args[3] == "send" ? Mode.send : Mode.recv;
     immutable modmethod = args[4] == "bpsk" ? ModMethod.bpsk : ModMethod.qpsk;
-    immutable ebn0 = 10.0^^(args[5].to!real / 10);
+    immutable paygain_dB = to!real(args[5]);
+    immutable paygain_dB_str = args[5];
     immutable isSimulation = (args.length > 6) && args[6] == "sim";
-
-    //immutable snr = ebn0 * (modmethod == ModMethod.bpsk ? 1 : 2);
     immutable batchSize = isSimulation ? 1000 : 100;   // # of transmit bits = 1024 * batchSize
 
+    immutable paygain = 10.0L^^(paygain_dB / 20);
 
-    //Random rnd;
-    //rnd.seed(114514);
-
-  static if(!loadFromFile)
-    immutable data = (){
-        immutable(size_t)[] dst;
-
-        File txbin = File("TX.bin", "r");
-        size_t[] bits = new size_t[1024 / 8 / size_t.sizeof];
-        txbin.rawRead(bits);
-
-        foreach(i; 0 .. batchSize)
-            dst ~= bits;
-
-        return dst;
+    Random rnd;
+    rnd.seed(0xDEADBEEF);
+    immutable data = () {
+        return repeat(&rnd).take((unitBits * batchSize) / (size_t.sizeof * 8)).map!(rnd => uniform!size_t(*rnd)).array().assumeUnique;
     }();
 
-    //immutable data = repeat(&rnd).take(1024 / (size_t.sizeof * 8) * batchSize).map!(rnd => uniform!size_t(*rnd)).array().assumeUnique;
-
-    //{
-    //size_t[] data;
-    //foreach(i; 0 .. 1024 / (size_t.sizeof * 8) * 10)
-    //    data ~= ;
-
-    // writeln("Edit source/app.d to start your project.");
   static if(!loadFromFile)
     foreach(i, Mod; AliasSeq!(BPSK!(Complex!float), QPSK!(Complex!float))){
         if(modmethod.to!string == Mod.stringof[0..4].toLower){
@@ -96,17 +77,17 @@ void main(string[] args)
                 auto zmqTX = spawn(
                                 &txMain!Mod,
                                 channel,
-                                snr,
                                 data,
                                 mod,
+                                paygain,
                                 isSimulation);
 
                 auto zmqRX = spawn(
                                 &rxMain!Mod,
                                 channel,
                                 data,
-                                snr,
                                 mod,
+                                paygain_dB_str,
                                 isSimulation);
             }
             else
@@ -127,9 +108,9 @@ void main(string[] args)
                     auto zmqTX = spawn(
                                     &txMain!Mod,
                                     txChannel,
-                                    snr,
                                     data,
                                     mod,
+                                    paygain,
                                     isSimulation);
                 }else{
                     auto rxtid = spawn(
@@ -145,8 +126,8 @@ void main(string[] args)
                                     &rxMain!Mod,
                                     rxChannel,
                                     data,
-                                    snr,
                                     mod,
+                                    paygain_dB_str,
                                     isSimulation);
                 }
             }
@@ -377,33 +358,30 @@ void receiveWorker(
 
 void txMain(Mod)(
     shared(Channel!ICA) txchannel,
-    real snr,
     in size_t[] data,
     Mod mod,
-    bool isSimulation
+    real payloadGain = 0.1,
+    bool isSimulation = true,
 )
 {
     auto noiseGen = boxMullerNoise();
 
     OFDM!C ofdm = new OFDM!C(Constant.OFDM.nFFT, Constant.OFDM.nCP, Constant.OFDM.nSC, Constant.nOverSampling);
 
-    ICA txsignal;
-
-    void genTxSignal()
+    ICA txsignal = ()
     {
-        auto signal = modulateTXAddNoise(ofdm, mod, cast(const(ubyte)[])data, snr).dup;
-        txsignal = signal.assumeUnique;
-    }
+        auto signal = modulateTX(ofdm, mod, cast(const(ubyte)[])data, payloadGain).dup;
+        return signal.assumeUnique;
+    }();
+
+
+    writeln("POWER: ", txsignal[$/2 .. $].map!sqAbs.sum / (txsignal.length / 2));
 
     if(!isSimulation){
         Thread.sleep(5.seconds);
-        //genTxSignal();
     }
 
     while(!endFlag){
-        //if(isSimulation)
-            genTxSignal();
-
         writefln("Send %s [bits]", data.length * typeof(data[0]).sizeof * 8);
         txchannel.put!ICA(null);
         txchannel.put!ICA(txsignal);
@@ -420,16 +398,17 @@ void txMain(Mod)(
 void rxMain(Mod)(
     shared(Channel!ICA) rxchannel,
     in size_t[] data,
-    real snr,
     Mod mod,
-    bool isSimulation
+    string paygain_dB_str,
+    bool isSimulation = true,
 )
 {
     try{
         OFDM!C ofdm = new OFDM!C(Constant.OFDM.nFFT, Constant.OFDM.nCP, Constant.OFDM.nSC, Constant.nOverSampling);
         PreambleDetector detector = new PreambleDetector(preambles);
 
-        File file = File(format("baseband_%s_%s.dat", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
+        File fileTx = File(format("transmitOFDM_%sdB_%s.dat", paygain_dB_str, Mod.stringof[0..4]), "w");
+        File file = File(format("receivedOFDM_%sdB_%s.dat", paygain_dB_str, Mod.stringof[0..4]), "w");
 
         size_t recvCount;
         size_t errorCount;
@@ -439,6 +418,7 @@ void rxMain(Mod)(
         {
             size_t err;
             size_t bits;
+            ICA payload;
             ICA subcarriers;
         }
 
@@ -469,6 +449,9 @@ void rxMain(Mod)(
                 ubyte[] bins = demodulateRX(ofdm, mod, received, receivedSubcarriers);
 
                 immutable totalSC = data.length * typeof(data[0]).sizeof * 8 / Mod.symInputLength;
+                immutable totalHeaderSamples = numOfHeaderSamples(ofdm, mod);
+                immutable payloadReplica = modulateImpl(ofdm, mod, cast(const(ubyte[]))data).dup;
+                immutable totalPayloadSamples = payloadReplica.length;
 
                 if(bins.length && bins.length % size_t.sizeof == 0){
                     //assert(bins.length % size_t.sizeof == 0);
@@ -481,7 +464,7 @@ void rxMain(Mod)(
                         BitArray rxbits = BitArray(cast(void[])rcv, bits);
                         BitArray txbits = BitArray(cast(void[])data, bits);
                         size_t partErrorCount, partRecvCount;
-                        foreach(i; 0 .. bits){
+                        foreach(i; 0 .. bits/2){    // 最初半分だけでテスト
                             if(rxbits[i] != txbits[i]){
                                 ++errorCount;
                                 ++partErrorCount;
@@ -494,9 +477,12 @@ void rxMain(Mod)(
                             list.length,
                             errorCount, recvCount, errorCount * 1.0 / recvCount);
 
-                        list ~= Result(partErrorCount, partRecvCount, receivedSubcarriers[0 .. data.length * typeof(data[0]).sizeof * 8 / Mod.symInputLength].dup);
+                        auto payloadsignal = received[totalHeaderSamples .. $][0 .. totalPayloadSamples];
+                        list ~= Result(partErrorCount, partRecvCount, payloadsignal, receivedSubcarriers[0 .. data.length * typeof(data[0]).sizeof * 8 / Mod.symInputLength].dup);
 
                         if(recvCount >= (totalBits*2)){
+                            endFlag = true;
+
                             // 外れ値を抜く
                             Result[] middle;
                             {
@@ -509,119 +495,27 @@ void rxMain(Mod)(
                             auto sumtotal = middle.map!"a.bits".sum();
                             writefln("BER: %s", sumerror * 1.0 / sumtotal);
 
-                            // ファイルに書き込む
-                            {
-                                foreach(m; middle)
-                                    file.rawWrite(m.subcarriers);
-                            }
-                            // CSVファイルに先頭1000サンプル書き込む
-                            {
-                                File csv = File(format("baseband_%s_%s.csv", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
-                                foreach(e; middle.map!"a.subcarriers".joiner.take(1000))
-                                    csv.writefln("%s,%s", e.re, e.im);
-                            }
+                            //// ファイルに書き込む
+                            //{
+                            //    foreach(m; middle)
+                            //        file.rawWrite(m.subcarriers);
+                            //}
+                            //// CSVファイルに先頭1000サンプル書き込む
+                            //{
+                            //    File csv = File(format("baseband_%s.csv", Mod.stringof[0..4]), "w");
+                            //    foreach(e; middle.map!"a.subcarriers".joiner.take(1000))
+                            //        csv.writefln("%s,%s", e.re, e.im);
+                            //}
 
-                            endFlag = true;
+                            // ファイルにOFDM信号を書き出す
+                            foreach(m; middle)
+                                file.rawWrite(m.payload[$/2 .. $]);
+
+                            fileTx.rawWrite(payloadReplica);
+
                             return;
                         }
                     }
-                }
-            }
-            else
-                Thread.sleep(100.msecs);
-        }
-    }catch(Throwable ex){
-        writeln(ex);
-        throw ex;
-    }
-}
-
-
-
-void txMain_loadFromFile(Mod)
-(
-    shared(Channel!ICA) txchannel,
-    ICA signal
-)
-if(is(Mod == BPSK))
-{
-    Mod mod;
-    OFDM!C ofdm = new OFDM!C(Constant.OFDM.nFFT, Constant.OFDM.nCP, Constant.OFDM.nSC, Constant.nOverSampling);
-
-    ICA txsignal;
-
-    void genTxSignal()
-    {
-        txsignal = modulateSubcarriers(ofdm, mod, cast(uint)(signal.length / 8), signal).dup;
-    }
-
-    genTxSignal();
-
-    Thread.sleep(5.seconds);
-
-    while(!endFlag){
-        writeln("SEND");
-        txchannel.put!ICA(null);
-        txchannel.put!ICA(txsignal);
-        txchannel.put!ICA(null);
-        Thread.sleep(500.msecs);
-    }
-}
-
-
-void rxMain_loadFromFile(Mod)
-(
-    shared(Channel!ICA) rxchannel,
-    ICA signal,
-    float snr,
-)
-if(is(Mod == BPSK))
-{
-    try{
-        Mod mod;
-        OFDM!C ofdm = new OFDM!C(Constant.OFDM.nFFT, Constant.OFDM.nCP, Constant.OFDM.nSC, Constant.nOverSampling);
-        PreambleDetector detector = new PreambleDetector(preambles);
-
-        File file = File(format("baseband_%s_%s.dat", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
-        size_t cnt;
-
-        while(!endFlag){
-            if(auto p = rxchannel.pop!ICA)
-            {
-                //writefln("GET FROM RXWK: %s [size]", (*p).length);
-                ICA received = *p;
-                while(1){
-                    if(auto q = rxchannel.pop!ICA){
-                        //writefln("GET FROM RXWK: %s [size]", (*q).length);
-                        if((*q).length){
-                            received ~= *q;
-                        }else{
-                            break;
-                        }
-                    }
-                }
-
-                received = findPreamble(detector, received);
-
-                C[] receivedSubcarriers;
-                demodulateSubcarriers(ofdm, mod, received, receivedSubcarriers);
-                if(receivedSubcarriers.length == signal.length){
-                    if(cnt == 0){
-                        File csv = File(format("baseband_%s_%s.csv", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
-                        foreach(e; receivedSubcarriers.take(1000))
-                            csv.writefln("%s,%s", e.re, e.im);
-                    }
-
-                    writeln("Received");
-                    file.rawWrite(receivedSubcarriers);
-                    cnt += receivedSubcarriers.length;
-                }
-
-
-                if(cnt >= 1024*10_000){
-                    writeln("END");
-                    endFlag = true;
-                    return;
                 }
             }
             else

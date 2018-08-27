@@ -141,7 +141,7 @@ C[] modulateSubcarriers(Mod)(ref OFDM!C ofdm, ref Mod qpsk, uint binSize, in Com
 }
 
 
-C[] modulateTX(ref OFDM!C ofdm, ref QPSK!C qpsk, in ubyte[] binary)
+C[] modulateTX(Mod)(ref OFDM!C ofdm, ref Mod qpsk, in ubyte[] binary, real payloadGain = 0.1)
 {
     C[] txsignal;
 
@@ -152,63 +152,42 @@ C[] modulateTX(ref OFDM!C ofdm, ref QPSK!C qpsk, in ubyte[] binary)
     txsignal ~= getPilot();
 
     // 最初にサイズ情報を付加
-    size_t len = binary.length;
-    txsignal ~= modulateImpl(ofdm, qpsk, (cast(ubyte*)&len)[0 .. size_t.sizeof]);
+    uint len = cast(uint)binary.length;
+    txsignal ~= modulateImpl(ofdm, qpsk, (cast(ubyte*)&len)[0 .. uint.sizeof]);
 
     // ペイロードを付加
-    txsignal ~= modulateImpl(ofdm, qpsk, binary);
+    txsignal ~= (){
+        auto s = modulateImpl(ofdm, qpsk, binary);
+        immutable p = s.map!sqAbs.sum() / s.length;
+        immutable g1 = sqrt(0.02 / p);
+        immutable g2 = sqrt(payloadGain^^2 / p);
+        foreach(ref e; s[0 .. $/2]) e *= g1;
+        foreach(ref e; s[$/2 .. $]) e *= g2;
+        return s;
+    }();
+
+    //txsignal ~= modulateImpl(ofdm, qpsk, binary);
 
     return txsignal;
 }
 
 
-C[] modulateTXAddNoise(Mod)(ref OFDM!C ofdm, ref Mod mod, in ubyte[] binary, real snr)
+size_t numOfHeaderSamples(Mod)(ref OFDM!C ofdm, ref Mod qpsk)
 {
-    C[] txsignal;
+    immutable preamble = getPreamble().length;
+    immutable pilot = getPilot().length;
+    immutable sizeinfo = (){
+        uint len = 0;
+        return modulateImpl(ofdm, qpsk, (cast(ubyte*)&len)[0 .. uint.sizeof]).length;
+    }();
 
-    // プリアンブルを付加
-    txsignal ~= getPreamble();
+    return preamble + pilot + sizeinfo;
+}
 
-    // パイロット信号を追加
-    auto pilot = getPilot.dup;
-    foreach(ref e; pilot) e *= aScale;
-    txsignal ~= pilot;
 
-    // 最初にサイズ情報を付加
-    uint len = cast(uint)binary.length;
-    txsignal ~= modulateImpl(ofdm, mod, (cast(ubyte*)&len)[0 .. uint.sizeof]);
-
-    // ペイロードを付加]
-    auto payload = modulateImpl(ofdm, mod, binary);
-    {
-        auto noiseGen = boxMullerNoise();
-        immutable power = payload.fold!((a, b) => a + b.sqAbs)(0.0L) / payload.length;
-        immutable noisePower = power / Constant.OFDM.nSC * Constant.OFDM.nFFT * Constant.nOverSampling / snr;
-        immutable noiseAmp = sqrt(noisePower / 2);
-
-        auto sumPower = power + noisePower;
-        auto gain = sqrt(0.03 / sumPower);
-
-        //writeln("Payload power: ", power);
-        //writeln("Noise power: ", noisePower);
-
-        // add noise
-        real noisepower = 0;
-        foreach(ref e; payload){
-            auto nv = noiseGen.front * noiseAmp;
-            e += nv;
-            e *= gain;
-            noiseGen.popFront();
-            noisepower += nv.sqAbs;
-        }
-
-        writeln("Required SNR: ", snr);
-        writeln("SNR per subcarrier: ", power / (noisepower / Constant.OFDM.nFFT / Constant.nOverSampling * Constant.OFDM.nSC / payload.length));
-    }
-
-    txsignal ~= payload;
-
-    return txsignal;
+size_t numOfPayloadSample(Mod)(ref OFDM!C ofdm, ref Mod qpsk, in ubyte[] binary)
+{
+    return modulateImpl(ofdm, qpsk, binary).length;
 }
 
 
@@ -227,10 +206,13 @@ inout(C)[] findPreamble(PreambleDetector detector, inout(C)[] received)
     }
 
     auto res = detector.detect!"TgRTS"(received[0 .. $ / 4096 * 4096]);
+
     if(!res[0])
         return null;
-    else
+    else{
+        writeln("Find Peak: ", res[1]);
         return received[res[1] .. $];
+    }
 }
 
 
