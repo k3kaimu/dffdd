@@ -455,7 +455,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         }
         sumNoisePower /= cancCNT * model.blockSize;
         real sumRemainSI = sumRemainPower - sumNoisePower;
-        if(sumRemainSI < 0) sumRemainSI = 1E-6;
+        if(sumRemainSI < 0) sumRemainSI = 0;
         Gain RINR = Gain.fromPowerGain(sumRemainSI / sumNoisePower),
              INR = Gain.fromPowerGain(sumSI / sumNoisePower),
              canc = Gain.fromPowerGain((INR.asP + 1) / (RINR.asP + 1));
