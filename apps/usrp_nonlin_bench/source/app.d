@@ -59,6 +59,8 @@ void main(string[] args)
 
     immutable paygain = 10.0L^^(paygain_dB / 20);
 
+    writeln("Payload Gain: ", paygain);
+
     Random rnd;
     rnd.seed(0xDEADBEEF);
     immutable data = () {
@@ -253,6 +255,7 @@ void transmitWorker(
                 }else if(isSendMode && (*p).length != 0){
                     auto chunk = *p;
                     writeln("START");
+                    GC.disable();
                     txStreamer.send(null, txmdstart, 0.0001);
 
                     size_t cnt;
@@ -260,6 +263,7 @@ void transmitWorker(
                         cnt += txStreamer.send(chunk[cnt .. $], txmdmiddle, 1);
 
                     txStreamer.send(null, txmdend, 0.0001);
+                    GC.enable();
                     writeln("STOP");
                     continue;
                 }
@@ -375,7 +379,8 @@ void txMain(Mod)(
     }();
 
 
-    writeln("POWER: ", txsignal[$/2 .. $].map!sqAbs.sum / (txsignal.length / 2));
+    writeln("POWER1: ", txsignal[0 .. $/2].map!sqAbs.sum / (txsignal.length / 2));
+    writeln("POWER2: ", txsignal[$-$/4 .. $].map!sqAbs.sum / (txsignal.length / 4));
 
     if(!isSimulation){
         Thread.sleep(5.seconds);

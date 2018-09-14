@@ -159,7 +159,7 @@ C[] modulateTX(Mod)(ref OFDM!C ofdm, ref Mod qpsk, in ubyte[] binary, real paylo
     txsignal ~= (){
         auto s = modulateImpl(ofdm, qpsk, binary);
         immutable p = s.map!sqAbs.sum() / s.length;
-        immutable g1 = sqrt(0.02 / p);
+        immutable g1 = sqrt(0.04 / p);
         immutable g2 = sqrt(payloadGain^^2 / p);
         foreach(ref e; s[0 .. $/2]) e *= g1;
         foreach(ref e; s[$/2 .. $]) e *= g2;
