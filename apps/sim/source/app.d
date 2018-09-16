@@ -120,8 +120,8 @@ void mainJob()
                                     "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
-                                    "SidelobeFwd_X",
-                                    "SidelobeInv_X",
+                                    // "SidelobeFwd_X",
+                                    // "SidelobeInv_X",
                                     "SidelobeInv2_X",
             ))
     {
@@ -133,83 +133,83 @@ void mainJob()
         }
 
 
-        /* change the number of iterations */
-        static if(methodName == "SidelobeInv2_X")
-        foreach(nIters; iota(1, 11))
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
-            modelSeed.INR = 60.dB;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
-            modelSeed.iterNumOfIteration = nIters;
-            modelSeed.iterNumOfNewton = 10;
+        // /* change the number of iterations */
+        // static if(methodName == "SidelobeInv2_X")
+        // foreach(nIters; iota(1, 11))
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 10;
+        //     modelSeed.INR = 60.dB;
+        //     modelSeed.outputBER = false;
+        //     modelSeed.outputEVM = false;
+        //     modelSeed.iterNumOfIteration = nIters;
+        //     modelSeed.iterNumOfNewton = 10;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_estimate_iters", dir ~ format("_%s", nIters));
-            dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
-
-
-        /* change the number of newton's method loop */
-        static if(methodName == "SidelobeInv2_X")
-        foreach(newtonIters; iota(0, 11))
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
-            modelSeed.INR = 60.dB;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
-            modelSeed.iterNumOfIteration = 10;
-            modelSeed.iterNumOfNewton = newtonIters;
-
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_newton_iters", dir ~ format("_%s", newtonIters));
-            dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath("results_estimate_iters", dir ~ format("_%s", nIters));
+        //     dirset[dir] = true;
+        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
 
 
-        // only desired signal
-        static if(methodName == "PH_LS")
-        foreach(snr; iota(0, 21, 1))
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
-            modelSeed.INR = 20.dB;
-            modelSeed.SNR = snr.dB;
-            modelSeed.onlyDesired = true;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+        // /* change the number of newton's method loop */
+        // static if(methodName == "SidelobeInv2_X")
+        // foreach(newtonIters; iota(0, 11))
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 10;
+        //     modelSeed.INR = 60.dB;
+        //     modelSeed.outputBER = false;
+        //     modelSeed.outputEVM = false;
+        //     modelSeed.iterNumOfIteration = 10;
+        //     modelSeed.iterNumOfNewton = newtonIters;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ber", dir ~ "_onlyDesired");
-            dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath("results_newton_iters", dir ~ format("_%s", newtonIters));
+        //     dirset[dir] = true;
+        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
 
 
-        // learning symbols vs (EVM / SIC / BER)
-        foreach(inr; iota(50, 62, 2))
-        foreach(learningSymbols; iota(2, 21))
-        {
-            ModelSeed modelSeed;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = inr.dB;
-            modelSeed.SNR = 20.dB;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+        // // only desired signal
+        // static if(methodName == "PH_LS")
+        // foreach(snr; iota(0, 21, 1))
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 10;
+        //     modelSeed.INR = 20.dB;
+        //     modelSeed.SNR = snr.dB;
+        //     modelSeed.onlyDesired = true;
+        //     modelSeed.outputBER = true;
+        //     modelSeed.outputEVM = true;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ber", dir);
-            dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath("results_ber", dir ~ "_onlyDesired");
+        //     dirset[dir] = true;
+        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
+
+
+        // // learning symbols vs (EVM / SIC / BER)
+        // foreach(inr; iota(50, 62, 2))
+        // foreach(learningSymbols; iota(2, 21))
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     modelSeed.INR = inr.dB;
+        //     modelSeed.SNR = 20.dB;
+        //     modelSeed.outputBER = true;
+        //     modelSeed.outputEVM = true;
+
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath("results_ber", dir);
+        //     dirset[dir] = true;
+        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
 
 
         // INR vs (EVM / SIC / BER)
@@ -217,7 +217,7 @@ void mainJob()
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.numOfTrainingSymbols = 50;
             modelSeed.INR = inr.dB;
             modelSeed.outputBER = true;
             modelSeed.outputEVM = true;
@@ -230,11 +230,11 @@ void mainJob()
 
 
         // TXP vs (EVM. SIC /  BER)
-        foreach(txp; iota(10, 32, 1)) {
+        foreach(txp; iota(10, 40, 1)) {
             ModelSeed modelSeed;
             modelSeed.txPower = txp.dBm;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.numOfTrainingSymbols = 50;
             modelSeed.INR = ((txp - 23)+50).dB;
             modelSeed.txPower = txp.dBm;
             modelSeed.outputBER = true;

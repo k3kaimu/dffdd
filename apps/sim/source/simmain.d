@@ -464,6 +464,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         infoResult["RINR_dB"] = RINR.asdB;
         infoResult["INR_dB"] = INR.asdB;
         if(resultDir !is null){
+            File(buildPath(resultDir ,"INR_value.csv"), "w").writeln(INR.asdB);
             File(buildPath(resultDir ,"cancellation_value.csv"), "w").writeln(canc.asdB);
             File(buildPath(resultDir ,"RINR_value.csv"), "w").writeln(RINR.asdB);
         }

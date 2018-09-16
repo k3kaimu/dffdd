@@ -132,7 +132,7 @@ final class SimulatedSignals
 
         // 自端末の送信機のPAの歪み
         _txPAVGA(txiqs, txvgas);
-        if(_model.useSTXPA) _txPARapp(txvgas, txpas);
+        if(_model.useSTXPA) _txPANonlin(txvgas, txpas);
         else                txpas[] = txvgas[];
 
         C[] rxants = _tempbuf[6][0 .. len],
@@ -228,7 +228,7 @@ final class SimulatedSignals
 
         if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.dup;
         if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.dup;
-        if(!this._txPARapp.isNull)      dst._txPARapp = this._txPARapp.dup;
+        if(!this._txPANonlin.isNull)      dst._txPANonlin = this._txPANonlin.dup;
         
         if(!this._channel.isNull)       dst._channel = this._channel.dup;
 
@@ -248,7 +248,7 @@ final class SimulatedSignals
         JSONValue dst = JSONValue(string[string].init);
         if(!_txIQMixer.isNull)  dst["txIQMixer"] = _txIQMixer.dumpInfoToJSON();
         if(!_txPAVGA.isNull)    dst["txPAVGA"] = _txPAVGA.dumpInfoToJSON();
-        if(!_txPARapp.isNull)   dst["txPARapp"] = _txPARapp.dumpInfoToJSON();
+        if(!_txPANonlin.isNull)   dst["txPANonlin"] = _txPANonlin.dumpInfoToJSON();
         if(!_channel.isNull)    dst["channel"] = _channel.dumpInfoToJSON();
         if(!_rxLNAVGA.isNull)   dst["rxLNAVGA"] = _rxLNAVGA.dumpInfoToJSON();
         if(!_rxLNARapp.isNull)  dst["rxLNARapp"] = _rxLNARapp.dumpInfoToJSON();
@@ -306,7 +306,7 @@ final class SimulatedSignals
         Gain g = Gain.fromPowerGain(1);
         if(!_txIQMixer.isNull)  g *= _txIQMixer.gain;
         if(!_txPAVGA.isNull)    g *= _txPAVGA.gain;
-        if(!_txPARapp.isNull)   g *= _txPARapp.linearGain;
+        if(!_txPANonlin.isNull)   g *= _txPANonlin.linearGain;
         if(!_rxLNAVGA.isNull)   g *= _rxLNAVGA.gain;
         if(!_rxLNARapp.isNull)  g *= _rxLNARapp.linearGain;
         if(!_rxIQMixer.isNull)  g *= _rxIQMixer.gain;
@@ -339,7 +339,7 @@ final class SimulatedSignals
 
     Nullable!(IQImbalanceConverter!C) _txIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
-    Nullable!(RappModelConverter!C) _txPARapp;
+    Nullable!(SalehModelConverter!C) _txPANonlin;
 
     Nullable!(FIRFilterConverter!C) _channel;
 
@@ -379,7 +379,8 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._txPARapp = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
+        // dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
+        dst._txPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.IIP3.volt / 2);
     }else{
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
