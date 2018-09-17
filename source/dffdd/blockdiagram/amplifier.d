@@ -247,6 +247,73 @@ struct SalehModelConverter(C)
 }
 
 
+/**
+o: input saturation value
+*/
+struct SoftLimitConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+    this(Gain gain, real saturation)
+    {
+        _g = gain.asV;
+        _o = saturation;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        auto r = std.complex.abs(input),
+             u = input / r;         // unit vector
+
+        if(r < _o){
+            output = _g * input;
+        }else{
+            output = _g * _o * u;
+        }
+    }
+
+
+    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    in{
+        assert(input.length == output.length);
+    }
+    do {
+        foreach(i, e; input)
+            this.opCall(e, output[i]);
+    }
+
+
+    /**
+    線形領域での利得を返します
+    */
+    Gain linearGain() const @property
+    {
+        return Gain.fromVoltageGain(_g);
+    }
+
+
+    typeof(this) dup() const pure nothrow @safe @nogc @property
+    {
+        return this;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return JSONValue([
+            "gain":         _g,
+            "saturation":   _o
+        ]);
+    }
+
+
+  private:
+    real _g, _o;
+}
+
+
 
 struct VGAConverter(C)
 {
