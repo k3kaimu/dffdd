@@ -444,6 +444,8 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 
     JSONValue jv = cast(JSONValue[string])null;
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
+    jv["RINRs"] = resList.map!(a => a["RINR_dB"]).array();
+    jv["INRs"] = resList.map!(a => a["INR_dB"]).array();
     if(modelSeed.outputBER) jv["bers"] = resList.map!(a => a["ber"]).array();
     if(modelSeed.outputEVM) jv["evms"] = resList.map!(a => a["evm"]).array();
     
