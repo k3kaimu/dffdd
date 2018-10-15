@@ -47,7 +47,7 @@ struct ModelSeed
     Gain paGain = 28.5.dB;
 
     /* LNA */
-    uint lnaSmoothFactor = 1;
+    uint lnaSmoothFactor = 3;
 
     /* Other */
     Gain SNR = 11.dB;
@@ -219,11 +219,11 @@ void mainJob()
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 50;
             modelSeed.INR = inr.dB;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_inr_vs_sic", dir);
+            dir = buildPath("results_20181015", "softlimit", "P3", "results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -237,11 +237,11 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = 50;
             modelSeed.INR = ((txp - 23)+50).dB;
             modelSeed.txPower = txp.dBm;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_txp_vs_sic", dir);
+            dir = buildPath("results_20181015", "softlimit", "P3", "results_txp_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -284,12 +284,12 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         model.useDTXIQ = false;
         model.useDTXPN = false;
         model.useDTXPA = false;
-        model.useSTXIQ = true;
+        model.useSTXIQ = false;
         model.useSTXPN = false;
         model.useSTXPA = true;
         model.useSRXLN = true;
-        model.useSRXIQ = true;
-        model.useSRXQZ = true;
+        model.useSRXIQ = false;
+        model.useSRXQZ = false;
 
 
         /* PAの設定 */

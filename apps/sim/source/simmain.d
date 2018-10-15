@@ -216,7 +216,7 @@ auto makeFilter(string filterType)(Model model)
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, true, isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, false, isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
   // else static if(filterStructure.endsWith("CWLH"))
