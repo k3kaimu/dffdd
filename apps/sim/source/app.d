@@ -98,7 +98,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 101;
+    enum numOfTrials = 31;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -116,13 +116,13 @@ void mainJob()
                                     // "PH_RLS",
                                     // "OPH_LMS",
                                     
-                                    "WL_LS",
-                                    "L_LS",
+                                    // "WL_LS",
+                                    // "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
                                     // "SidelobeFwd_X",
                                     // "SidelobeInv_X",
-                                    "SidelobeInv2_X",
+                                    // "SidelobeInv2_X",
             ))
     {
         bool[string] dirset;
@@ -213,7 +213,7 @@ void mainJob()
 
 
         // INR vs (EVM / SIC / BER)
-        foreach(inr; iota(20, 82, 2))
+        foreach(inr; iota(20, 82, 5))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
@@ -223,28 +223,28 @@ void mainJob()
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_20181015", "softlimit", "P3", "results_inr_vs_sic", dir);
+            dir = buildPath("results_20181015", "rapp", "P7", "results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
-        // TXP vs (EVM. SIC /  BER)
-        foreach(txp; iota(10, 40, 1)) {
-            ModelSeed modelSeed;
-            modelSeed.txPower = txp.dBm;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 50;
-            modelSeed.INR = ((txp - 23)+50).dB;
-            modelSeed.txPower = txp.dBm;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
+        // // TXP vs (EVM. SIC /  BER)
+        // foreach(txp; iota(10, 40, 1)) {
+        //     ModelSeed modelSeed;
+        //     modelSeed.txPower = txp.dBm;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 50;
+        //     modelSeed.INR = ((txp - 23)+50).dB;
+        //     modelSeed.txPower = txp.dBm;
+        //     modelSeed.outputBER = false;
+        //     modelSeed.outputEVM = false;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_20181015", "softlimit", "P3", "results_txp_vs_sic", dir);
-            dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath("results_20181015", "softlimit", "P3", "results_txp_vs_sic", dir);
+        //     dirset[dir] = true;
+        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
     }
 
     import std.stdio;

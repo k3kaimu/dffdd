@@ -339,13 +339,13 @@ final class SimulatedSignals
 
     Nullable!(IQImbalanceConverter!C) _txIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
-    Nullable!(SoftLimitConverter!C) _txPANonlin;
+    Nullable!(RappModelConverter!C) _txPANonlin;
 
     Nullable!(FIRFilterConverter!C) _channel;
 
     Nullable!(PowerControlAmplifierConverter!C) _rxDESVGA;
     Nullable!(PowerControlAmplifierConverter!C) _rxLNAVGA;
-    Nullable!(SoftLimitConverter!C) _rxLNANonlin;
+    Nullable!(RappModelConverter!C) _rxLNANonlin;
     Nullable!(IQImbalanceConverter!C) _rxIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _rxQZVGA;
     Nullable!(SimpleQuantizerConverter!C) _rxQZ;
@@ -383,9 +383,10 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-         //dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
-        //dst._txPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.IIP3.volt / 2);
-         dst._txPANonlin = SoftLimitConverter!C(model.pa.GAIN, (model.pa.TX_POWER / model.pa.GAIN * 7.dB).volt);
+        dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, 3, (model.pa.TX_POWER / model.pa.GAIN * 7.dB).volt);
+        // dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
+        // dst._txPANonlin = SalehModelConverter!C(model.pa.GAIN, (model.pa.TX_POWER / model.pa.GAIN * 7.dB).volt);
+        //  dst._txPANonlin = SoftLimitConverter!C(model.pa.GAIN, (model.pa.TX_POWER / model.pa.GAIN * 7.dB).volt);
     }else{
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
@@ -396,12 +397,14 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     Voltage receivedSIPower = model.thermalNoise.power(model) * model.lna.NF * model.INR;
     if(model.useSRXLN){
         dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
-        //dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3 / 36.dBm).asV);
-         dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
+        dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3 / 36.dBm).asV);
+        //  dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
+        // dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
     }else{
         dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
-        //dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, real.infinity);
-         dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, real.infinity);
+        dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, real.infinity);
+        //  dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, real.infinity);
+        // dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, real.infinity);
     }
 
     if(model.useSRXIQ)

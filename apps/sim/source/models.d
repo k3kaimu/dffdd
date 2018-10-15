@@ -55,7 +55,7 @@ import dffdd.dsp.statistics;
 import constant;
 import snippet;
 
-enum size_t defaultDistortionOrder = 3;
+enum size_t defaultDistortionOrder = 7;
 alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
 
 
