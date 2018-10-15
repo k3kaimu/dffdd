@@ -366,11 +366,15 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst.desiredBaseband = desiredRandomBits(model)
                         .connectToModulator(modOFDM(model), alwaysFalsePointer, model)
-                        .map!"a*1.0L".asSignal;
+                        .map!"a*1.0L"
+                        .connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 1e-2)
+                        .asSignal;
 
     dst.txBaseband = siRandomBits(model)
                         .connectToModulator(modOFDM(model), dst._useSWPOFDM, model)
-                        .map!"a*1.0L".asSignal;
+                        .map!"a*1.0L"
+                        .connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 1e-2)
+                        .asSignal;
 
     dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).toWrappedRange;
 
