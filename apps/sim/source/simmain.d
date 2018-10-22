@@ -216,7 +216,7 @@ auto makeFilter(string filterType)(Model model)
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, true, isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, false, isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
   // else static if(filterStructure.endsWith("CWLH"))
@@ -464,6 +464,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         infoResult["RINR_dB"] = RINR.asdB;
         infoResult["INR_dB"] = INR.asdB;
         if(resultDir !is null){
+            File(buildPath(resultDir ,"INR_value.csv"), "w").writeln(INR.asdB);
             File(buildPath(resultDir ,"cancellation_value.csv"), "w").writeln(canc.asdB);
             File(buildPath(resultDir ,"RINR_value.csv"), "w").writeln(RINR.asdB);
         }

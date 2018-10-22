@@ -72,7 +72,7 @@ struct PowerAmplifier(R)
 
 
 /**
-o: saturation value
+o: input saturation value
 s: smooth factor
 u: |x[n]|
 g(u) = (G*u)/(1+(u/o)^^(2s))^^(1/(2*s))
@@ -169,6 +169,150 @@ unittest
 {
     auto r = RappModel.makeBlock(Complex!float[].init, 1.0.dB, 1, 1);
 }
+
+
+/**
+o: input saturation value
+*/
+struct SalehModelConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+    this(Gain gain, real saturation)
+    {
+        _g = gain.asV;
+        _o = saturation * _g;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        input *= _g;
+
+        auto r = std.complex.abs(input),
+             u = input / r;         // unit vector
+
+        // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
+        if(r <= 1E-6){
+            output = input;
+        }else{
+            immutable aa = 2.1587,
+                ba = 1.1517,
+                ap = 4.033,
+                bp = 9.1040;
+
+            r /= _o;
+            output = aa * r / (1+ba*r^^2) * std.complex.expi(ap*r^^2/(1+bp*r^^2)) * input/r;
+        }
+    }
+
+
+    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    in{
+        assert(input.length == output.length);
+    }
+    do {
+        foreach(i, e; input)
+            this.opCall(e, output[i]);
+    }
+
+
+    /**
+    線形領域での利得を返します
+    */
+    Gain linearGain() const @property
+    {
+        return Gain.fromVoltageGain(_g);
+    }
+
+
+    typeof(this) dup() const pure nothrow @safe @nogc @property
+    {
+        return this;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return JSONValue([
+            "gain":         _g,
+            "saturation":   _o
+        ]);
+    }
+
+
+  private:
+    real _g, _o;
+}
+
+
+/**
+o: input saturation value
+*/
+struct SoftLimitConverter(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+    this(Gain gain, real saturation)
+    {
+        _g = gain.asV;
+        _o = saturation;
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        auto r = std.complex.abs(input),
+             u = input / r;         // unit vector
+
+        if(r < _o){
+            output = _g * input;
+        }else{
+            output = _g * _o * u;
+        }
+    }
+
+
+    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    in{
+        assert(input.length == output.length);
+    }
+    do {
+        foreach(i, e; input)
+            this.opCall(e, output[i]);
+    }
+
+
+    /**
+    線形領域での利得を返します
+    */
+    Gain linearGain() const @property
+    {
+        return Gain.fromVoltageGain(_g);
+    }
+
+
+    typeof(this) dup() const pure nothrow @safe @nogc @property
+    {
+        return this;
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return JSONValue([
+            "gain":         _g,
+            "saturation":   _o
+        ]);
+    }
+
+
+  private:
+    real _g, _o;
+}
+
 
 
 struct VGAConverter(C)
