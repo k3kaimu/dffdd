@@ -96,7 +96,7 @@ struct RappModelConverter(C)
              u = input / r;         // unit vector
 
         // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
-        if(r <= 1E-6){
+        if(r <= 1E-20){
             output = input;
         }else{
             r = (r * _g) / (( 1 + (r/_o)^^(2*_s) )^^(1/(2*_s)));
@@ -194,7 +194,7 @@ struct SalehModelConverter(C)
              u = input / r;         // unit vector
 
         // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
-        if(r <= 1E-6){
+        if(r <= 1E-20){
             output = input;
         }else{
             immutable aa = 2.1587,

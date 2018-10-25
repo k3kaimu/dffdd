@@ -98,7 +98,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 31;
+    enum numOfTrials = 101;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -117,7 +117,7 @@ void mainJob()
                                     // "OPH_LMS",
                                     
                                     // "WL_LS",
-                                    // "L_LS",
+                                     "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
                                     // "SidelobeFwd_X",
@@ -213,7 +213,7 @@ void mainJob()
 
 
         // INR vs (EVM / SIC / BER)
-        foreach(inr; iota(20, 82, 5))
+        foreach(inr; iota(20, 82, 2))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
@@ -223,7 +223,7 @@ void mainJob()
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_20181015", "rapp", "P7", "results_inr_vs_sic", dir);
+            dir = buildPath("results_20181025", "rapp", "P3", "results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -314,7 +314,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channel.taps = 48;
+            model.channel.taps = 128;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
@@ -413,7 +413,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 {
     Model[] models = makeModels!methodName(nTrials, modelSeed);
 
-    if(exists(buildPath(dir, "allResult.json"))) return;
+    //if(exists(buildPath(dir, "allResult.json"))) return;
 
     JSONValue[] resList;
     uint sumOfSuccFreq;

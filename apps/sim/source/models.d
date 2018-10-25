@@ -55,7 +55,7 @@ import dffdd.dsp.statistics;
 import constant;
 import snippet;
 
-enum size_t defaultDistortionOrder = 7;
+enum size_t defaultDistortionOrder = 3;
 alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
 
 
@@ -103,9 +103,9 @@ struct Model
 
     struct OFDM
     {
-        uint numOfFFT = 64;
+        uint numOfFFT = 2048;
         uint numOfCP = 16;
-        uint numOfSubcarrier = 52;
+        uint numOfSubcarrier = 2000;
         uint scaleOfUpSampling = 8;
         Gain PAPR = 10.dB;                 // 10dB
         //uint model.numOfSamplesOf1Symbol = 
