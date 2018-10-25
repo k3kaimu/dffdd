@@ -134,7 +134,7 @@ if(P % 2 == 1)
 
     void opCallImpl(C input, ref C[] output)
     {
-        output.length = outputDim;
+        if(output.length != outputDim) output.length = outputDim;
         foreach(p; 1 .. P+1){
             if(p % 2 == 1)
                 output[(p-1)/2] = input * (input.sqAbs() ^^ ((p-1)/2));

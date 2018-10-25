@@ -217,7 +217,7 @@ void mainJob()
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 50;
+            modelSeed.numOfTrainingSymbols = 5;
             modelSeed.INR = inr.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
@@ -253,7 +253,7 @@ void mainJob()
     JobEnvironment env;
     tuthpc.taskqueue.run(taskList, env);
     // foreach(i; 0 .. taskList.length)
-        // taskList[i]();
+    //     taskList[i]();
 }
 
 

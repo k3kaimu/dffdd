@@ -105,8 +105,10 @@ final class SimulatedSignals
         immutable size_t len = buffers[0].length;
         if(len == 0) return;
 
-        foreach(ref buf; _tempbuf)
-            buf.length = max(buf.length, len);
+        foreach(ref buf; _tempbuf){
+            if(buf.length < len)
+                buf.length = len;
+        }
 
         C[] ds = _tempbuf[0][0 .. len],
             xs = _tempbuf[1][0 .. len],

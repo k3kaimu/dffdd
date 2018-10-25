@@ -68,7 +68,8 @@ struct QAM(C)
         assert(inputs.length % _k == 0);
     }
     body{
-        outputs.length = inputs.length / _k;
+        if(outputs.length != inputs.length / _k)
+            outputs.length = inputs.length / _k;
 
         foreach(i; 0 .. outputs.length){
             immutable indexRe = toInt(inputs[i*_k .. i*_k + _k/2]);

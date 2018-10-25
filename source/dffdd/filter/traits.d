@@ -33,7 +33,7 @@ mixin template ConverterOpCalls(A, B)
 
     void opCall(A[] as, ref B[] bs)
     {
-        bs.length = as.length;
+        if(bs.length != as.length) bs.length = as.length;
         foreach(i; 0 .. as.length)
             this.opCallImpl(as[i], bs[i]);
     }
