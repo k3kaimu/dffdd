@@ -348,3 +348,53 @@ final class ModulatedRange(R, Mod, bool isDemod = false)
     B[] _outputBuf;
     size_t _idx;
 }
+
+
+
+final class NopCancellerWithSignalLogging(C)
+{
+    import std.base64;
+    import std.json;
+
+
+    this() {}
+
+    enum inputBlockLength = 1;
+
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] received, C[] errors)
+    in{
+        assert(input.length == received.length);
+        assert(input.length == errors.length);
+    }
+    body{
+        errors[] = received[];
+
+        if(doLearning){
+            _ssTrX ~= input;
+            _ssTrY ~= received;
+        }else{
+            _ssCnX ~= input;
+            _ssCnY ~= received;
+        }
+    }
+
+
+    JSONValue info() @property
+    {
+        JSONValue[string] dst;
+        dst["ssTrX_Base64"] = Base64.encode(cast(ubyte[])_ssTrX);
+        dst["ssTrY_Base64"] = Base64.encode(cast(ubyte[])_ssTrY);
+        dst["ssCnX_Base64"] = Base64.encode(cast(ubyte[])_ssCnX);
+        dst["ssCnY_Base64"] = Base64.encode(cast(ubyte[])_ssCnY);
+        return JSONValue(dst);
+    }
+
+
+    void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator) {}
+
+
+    // 学習用信号と，除去用信号
+    C[] _ssTrX, _ssTrY;
+    C[] _ssCnX, _ssCnY;
+}

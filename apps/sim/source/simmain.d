@@ -193,7 +193,10 @@ auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Mo
 auto makeFilter(string filterType)(Model model)
 {
     enum string filterStructure = filterType.split("_")[0];
-    enum string filterOptimizer = filterType.split("_")[1];
+
+    static if(filterType.canFind("_")){
+        enum string filterOptimizer = filterType.split("_")[1];
+    }
 
     enum bool isOrthogonalized = filterStructure[0] == 'O';
 
@@ -285,6 +288,8 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false, false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
+  else static if(filterStructure == "SigLog")
+    auto filter = new NopCancellerWithSignalLogging!(Complex!float)();
   else
     static assert("Cannot identify filter model.");
 
@@ -295,7 +300,10 @@ auto makeFilter(string filterType)(Model model)
 JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 {
     enum string filterStructure = filterType.split("_")[0];
-    enum string filterOptimizer = filterType.split("_")[1];
+
+    static if(filterType.canFind("_")){
+        enum string filterOptimizer = filterType.split("_")[1];
+    }
 
 
     JSONValue infoResult = ["type": filterType];
@@ -400,6 +408,11 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         // float sicv;
 
         bool*[] endFlags = iota(5).map!"new bool"().array();
+
+        // SigLogのときは途中で終わらせないようにする
+        if(filterType == "SigLog")
+            endFlags ~= new bool(false);
+
         auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
         auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model, endFlags[1]);
         auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model, endFlags[2]);
