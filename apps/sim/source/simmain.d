@@ -377,7 +377,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         auto waveFilterOutput = makeWaveformProbe!(Complex!float)("waveform_filterOutput_init.csv", resultDir, 0, model);
 
         StopWatch sw;
-        foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
+        foreach(blockIdx; 0 .. model.numOfTrainOrCancSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
             static if(filterStructure.endsWith("FHF") || filterStructure.endsWith("IterativeFreqSIC"))
             {
@@ -419,7 +419,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         }
 
 
-        infoResult["training_symbols_per_second"] = model.numOfFilterTrainingSymbols / ((cast(real)sw.peek.total!"usecs") / 1_000_000);
+        infoResult["training_symbols_per_second"] = model.numOfTrainOrCancSymbols / ((cast(real)sw.peek.total!"usecs") / 1_000_000);
     }
 
     {
@@ -442,7 +442,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         real sumSI = 0;
         StopWatch sw;
         size_t cancCNT;
-        foreach(blockIdxo; 0 .. 1024)
+        foreach(blockIdxo; 0 .. model.numOfTrainOrCancSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
             signals.fillBuffer!(["txBaseband", "received"])(refrs, recvs);
 

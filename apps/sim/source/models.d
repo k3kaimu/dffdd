@@ -62,7 +62,7 @@ alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Comple
 struct Model
 {
     size_t numOfModelTrainingSymbols = 300;
-    size_t numOfFilterTrainingSymbols = 200;
+    size_t numOfTrainOrCancSymbols = 200;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
