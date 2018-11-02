@@ -14,6 +14,7 @@ import std.file;
 import std.typecons;
 import std.exception;
 import std.complex;
+import std.conv;
 
 import dffdd.utils.unit;
 import dffdd.blockdiagram.noise;
@@ -259,13 +260,22 @@ void mainJob()
 
 Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 {
+    import std.digest.crc;
+
     Model[] models;
+
+    static assert(__traits(isPOD, ModelSeed));
+    auto hashOfModelSeed = () @trusted {
+        import tuthpc.taskqueue : hashOfExe;
+        return crc32Of(methodName, (cast(ubyte*)&modelSeed)[0 .. modelSeed.sizeof], hashOfExe()).crcHexString;
+    }();
 
     foreach(iTrial; 0 .. numOfTrials) {
         Model model;
         scope(success)
             models ~= model;
 
+        model.uniqueId = crc32Of(iTrial.to!string, hashOfModelSeed).crcHexString;
         model.rndSeed = cast(uint)hashOf(iTrial);
         model.SNR = modelSeed.SNR;
         model.INR = modelSeed.INR;
@@ -440,6 +450,27 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
             sumOfSuccFreq += cnt;
             selectingRatioList ~= JSONValue(cnt / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling));
         }
+
+        if(methodName.startsWith("Log")) {
+            import std.file : mkdirRecurse;
+
+            auto siglogpath = buildPath(dir, "signallog");
+            mkdirRecurse(siglogpath);
+
+            auto uniqueId = res["filterSpec"]["uniqueId"].str;
+            foreach(iden; ["TrX", "TrY", "TrZ", "CnX", "CnY", "CnZ"]){
+                string filename = "signal_%s_%s.dat".format(iden, uniqueId);
+                auto frompath = buildPath("signallog", filename);
+                auto topath = buildPath(siglogpath, "signal_%s_%s.dat".format(iden, i));
+                
+                // frompathからtopathにファイルをコピーする
+                std.file.rename(frompath, topath);
+                writefln("%s -> %s", frompath, topath);
+
+            }
+        }
+
+        resList ~= res;
     }
 
     JSONValue jv = cast(JSONValue[string])null;

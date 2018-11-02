@@ -370,20 +370,30 @@ final class NopCanceller(C)
 }
 
 
-auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller)
+auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller, string resultDir, string uniqueId)
 {
+    import std.string;
+    import std.json;
+    import std.path;
+
     static
     final class SignalLoggingImpl
     {
-        import std.base64;
-        import std.json;
-
         enum inputBlockLength = 1;
 
-        this(Canceller canc)
+        this(Canceller canc, string resultDir, string uniqueId)
         {
             _canc = canc;
+            _uniqueId = uniqueId;
+            _resultDir = resultDir;
+
+            foreach(iden; ["TrX", "TrY", "TrZ", "CnX", "CnY", "CnZ"]){
+                string filename = "signal_%s_%s.dat".format(iden, uniqueId);
+                auto filepath = buildPath(resultDir, filename);
+                _files[iden] = File(filepath, "w");
+            }
         }
+
 
         void apply(Flag!"learning" doLearning)(in C[] input, in C[] received, C[] errors)
         in{
@@ -395,13 +405,13 @@ auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller)
             _canc.apply!doLearning(input, received, errors);
 
             if(doLearning){
-                _ssTrX ~= input;
-                _ssTrY ~= received;
-                _ssTrZ ~= errors;
+                _files["TrX"].rawWrite(input);
+                _files["TrY"].rawWrite(received);
+                _files["TrZ"].rawWrite(errors);
             }else{
-                _ssCnX ~= input;
-                _ssCnY ~= received;
-                _ssCnZ ~= errors;
+                _files["CnX"].rawWrite(input);
+                _files["CnY"].rawWrite(received);
+                _files["CnZ"].rawWrite(errors);
             }
         }
 
@@ -409,12 +419,8 @@ auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller)
         JSONValue info() @property
         {
             JSONValue[string] dst;
-            dst["ssTrX_Base64"] = Base64.encode(cast(ubyte[])_ssTrX);
-            dst["ssTrY_Base64"] = Base64.encode(cast(ubyte[])_ssTrY);
-            dst["ssTrZ_Base64"] = Base64.encode(cast(ubyte[])_ssTrZ);
-            dst["ssCnX_Base64"] = Base64.encode(cast(ubyte[])_ssCnX);
-            dst["ssCnY_Base64"] = Base64.encode(cast(ubyte[])_ssCnY);
-            dst["ssCnZ_Base64"] = Base64.encode(cast(ubyte[])_ssCnZ);
+            dst["resultDir"] = _resultDir;
+            dst["uniqueId"] = _uniqueId;
             return JSONValue(dst);
         }
 
@@ -424,12 +430,13 @@ auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller)
 
       private:
         Canceller _canc;
-        // 学習用信号と，除去用信号
-        C[] _ssTrX, _ssTrY, _ssTrZ; // X = 送信, Y = 受信, Z = 除去後
-        C[] _ssCnX, _ssCnY, _ssCnZ;
+        string _resultDir;
+        string _uniqueId;
+        // 学習用信号と，除去用信号の保存ファイル
+        File[string] _files;
     }
 
-    return new SignalLoggingImpl(canceller);
+    return new SignalLoggingImpl(canceller, resultDir, uniqueId);
 }
 
 

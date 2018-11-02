@@ -310,7 +310,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
     enum string filterOptimizer = filterType.split("_")[1];
 
-    JSONValue infoResult = ["type": filterType];
+    JSONValue infoResult = ["type": filterType, "uniqueId": model.uniqueId];
 
     immutable bool* alwaysFalsePointer = new bool(false);
     immutable bool* alwaysTruePointer = new bool(true);
@@ -330,7 +330,13 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
     static if(isSignalLoggingMode)
     {
-        auto filter = makeSignalLoggingCanceller!(Complex!float)(makeFilter!(filterStructure ~ "_" ~ filterOptimizer)(model));
+        import std.file : exists;
+        if(!"signallog".exists) mkdirRecurse("signallog");
+        auto filter = makeSignalLoggingCanceller!(Complex!float)(
+            makeFilter!(filterStructure ~ "_" ~ filterOptimizer)(model),
+            "signallog",
+            model.uniqueId
+            );
     }
     else
     {
