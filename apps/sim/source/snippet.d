@@ -350,8 +350,92 @@ final class ModulatedRange(R, Mod, bool isDemod = false)
 }
 
 
+final class NopCanceller(C)
+{
+    this() {}
 
-final class NopCancellerWithSignalLogging(C)
+    enum inputBlockLength = 1;
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] received, C[] errors)
+    in{
+        assert(input.length == received.length);
+        assert(input.length == errors.length);
+    }
+    do{
+        errors[] = received[];
+    }
+
+
+    void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator) {}
+}
+
+
+auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller)
+{
+    static
+    final class SignalLoggingImpl
+    {
+        import std.base64;
+        import std.json;
+
+        enum inputBlockLength = 1;
+
+        this(Canceller canc)
+        {
+            _canc = canc;
+        }
+
+        void apply(Flag!"learning" doLearning)(in C[] input, in C[] received, C[] errors)
+        in{
+            assert(input.length == received.length);
+            assert(input.length == errors.length);
+        }
+        body{
+            // errors[] = received[];
+            _canc.apply!doLearning(input, received, errors);
+
+            if(doLearning){
+                _ssTrX ~= input;
+                _ssTrY ~= received;
+                _ssTrZ ~= errors;
+            }else{
+                _ssCnX ~= input;
+                _ssCnY ~= received;
+                _ssCnZ ~= errors;
+            }
+        }
+
+
+        JSONValue info() @property
+        {
+            JSONValue[string] dst;
+            dst["ssTrX_Base64"] = Base64.encode(cast(ubyte[])_ssTrX);
+            dst["ssTrY_Base64"] = Base64.encode(cast(ubyte[])_ssTrY);
+            dst["ssTrZ_Base64"] = Base64.encode(cast(ubyte[])_ssTrZ);
+            dst["ssCnX_Base64"] = Base64.encode(cast(ubyte[])_ssCnX);
+            dst["ssCnY_Base64"] = Base64.encode(cast(ubyte[])_ssCnY);
+            dst["ssCnZ_Base64"] = Base64.encode(cast(ubyte[])_ssCnZ);
+            return JSONValue(dst);
+        }
+
+
+        void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator) {}
+
+
+      private:
+        Canceller _canc;
+        // 学習用信号と，除去用信号
+        C[] _ssTrX, _ssTrY, _ssTrZ; // X = 送信, Y = 受信, Z = 除去後
+        C[] _ssCnX, _ssCnY, _ssCnZ;
+    }
+
+    return new SignalLoggingImpl(canceller);
+}
+
+
+
+/*
+final class SignalLoggingCanceller(C)
 {
     import std.base64;
     import std.json;
@@ -398,3 +482,4 @@ final class NopCancellerWithSignalLogging(C)
     C[] _ssTrX, _ssTrY;
     C[] _ssCnX, _ssCnY;
 }
+*/

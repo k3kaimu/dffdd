@@ -193,10 +193,7 @@ auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Mo
 auto makeFilter(string filterType)(Model model)
 {
     enum string filterStructure = filterType.split("_")[0];
-
-    static if(filterType.canFind("_")){
-        enum string filterOptimizer = filterType.split("_")[1];
-    }
+    enum string filterOptimizer = filterType.split("_")[1];
 
     enum bool isOrthogonalized = filterStructure[0] == 'O';
 
@@ -288,8 +285,8 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false, false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
-  else static if(filterStructure == "SigLog")
-    auto filter = new NopCancellerWithSignalLogging!(Complex!float)();
+  else static if(filterStructure.endsWith("Nop"))
+    auto filter = new NopCanceller!(Complex!float)();
   else
     static assert("Cannot identify filter model.");
 
@@ -299,12 +296,19 @@ auto makeFilter(string filterType)(Model model)
 
 JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 {
-    enum string filterStructure = filterType.split("_")[0];
+    // 信号データをファイルに保存するかどうか
+    enum bool isSignalLoggingMode = filterType.startsWith("Log");
 
-    static if(filterType.canFind("_")){
-        enum string filterOptimizer = filterType.split("_")[1];
+    static if(isSignalLoggingMode)
+    {
+        enum string filterStructure = filterType[3 .. $].split("_")[0];
+    }
+    else
+    {
+        enum string filterStructure = filterType.split("_")[0];
     }
 
+    enum string filterOptimizer = filterType.split("_")[1];
 
     JSONValue infoResult = ["type": filterType];
 
@@ -324,7 +328,15 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     auto signals = makeSimulatedSignals(model, resultDir);
     signals.trainAGC();
 
-    auto filter = makeFilter!filterType(model);
+    static if(isSignalLoggingMode)
+    {
+        auto filter = makeSignalLoggingCanceller!(Complex!float)(makeFilter!(filterStructure ~ "_" ~ filterOptimizer)(model));
+    }
+    else
+    {
+        auto filter = makeFilter!(filterStructure ~ "_" ~ filterOptimizer)(model);
+    }
+    
 
     // フィルタの学習
     auto recvs = new Complex!float[model.blockSize],
@@ -409,8 +421,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
         bool*[] endFlags = iota(5).map!"new bool"().array();
 
-        // SigLogのときは途中で終わらせないようにする
-        if(filterType == "SigLog")
+        // 信号をファイル保存するときは途中で終わらせないようにする
+        if(isSignalLoggingMode)
             endFlags ~= new bool(false);
 
         auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
