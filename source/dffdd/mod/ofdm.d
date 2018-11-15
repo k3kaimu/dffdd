@@ -4,6 +4,8 @@ import carbon.math;
 
 import dffdd.utils.fft;
 
+import std.math;
+
 final class OFDM(C)
 {
     alias InputElementType = C;
@@ -18,6 +20,7 @@ final class OFDM(C)
         _nUpSampling = nUpSampling;
         _inpBuffer = new C[nFFT * nUpSampling];
         _fftw = makeFFTWObject!C(nFFT * nUpSampling);
+        _scaleTX = sqrt((nFFT * nUpSampling * 1.0)^^2 / nTone);
     }
 
 
@@ -68,6 +71,9 @@ final class OFDM(C)
             assert(dst.ptr == outputs.ptr + i*symOutputLength);
         }
 
+        foreach(ref e; outputs)
+            e *= _scaleTX;
+
         return outputs;
     }
 
@@ -105,6 +111,9 @@ final class OFDM(C)
             }
         }
 
+        foreach(ref e; outputs)
+            e /= _scaleTX;
+
         return outputs;
     }
 
@@ -116,6 +125,7 @@ final class OFDM(C)
     uint _nCp;
     uint _nTone;
     uint _nUpSampling;
+    real _scaleTX;
 }
 
 //
