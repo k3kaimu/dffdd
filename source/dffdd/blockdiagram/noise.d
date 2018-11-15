@@ -9,6 +9,8 @@ import dffdd.utils.unit;
 
 enum real BoltzmannConst = 1.3806488e-23;
 
+
+
 BoxMuller!Random boxMullerNoise()
 {
     Random rnd;
@@ -18,7 +20,13 @@ BoxMuller!Random boxMullerNoise()
 }
 
 
-struct BoxMuller(RNG)
+auto boxMullerNoise(RNG, real scale = 1)(RNG rnd)
+{
+    return BoxMuller!(RNG, scale)(rnd);
+}
+
+
+struct BoxMuller(RNG, real scale = 1)
 {
     this(RNG urng)
     {
@@ -30,7 +38,7 @@ struct BoxMuller(RNG)
 
     Complex!real front() const @property
     {
-        return sqrt(-2 * log(_x)) * Complex!real(cos(2*PI*_y), sin(2*PI*_y));
+        return sqrt(-2 * log(_x)) * Complex!real(cos(2*PI*_y), sin(2*PI*_y)) * scale;
     }
 
 
@@ -50,7 +58,7 @@ struct BoxMuller(RNG)
     }
 
 
-    BoxMuller!RNG save() @property
+    BoxMuller!(RNG, scale) save() @property
     {
         typeof(return) dst = this;
 
@@ -64,6 +72,23 @@ struct BoxMuller(RNG)
     RNG _urng;
     real _x;
     real _y;
+}
+
+
+alias ComplexGaussian01(RNG) = BoxMuller!(RNG, SQRT1_2);
+
+ComplexGaussian01!Random complexGaussian01Noise()
+{
+    Random rnd;
+    rnd.seed(unpredictableSeed());
+
+    return ComplexGaussian01!Random(rnd);
+}
+
+
+ComplexGaussian01!RNG complexGaussian01Noise(RNG)(RNG rnd)
+{
+    return boxMullerNoise!(RNG, SQRT1_2)(rnd);
 }
 
 
@@ -151,4 +176,3 @@ auto uniform01Range(Rnd = Random)(uint seedValue)
     res.popFront();
     return res;
 }
-
