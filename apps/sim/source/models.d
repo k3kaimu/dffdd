@@ -55,14 +55,14 @@ import dffdd.dsp.statistics;
 import constant;
 import snippet;
 
-enum size_t defaultDistortionOrder = 3;
+enum size_t defaultDistortionOrder = 7;
 alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
 
 
 struct Model
 {
     size_t numOfModelTrainingSymbols = 300;
-    size_t numOfTrainOrCancSymbols = 200;
+    size_t numOfTrainOrCancSymbols = 300;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
@@ -104,9 +104,9 @@ struct Model
 
     struct OFDM
     {
-        uint numOfFFT = 2048;
+        uint numOfFFT = 64;
         uint numOfCP = 16;
-        uint numOfSubcarrier = 2000;
+        uint numOfSubcarrier = 64;
         uint scaleOfUpSampling = 8;
         Gain PAPR = 10.dB;                 // 10dB
         //uint model.numOfSamplesOf1Symbol = 

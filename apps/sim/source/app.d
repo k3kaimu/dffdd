@@ -117,8 +117,8 @@ void mainJob()
                                     // "PH_RLS",
                                     // "OPH_LMS",
                                     
-                                    // "WL_LS",
-                                     "L_LS",
+                                    //"WL_LS",
+                                    //"L_LS",
                                     
                                     // "IterativeFreqSIC_X",
                                     // "SidelobeFwd_X",
@@ -218,13 +218,13 @@ void mainJob()
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 5;
+            modelSeed.numOfTrainingSymbols = 50;
             modelSeed.INR = inr.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_20181025", "rapp", "P3", "results_inr_vs_sic", dir);
+            dir = buildPath("results_20181129", "rapp", "P7", "results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -294,11 +294,11 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         model.useDTXIQ = false;
         model.useDTXPN = false;
         model.useDTXPA = false;
-        model.useSTXIQ = false;
+        model.useSTXIQ = true;
         model.useSTXPN = false;
         model.useSTXPA = true;
         model.useSRXLN = true;
-        model.useSRXIQ = false;
+        model.useSRXIQ = true;
         model.useSRXQZ = false;
 
 
@@ -312,19 +312,19 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* TX IQ Mixer の設定 */
         {
             Random rnd = uniqueRandom(iTrial, "TXIQMixer");
-            model.txIQMixer.imbCoef = (1.0L / modelSeed.txIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
+            model.txIQMixer.imbCoef = Complex!real(0.1) * std.complex.expi(PI/6);
         }
 
         /* RX IQ Mixer の設定 */
         {
             Random rnd = uniqueRandom(iTrial, "RXIQMixer");
-            model.rxIQMixer.imbCoef = (1.0L / modelSeed.rxIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
+            model.rxIQMixer.imbCoef = Complex!real(0.1) * std.complex.expi(-PI/12);
         }
 
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channel.taps = 128;
+            model.channel.taps = 32;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
