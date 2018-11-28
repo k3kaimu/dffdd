@@ -429,6 +429,10 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(i, ref m; models) {
+        {
+            import core.memory;
+            GC.collect();
+        }
         auto res = mainImpl!methodName(m, i == 0 ? dir : null);
 
         if(saveAllRAWData) {
