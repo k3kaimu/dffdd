@@ -100,6 +100,7 @@ void mainJob()
 
 
     enum numOfTrials = 101;
+    alias C = Complex!double;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -112,13 +113,13 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    "PH_LS",
+                                    "OPH_LS",
                                     // "PH_RLS",
                                     // "PH_RLS",
                                     // "OPH_LMS",
                                     
-                                    //"WL_LS",
-                                    //"L_LS",
+                                    // "WL_LS",
+                                    // "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
                                     // "SidelobeFwd_X",
@@ -127,7 +128,7 @@ void mainJob()
             ))
     {
         bool[string] dirset;
-        auto appender = uniqueTaskAppender(&mainForEachTrial!methodName);
+        auto appender = uniqueTaskAppender(&mainForEachTrial!(C, methodName));
         scope(exit){
             enforce(appender.length == dirset.length);
             taskList ~= appender;
@@ -218,13 +219,13 @@ void mainJob()
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 50;
+            modelSeed.numOfTrainingSymbols = 100;
             modelSeed.INR = inr.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_20181129", "rapp", "P7", "results_inr_vs_sic", dir);
+            dir = buildPath("results_1206_2", "rapp", "P7", "results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -251,10 +252,10 @@ void mainJob()
     import std.stdio;
 
     // writefln("%s tasks will be submitted.", taskList.length);
-    JobEnvironment env;
-    tuthpc.taskqueue.run(taskList, env);
-    // foreach(i; 0 .. taskList.length)
-    //     taskList[i]();
+    //JobEnvironment env;
+    //tuthpc.taskqueue.run(taskList, env);
+    foreach(i; 0 .. taskList.length)
+        taskList[i]();
 }
 
 
@@ -324,7 +325,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channel.taps = 32;
+            model.channel.taps = 64;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
@@ -419,7 +420,7 @@ Random uniqueRandom(Args...)(Args args)
 }
 
 
-void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
+void mainForEachTrial(C, string methodName)(size_t nTrials, ModelSeed modelSeed, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
 {
     Model[] models = makeModels!methodName(nTrials, modelSeed);
 
@@ -433,7 +434,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
             import core.memory;
             GC.collect();
         }
-        auto res = mainImpl!methodName(m, i == 0 ? dir : null);
+        auto res = mainImpl!(C, methodName)(m, i == 0 ? dir : null);
 
         if(saveAllRAWData) {
             res["model"] = (){

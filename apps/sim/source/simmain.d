@@ -190,7 +190,7 @@ auto makeWaveformProbe(C)(string filename, string resultDir, size_t dropSize, Mo
 }
 
 
-auto makeFilter(string filterType)(Model model)
+auto makeFilter(C, string filterType)(Model model)
 {
     enum string filterStructure = filterType.split("_")[0];
     enum string filterOptimizer = filterType.split("_")[1];
@@ -202,7 +202,7 @@ auto makeFilter(string filterType)(Model model)
     import dffdd.filter.freqdomain;
 
     static if(filterStructure.startsWith("PreIQI-PH"))
-        auto subfilter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, false, false)(modOFDM(model), model);
+        auto subfilter = makeParallelHammersteinFilter!(C, filterOptimizer, defaultDistortionOrder, false, false)(modOFDM(model), model);
     else static if(filterStructure.startsWith("PreIQI-FHF"))
         auto subfilter = makeFrequencyHammersteinFilter2!(filterOptimizer, 3, false)(model);
     else static if(filterStructure.startsWith("PreIQI-L"))
@@ -216,9 +216,9 @@ auto makeFilter(string filterType)(Model model)
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, true, isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(C, filterOptimizer, defaultDistortionOrder, true, isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("CH"))
-    auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
+    auto filter = makeCascadeHammersteinFilter!(C, filterOptimizer)(modOFDM(model), model);
   // else static if(filterStructure.endsWith("CWLH"))
   //   auto filter = makeCascadeWLHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
   // else static if(filterStructure.endsWith("CWL1H"))
@@ -294,7 +294,7 @@ auto makeFilter(string filterType)(Model model)
 }
 
 
-JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
+JSONValue mainImpl(C, string filterType)(Model model, string resultDir = null)
 {
     // 信号データをファイルに保存するかどうか
     enum bool isSignalLoggingMode = filterType.startsWith("Log");
@@ -333,21 +333,21 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         import std.file : exists;
         if(!"signallog".exists) mkdirRecurse("signallog");
         auto filter = makeSignalLoggingCanceller!(Complex!float)(
-            makeFilter!(filterStructure ~ "_" ~ filterOptimizer)(model),
+            makeFilter!(C, filterStructure ~ "_" ~ filterOptimizer)(model),
             "signallog",
             model.uniqueId
             );
     }
     else
     {
-        auto filter = makeFilter!(filterStructure ~ "_" ~ filterOptimizer)(model);
+        auto filter = makeFilter!(C, filterStructure ~ "_" ~ filterOptimizer)(model);
     }
     
 
     // フィルタの学習
-    auto recvs = new Complex!float[model.blockSize],
-         refrs = new Complex!float[model.blockSize],
-         outps = new Complex!float[model.blockSize];
+    auto recvs = new C[model.blockSize],
+         refrs = new C[model.blockSize],
+         outps = new C[model.blockSize];
 
     {
         
@@ -370,11 +370,11 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         auto fftObj = new Fft(model.blockSize.nextPowOf2(0));
 
         //File powerFile = File(buildPath(resultDir, "errorout_long.csv"), "w");
-        auto sicIterValue = makeCancellationIterationProbe!(Complex!float)("errorout_long.csv", resultDir, 0, model);
-        auto waveTransmit = makeWaveformProbe!(Complex!float)("waveform_transmit_init.csv", resultDir, 0, model);
-        auto waveBeforeSIC = makeWaveformProbe!(Complex!float)("waveform_beforeSIC_init.csv", resultDir, 0, model);
-        auto waveAfterSIC = makeWaveformProbe!(Complex!float)("waveform_afterSIC_init.csv", resultDir, 0, model);
-        auto waveFilterOutput = makeWaveformProbe!(Complex!float)("waveform_filterOutput_init.csv", resultDir, 0, model);
+        auto sicIterValue = makeCancellationIterationProbe!C("errorout_long.csv", resultDir, 0, model);
+        auto waveTransmit = makeWaveformProbe!C("waveform_transmit_init.csv", resultDir, 0, model);
+        auto waveBeforeSIC = makeWaveformProbe!C("waveform_beforeSIC_init.csv", resultDir, 0, model);
+        auto waveAfterSIC = makeWaveformProbe!C("waveform_afterSIC_init.csv", resultDir, 0, model);
+        auto waveFilterOutput = makeWaveformProbe!C("waveform_filterOutput_init.csv", resultDir, 0, model);
 
         StopWatch sw;
         foreach(blockIdx; 0 .. model.numOfTrainOrCancSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
@@ -431,12 +431,12 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         if(isSignalLoggingMode)
             endFlags ~= new bool(false);
 
-        auto psdBeforePSD = makeSpectrumAnalyzer!(Complex!float)("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
-        auto psdAfterSIC = makeSpectrumAnalyzer!(Complex!float)("psd_afterSIC.csv", resultDir, 0, model, endFlags[1]);
-        auto foutPSD = makeSpectrumAnalyzer!(Complex!float)("psd_filter_output.csv", resultDir, 0, model, endFlags[2]);
-        // auto sicValue = makeCancellationProbe!(Complex!float)(&sicv, "cancellation_value.csv", resultDir, 0, model, endFlags[3]);
-        auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[3]);
-        auto syncSpecAnalyzer = makeSyncSpectrumAnalyzer!(Complex!float, 2, ["Y", "D"])("psd_sync.csv", resultDir, model, endFlags[4]);
+        auto psdBeforePSD = makeSpectrumAnalyzer!C("psd_beforeSIC.csv", resultDir, 0, model, endFlags[0]);
+        auto psdAfterSIC = makeSpectrumAnalyzer!C("psd_afterSIC.csv", resultDir, 0, model, endFlags[1]);
+        auto foutPSD = makeSpectrumAnalyzer!C("psd_filter_output.csv", resultDir, 0, model, endFlags[2]);
+        // auto sicValue = makeCancellationProbe!C(&sicv, "cancellation_value.csv", resultDir, 0, model, endFlags[3]);
+        auto inbandSICValue = makeInBandCancellationProbe!C(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[3]);
+        auto syncSpecAnalyzer = makeSyncSpectrumAnalyzer!(C, 2, ["Y", "D"])("psd_sync.csv", resultDir, model, endFlags[4]);
 
         real sumRemainPower = 0;
         real sumSI = 0;
@@ -504,11 +504,11 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
 
     if(model.outputBER || model.outputEVM)
-        simulateMeasureBEREVMImpl(filter, signals, model, infoResult, resultDir);
+        simulateMeasureBEREVMImpl!C(filter, signals, model, infoResult, resultDir);
 
     // ノイズ電力
-    auto noisePSD = makeSpectrumAnalyzer!(Complex!float)("psd_noise_floor.csv", resultDir, 0, model);
-    .put(noisePSD, signals.noise.save.map!(a => Complex!float(a)).take(64*1024));
+    auto noisePSD = makeSpectrumAnalyzer!C("psd_noise_floor.csv", resultDir, 0, model);
+    .put(noisePSD, signals.noise.save.map!(a => C(a)).take(64*1024));
 
     static if(is(typeof((){ filter.saveInfoToDir(""); })))
     {
@@ -533,10 +533,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
 
 
-void simulateMeasureBEREVMImpl(Filter, Signals)(ref Filter filter, ref Signals signals, ref Model model, ref JSONValue infoResult, string resultDir)
+void simulateMeasureBEREVMImpl(C, Filter, Signals)(ref Filter filter, ref Signals signals, ref Model model, ref JSONValue infoResult, string resultDir)
 {
-    alias C = Complex!float;
-
     if(!model.withSI) signals.ignoreSI = true;
     signals.ignoreDesired = false;
     scope(exit){
@@ -623,8 +621,8 @@ void simulateMeasureBEREVMImpl(Filter, Signals)(ref Filter filter, ref Signals s
             evms[j] = diffPs[j] / sumPs[j];
     });
 
-    auto rcvAfterSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_afterSIC.csv", resultDir, 0, model);
-    auto rcvBeforeSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_beforeIC.csv", resultDir, 0, model);
+    auto rcvAfterSICPSD = makeSpectrumAnalyzer!C("psd_rcv_afterSIC.csv", resultDir, 0, model);
+    auto rcvBeforeSICPSD = makeSpectrumAnalyzer!C("psd_rcv_beforeIC.csv", resultDir, 0, model);
 
     if(!model.outputEVM)
         evmResult = 1;
@@ -644,8 +642,8 @@ void simulateMeasureBEREVMImpl(Filter, Signals)(ref Filter filter, ref Signals s
             outps[] = recvs[];
 
         foreach(e; outps){
-            if(model.outputBER) berCounter.put(Complex!float(e.re, e.im));
-            if(model.outputEVM) evmOutput.put(Complex!float(e.re, e.im));
+            if(model.outputBER) berCounter.put(e);
+            if(model.outputEVM) evmOutput.put(e);
 
             // loopCountが10以上になるまで，慣らし運転する
             if(loopCount > 10)
