@@ -380,7 +380,7 @@ unittest
 y[j] = sum_i mx[i, j] * a[i] のa[i]を最小二乗法で求める．
 結果は，y[0 .. P]に上書きされる．(P: mx.length!0)
 */
-Complex!R[] leastSquareEstimateColumnMajor(R : double)(Slice!(Contiguous, [2], Complex!R*) mx, Complex!R[] y)
+Complex!R[] leastSquareEstimateColumnMajor(R : double)(Slice!(Complex!R*, 2, Contiguous) mx, Complex!R[] y)
 {
     import std.algorithm : min, max;
 
@@ -413,7 +413,7 @@ alias leastSquareEstimate = leastSquareEstimateColumnMajor;
 y[i] = sum_j mx[i, j] * a[j] のa[j]を最小二乗法で求める．
 結果は，y[0 .. P]に上書きされる．(P: mx.length!1)
 */
-Complex!R[] leastSquareEstimateRowMajor(R : double)(Slice!(Contiguous, [2], Complex!R*) mx, Complex!R[] y)
+Complex!R[] leastSquareEstimateRowMajor(R : double)(Slice!(Complex!R*, 2, Contiguous) mx, Complex!R[] y)
 {
     import std.algorithm : min, max;
 

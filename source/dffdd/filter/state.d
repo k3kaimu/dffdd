@@ -11,7 +11,7 @@ struct MultiFIRState(C)
     alias StateElementType = C;
     alias R = typeof(C.init.re);
 
-    Slice!(Universal, [2], C*) state, weight;
+    Slice!(C*, 2, Universal) state, weight;
     // Slice!(Universal, [1], R*) power;
 
     this(size_t numOfFIR, size_t nTaps)
@@ -27,7 +27,7 @@ struct MultiFIRState(C)
     }
 
 
-    this(size_t numOfFIR, size_t nTaps, Slice!(Universal, [2], C*) state, Slice!(Universal, [2], C*) weight/*, Slice!(Universal,[1], R*) power*/)
+    this(size_t numOfFIR, size_t nTaps, Slice!(C*, 2, Universal) state, Slice!(C*, 2, Universal) weight/*, Slice!(Universal,[1], R*) power*/)
     in{
         assert(state.length!0 == nTaps && weight.length!0 == nTaps);
         // assert(state.length!1 == numOfFIR && weight.length!1 == numOfFIR && power.length == numOfFIR);

@@ -24,7 +24,7 @@ final class LSAdapter(State, size_t NumOfADCBits = 12)
     alias C = State.StateElementType;
     alias R = typeof(C.init.re);
 
-    Slice!(Contiguous, [2], C*) _mx;
+    Slice!(C*, 2, Contiguous) _mx;
     C[] _yv;
     immutable size_t _L;
     size_t _fillCNT;
