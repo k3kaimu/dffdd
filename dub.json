@@ -24,7 +24,7 @@
         "debug": { "buildOptions": ["debugMode"] },
         "release": {
             "buildOptions": ["releaseMode", "optimize", "inline"],
-            "dflags-ldc": ["-enable-cross-module-inlining", "-mcpu=native", "-oq"]
+            "__dflags-ldc": ["-enable-cross-module-inlining", "-mcpu=native", "-oq"]
         }
     }
 }
