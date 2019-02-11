@@ -225,7 +225,7 @@ void mainJob()
 
 
         // INR vs (EVM / SIC / BER)
-        foreach(inr; iota(20, 82, 5))
+        foreach(inr; iota(20, 82, 2))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
@@ -427,6 +427,21 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 
     if(exists(buildPath(dir, "allResult.json"))) return;
 
+    // 前回異常終了等で死んでいれば，このファイルがあるはず
+    // 中間状態のダンプファイル
+    immutable resListDumpFilePath = buildPath(dir, "resList_dumped.json");
+    JSONValue[] lastDumpedList;
+    if(exists(resListDumpFilePath))
+    {
+        lastDumpedList = std.file.readText(resListDumpFilePath)
+            .parseJSON(JSONOptions.specialFloatLiterals).array;
+    }
+    scope(success) {
+        // このプロセスが正常終了すれば中間状態のダンプファイルは不要
+        std.file.remove(buildPath(dir, "resList_dumped.json"));
+    }
+
+
     JSONValue[] resList;
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
@@ -435,7 +450,26 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
             import core.memory;
             GC.collect();
         }
-        auto res = mainImpl!methodName(m, i == 0 ? dir : null);
+
+        JSONValue res; // この試行での結果が格納される
+        scope(success)
+        {
+            resList ~= res;
+
+            // このプロセスで計算できた試行回数が前回を上回っていればダンプファイルを更新
+            if(resList.length > lastDumpedList.length)
+                std.file.write(resListDumpFilePath, JSONValue(resList).toString(JSONOptions.specialFloatLiterals));
+        }
+
+        if(lastDumpedList.length >= i+1) {
+            // 前回中断時にすでに計算済みなのでそのデータを復元
+            res = lastDumpedList[i];
+            continue;
+        }
+        else {
+            // まだ未計算なので計算する
+            res = mainImpl!(methodName)(m, i == 0 ? dir : null);
+        }
 
         if(saveAllRAWData) {
             res["model"] = (){
