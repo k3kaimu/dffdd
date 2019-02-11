@@ -261,9 +261,9 @@ void mainJob()
 
     import std.stdio;
 
-    writefln("%s tasks will be submitted.", taskList.length);
-    // JobEnvironment env;
-    // tuthpc.taskqueue.run(taskList, env);
+    // writefln("%s tasks will be submitted.", taskList.length);
+    JobEnvironment env;
+    tuthpc.taskqueue.run(taskList, env);
     // foreach(i; 0 .. taskList.length)
     //     taskList[i]();
 }
