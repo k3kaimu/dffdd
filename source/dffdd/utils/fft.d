@@ -319,66 +319,66 @@ struct FFTWObjectImpl(alias Cpx)
     }
 
 
-    ~this()
+    ~this() @nogc
     {
         if(_floatFwdPlan !is null){
-            fftwf_destroy_plan(_floatFwdPlan);
+            forceNoGC!fftwf_destroy_plan(_floatFwdPlan);
             _floatFwdPlan = null;
         }
 
         if(_doubleFwdPlan !is null){
-            fftw_destroy_plan(_doubleFwdPlan);
+            forceNoGC!fftw_destroy_plan(_doubleFwdPlan);
             _doubleFwdPlan = null;
         }
 
         if(_realFwdPlan !is null){
-            fftwl_destroy_plan(_realFwdPlan);
+            forceNoGC!fftwl_destroy_plan(_realFwdPlan);
             _realFwdPlan = null;
         }
 
         if(_floatInvPlan !is null){
-            fftwf_destroy_plan(_floatInvPlan);
+            forceNoGC!fftwf_destroy_plan(_floatInvPlan);
             _floatInvPlan = null;
         }
 
         if(_doubleInvPlan !is null){
-            fftw_destroy_plan(_doubleInvPlan);
+            forceNoGC!fftw_destroy_plan(_doubleInvPlan);
             _doubleInvPlan = null;
         }
 
         if(_realInvPlan !is null){
-            fftwl_destroy_plan(_realInvPlan);
+            forceNoGC!fftwl_destroy_plan(_realInvPlan);
             _realInvPlan = null;
         }
 
         //static assert(0, "free in/out array!!!");
         if(_float_in !is null){
-            fftwf_free(_float_in.ptr);
+            forceNoGC!fftwf_free(_float_in.ptr);
             _float_in = null;
         }
 
         if(_float_out !is null){
-            fftwf_free(_float_out.ptr);
+            forceNoGC!fftwf_free(_float_out.ptr);
             _float_out = null;
         }
 
         if(_double_in !is null){
-            fftw_free(_double_in.ptr);
+            forceNoGC!fftw_free(_double_in.ptr);
             _double_in = null;
         }
 
         if(_double_out !is null){
-            fftw_free(_double_out.ptr);
+            forceNoGC!fftw_free(_double_out.ptr);
             _double_out = null;
         }
 
         if(_real_in !is null){
-            fftwl_free(_real_in.ptr);
+            forceNoGC!fftwl_free(_real_in.ptr);
             _real_in = null;
         }
 
         if(_real_out !is null){
-            fftwl_free(_real_out.ptr);
+            forceNoGC!fftwl_free(_real_out.ptr);
             _real_out = null;
         }
     }
@@ -428,23 +428,23 @@ struct FFTWObjectImpl(alias Cpx)
         static if(is(F == float))
         {
             static if(direction == FFTW_FORWARD)
-                fftwf_execute(_floatFwdPlan);
+                forceNoGC!fftwf_execute(_floatFwdPlan);
             else
-                fftwf_execute(_floatInvPlan);
+                forceNoGC!fftwf_execute(_floatInvPlan);
         }
         else static if(is(F == double))
         {
             static if(direction == FFTW_FORWARD)
-                fftw_execute(_doubleFwdPlan);
+                forceNoGC!fftw_execute(_doubleFwdPlan);
             else
-                fftw_execute(_doubleInvPlan);
+                forceNoGC!fftw_execute(_doubleInvPlan);
         }
         else static if(is(F == real))
         {
             static if(direction == FFTW_FORWARD)
-                fftwl_execute(_realFwdPlan);
+                forceNoGC!fftwl_execute(_realFwdPlan);
             else
-                fftwl_execute(_realInvPlan);
+                forceNoGC!fftwl_execute(_realInvPlan);
         }
         else
             static assert(0);
@@ -508,36 +508,48 @@ struct FFTWObjectImpl(alias Cpx)
     Cpx!real[] _real_out;
 
     static
-    auto makePlanAndArray(F)(size_t n, Cpx!F* input, Cpx!F* output)
+    auto makePlanAndArray(F)(size_t n, Cpx!F* input, Cpx!F* output) @nogc
     {
         auto newInput = input;
         auto newOutput = output;
+
+        void checkMemory()
+        {
+            if(newInput is null || newOutput is null)
+            {
+                import core.exception;
+                onOutOfMemoryError();
+            }
+        }
 
         synchronized(fftwMutex)
         {
           static if(is(F == float))
           {
-            if(newInput is null) newInput = cast(Cpx!F*)fftwf_malloc(F.sizeof * 2 * n);
-            if(newOutput is null) newOutput = cast(Cpx!F*)fftwf_malloc(F.sizeof * 2 * n);
-            auto planFwd = fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_MEASURE);
-            auto planInv = fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_MEASURE);
+            if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
+            if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
+            checkMemory();
+            auto planFwd = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
+            auto planInv = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
           else static if(is(F == double))
           {
-            if(newInput is null) newInput = cast(Cpx!F*)fftw_malloc(F.sizeof * 2 * n);
-            if(newOutput is null) newOutput = cast(Cpx!F*)fftw_malloc(F.sizeof * 2 * n);
-            auto planFwd = fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_MEASURE);
-            auto planInv = fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_MEASURE);
+            if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
+            if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
+            checkMemory();
+            auto planFwd = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
+            auto planInv = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
           else static if(is(F == real))
           {
-            if(newInput is null) newInput = cast(Cpx!F*)fftwl_malloc(F.sizeof * 2 * n);
-            if(newOutput is null) newOutput = cast(Cpx!F*)fftwl_malloc(F.sizeof * 2 * n);
-            auto planFwd = fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_MEASURE);
-            auto planInv = fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_MEASURE);
+            if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
+            if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
+            checkMemory();
+            auto planFwd = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
+            auto planInv = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
 
-            if(newInput is null || newOutput is null || planFwd is null || planInv is null)
+            if(planFwd is null || planInv is null)
             {
                 import core.exception;
                 onOutOfMemoryError();
@@ -545,6 +557,24 @@ struct FFTWObjectImpl(alias Cpx)
 
             return tuple(planFwd, planInv, newInput, newOutput);
         }
+    }
+
+
+    import std.traits;
+    static
+    auto forceNoGC(alias func, Params...)(auto ref Params params) @nogc
+    if(functionLinkage!func == "C")
+    {
+        alias R = ReturnType!func;
+        alias Ps = Parameters!func;
+        static
+        R funcWrapper(Ps ps)
+        {
+            return func(ps);
+        }
+
+        alias NoGCFunc = R function(Ps) @nogc;
+        return (cast(NoGCFunc)&funcWrapper)(params);
     }
 }
 
