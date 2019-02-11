@@ -42,9 +42,15 @@ struct ModelSeed
     Gain rxIRR = 25.dB;
 
     /* PA */
-    Voltage txPower = 23.dBm;
-    Voltage paIIP3 = 21.8.dBm;
-    Gain paGain = 28.5.dB;
+    // Voltage txPower = 23.dBm;
+    // Voltage paIIP3 = 20.dBm;
+    // Gain paGain = 27.dB;
+    enum real txBackoff_dB = 10;
+    enum real txPower_dBm = 23;
+    enum real paGain_dB = 20;
+    Voltage txPower = txPower_dBm.dBm;
+    Voltage paIIP3 = (txPower_dBm - paGain_dB + 6 + txBackoff_dB).dBm;
+    Gain paGain = paGain_dB.dB;
 
     /* LNA */
     uint lnaSmoothFactor = 1;
@@ -66,7 +72,7 @@ struct ModelSeed
 
     /* frequency domain iterative */
     uint iterNumOfIteration = 3;
-    uint iterNumOfNewton = 1;
+    uint iterNumOfNewton = 2;
 
     /* measure only desired signal */
     bool onlyDesired = false;
@@ -98,7 +104,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 101;
+    enum numOfTrials = 11;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -111,17 +117,17 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    "PH_LS",
+                                    // "PH_LS",
                                     // "PH_RLS",
                                     // "PH_RLS",
                                     // "OPH_LMS",
                                     
-                                    "WL_LS",
-                                    "L_LS",
+                                    // "WL_LS",
+                                    // "L_LS",
                                     
                                     // "IterativeFreqSIC_X",
-                                    "SidelobeFwd_X",
-                                    "SidelobeInv_X",
+                                    // "SidelobeFwd_X",
+                                    // "SidelobeInv_X",
                                     "SidelobeInv2_X",
             ))
     {
@@ -132,7 +138,7 @@ void mainJob()
             taskList ~= appender;
         }
 
-
+        /+
         /* change the number of iterations */
         static if(methodName == "SidelobeInv2_X")
         foreach(nIters; iota(1, 11))
@@ -210,17 +216,17 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-
+        +/
 
         // INR vs (EVM / SIC / BER)
-        foreach(inr; iota(20, 82, 2))
+        foreach(inr; iota(20, 82, 5))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.numOfTrainingSymbols = 20;
             modelSeed.INR = inr.dB;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("results_inr_vs_sic", dir);
@@ -228,7 +234,7 @@ void mainJob()
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-
+        /+
         // TXP vs (EVM. SIC /  BER)
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
@@ -245,6 +251,7 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
     }
 
     import std.stdio;
@@ -253,7 +260,7 @@ void mainJob()
     JobEnvironment env;
     tuthpc.taskqueue.run(taskList, env);
     // foreach(i; 0 .. taskList.length)
-        // taskList[i]();
+    //     taskList[i]();
 }
 
 
@@ -314,7 +321,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channel.taps = 48;
+            model.channel.taps = 8;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;

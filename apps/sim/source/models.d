@@ -55,7 +55,7 @@ import dffdd.dsp.statistics;
 import constant;
 import snippet;
 
-enum size_t defaultDistortionOrder = 3;
+enum size_t defaultDistortionOrder = 7;
 alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
 
 
@@ -66,7 +66,7 @@ struct Model
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
-    real samplingFreq = 20e6 * 4;
+    real samplingFreq = 20e6 * 8;
     Gain SNR = 20.dB;
     Gain INR = 60.dB;
     bool withSIC = true;
@@ -106,7 +106,7 @@ struct Model
         uint numOfFFT = 64;
         uint numOfCP = 16;
         uint numOfSubcarrier = 52;
-        uint scaleOfUpSampling = 4;
+        uint scaleOfUpSampling = 8;
         Gain PAPR = 10.dB;                 // 10dB
         //uint model.numOfSamplesOf1Symbol = 
         uint numOfSamplesOf1Symbol() const @property { return scaleOfUpSampling * (numOfFFT + numOfCP); }
@@ -204,7 +204,7 @@ struct Model
         Gain NF = 4.dB;         // 4dB
         uint noiseSeedOffset = 123;
         Gain DR = 70.dB;        // Dynamic Range
-        Voltage IIP3 = (-3).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
+        Voltage IIP3 = (0).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
         uint smoothFactor = 3;
     }
     LNA lna;
