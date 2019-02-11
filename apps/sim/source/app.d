@@ -45,7 +45,7 @@ struct ModelSeed
     // Voltage txPower = 23.dBm;
     // Voltage paIIP3 = 20.dBm;
     // Gain paGain = 27.dB;
-    enum real txBackoff_dB = 10;
+    enum real txBackoff_dB = 7;
     enum real txPower_dBm = 23;
     enum real paGain_dB = 20;
     Voltage txPower = txPower_dBm.dBm;
@@ -104,7 +104,7 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 11;
+    enum numOfTrials = 201;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -117,7 +117,9 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    // "PH_LS",
+                                    "PH3_LS",
+                                    "PH5_LS",
+                                    "PH7_LS",
                                     // "PH_RLS",
                                     // "PH_RLS",
                                     // "OPH_LMS",
@@ -128,7 +130,9 @@ void mainJob()
                                     // "IterativeFreqSIC_X",
                                     // "SidelobeFwd_X",
                                     // "SidelobeInv_X",
-                                    "SidelobeInv2_X",
+                                    "Sidelobe3_X",
+                                    "Sidelobe5_X",
+                                    "Sidelobe7_X",
             ))
     {
         bool[string] dirset;
@@ -138,14 +142,14 @@ void mainJob()
             taskList ~= appender;
         }
 
-        /+
+
         /* change the number of iterations */
-        static if(methodName == "SidelobeInv2_X")
+        static if(methodName == "Sidelobe7_X")
         foreach(nIters; iota(1, 11))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.numOfTrainingSymbols = 20;
             modelSeed.INR = 60.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
@@ -160,12 +164,12 @@ void mainJob()
 
 
         /* change the number of newton's method loop */
-        static if(methodName == "SidelobeInv2_X")
+        static if(methodName == "Sidelobe7_X")
         foreach(newtonIters; iota(0, 11))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.numOfTrainingSymbols = 20;
             modelSeed.INR = 60.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
@@ -179,8 +183,9 @@ void mainJob()
         }
 
 
+        /+
         // only desired signal
-        static if(methodName == "PH_LS")
+        static if(methodName == "PH7_LS")
         foreach(snr; iota(0, 21, 1))
         {
             ModelSeed modelSeed;
@@ -197,6 +202,7 @@ void mainJob()
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
 
 
         // learning symbols vs (EVM / SIC / BER)
@@ -208,15 +214,15 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
             modelSeed.SNR = 20.dB;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ber", dir);
+            dir = buildPath("results_trsyms", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
+
 
         // INR vs (EVM / SIC / BER)
         foreach(inr; iota(20, 82, 5))
@@ -234,7 +240,7 @@ void mainJob()
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-        /+
+
         // TXP vs (EVM. SIC /  BER)
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
@@ -243,22 +249,21 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = ((txp - 23)+50).dB;
             modelSeed.txPower = txp.dBm;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("results_txp_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
-        +/
     }
 
     import std.stdio;
 
-    // writefln("%s tasks will be submitted.", taskList.length);
-    JobEnvironment env;
-    tuthpc.taskqueue.run(taskList, env);
+    writefln("%s tasks will be submitted.", taskList.length);
+    // JobEnvironment env;
+    // tuthpc.taskqueue.run(taskList, env);
     // foreach(i; 0 .. taskList.length)
     //     taskList[i]();
 }
@@ -321,7 +326,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channel.taps = 8;
+            model.channel.taps = 48;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;

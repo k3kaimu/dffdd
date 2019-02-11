@@ -13,6 +13,7 @@ import std.range;
 import std.random;
 import std.stdio;
 import std.typecons;
+import std.conv;
 
 import carbon.math : nextPowOf2;
 
@@ -215,8 +216,11 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, true, isOrthogonalized)(modOFDM(model), model);
+  else static if(filterStructure[0 .. $-1].endsWith("PH"))
+  {
+    enum size_t POrder = filterStructure[$-1 .. $].to!int;
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, POrder, true, isOrthogonalized)(modOFDM(model), model);
+  }
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
   // else static if(filterStructure.endsWith("CWLH"))
@@ -228,20 +232,12 @@ auto makeFilter(string filterType)(Model model)
     import dffdd.filter.freqdomain;
     auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
   }
-  else static if(filterStructure.endsWith("SidelobeInv2"))
+  else static if(filterStructure[0 .. $-1].endsWith("Sidelobe"))
   {
+    enum size_t POrder = filterStructure[$-1 .. $].to!int / 2 + 1;
+
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 4)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations, Yes.useMainlobe);
-  }
-  else static if(filterStructure.endsWith("SidelobeInv"))
-  {
-    import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, No.useNewton, model.iterativeFreqSIC.newtonIterations);
-  }
-  else static if(filterStructure.endsWith("SidelobeFwd"))
-  {
-    import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, No.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, POrder)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations, Yes.useMainlobe);
   }
   else static if(filterStructure.endsWith("WLFHF"))
   {
