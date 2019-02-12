@@ -402,9 +402,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 _paCoefs[p] = coefs[(p-1) ];
                 _lnaCoefs[p] = coefs[(p-1) + (P-1)];
             }
-
-            import std.stdio;
-            writefln!"chAmp: %s"(coefs[0]);
         }
         else {
             // 係数を推定していく
@@ -429,10 +426,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 }
             }
         }
-
-        import std.stdio;
-        writefln!"paCoefs: %s"(_paCoefs);
-        writefln!"lnaCoefs: %s"(_lnaCoefs);
     }
 
 
@@ -474,20 +467,6 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
     C invertPoly(C2)(C y, in C2[] coefs) const
     {
-        // if(_useNewton) {
-        //     C e = y;
-        //     foreach(i; 0 .. _nNewtonIter)
-        //     {
-        //         C fx = e + e * e.sqAbs * coefs3 - y;
-        //         C dfx = 1 + 2 * coefs3 * e.sqAbs;
-        //         e -= fx / dfx;
-        //     }
-
-        //     return e;
-        // }else{
-        //     return C(y - coefs3 * y * y.sqAbs);
-        // }
-
         if(_useNewton) {
             real yabs = y.abs;
             real e = yabs;
