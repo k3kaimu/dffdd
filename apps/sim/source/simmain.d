@@ -365,7 +365,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         StopWatch sw;
         foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
-            static if(filterStructure.endsWith("FHF") || filterStructure.endsWith("IterativeFreqSIC"))
+            static if(filterStructure[0 .. $-1].endsWith("FHF") || filterStructure.endsWith("IterativeFreqSIC"))
             {
                 if(blockIdx >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
                     signals.useSWPOFDM = false;
