@@ -22,6 +22,7 @@ import dffdd.blockdiagram.utils;
 import dffdd.dsp.statistics;
 import dffdd.utils.fft;
 import dffdd.utils.unit;
+import dffdd.filter.primitives;
 
 import models;
 import snippet;
@@ -216,10 +217,15 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
+  else static if(filterStructure[0 .. $-1].endsWith("SubPH"))
+  {
+    enum size_t POrder = filterStructure[$-1 .. $].to!int;
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, SubSetOfPADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
+  }
   else static if(filterStructure[0 .. $-1].endsWith("PH"))
   {
     enum size_t POrder = filterStructure[$-1 .. $].to!int;
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, POrder, true, isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, PADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
   }
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
@@ -262,12 +268,20 @@ auto makeFilter(string filterType)(Model model)
   }
   else static if(filterStructure.endsWith("CFHF"))
     static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
-  else static if(filterStructure.endsWith("FHF")){
+  else static if(filterStructure[0 .. $-1].endsWith("FHF"))
+  {
     static assert(!isOrthogonalized);
 
-    auto freqFilter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model);
+    enum size_t POrder = filterStructure[$-1 .. $].to!int;
 
-    static if(filterStructure.endsWith("S2FHF"))
+    static if(filterStructure.canFind("Sub"))
+        alias Dist = SubSetOfPADistorter!(Complex!float, POrder);
+    else
+        alias Dist = PADistorter!(Complex!float, POrder);
+
+    auto freqFilter = makeFrequencyHammersteinFilter2!(filterOptimizer, Dist)(model);
+
+    static if(filterStructure.canFind("S2"))
     {
         auto filter = makeFrequencyDomainBasisFunctionSelector(model, freqFilter);
     }
@@ -283,6 +297,8 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else
     static assert("Cannot identify filter model.");
+
+    pragma(msg, typeof(filter).stringof ~ " is instantiated.");
 
     return filter;
 }

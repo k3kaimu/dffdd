@@ -53,7 +53,7 @@ struct ModelSeed
     Gain paGain = paGain_dB.dB;
 
     /* LNA */
-    uint lnaSmoothFactor = 1;
+    uint lnaSmoothFactor = 3;
 
     /* Other */
     Gain SNR = 11.dB;
@@ -72,7 +72,7 @@ struct ModelSeed
 
     /* frequency domain iterative */
     uint iterNumOfIteration = 3;
-    uint iterNumOfNewton = 2;
+    uint iterNumOfNewton = 1;
 
     /* measure only desired signal */
     bool onlyDesired = false;
@@ -105,6 +105,8 @@ void mainJob()
 
 
     enum numOfTrials = 201;
+    size_t sumOfTaskNums = 0;
+    size_t sumOfTrials = 0;
 
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -117,9 +119,6 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    "PH3_LS",
-                                    "PH5_LS",
-                                    "PH7_LS",
                                     // "PH_RLS",
                                     // "PH_RLS",
                                     // "OPH_LMS",
@@ -130,9 +129,36 @@ void mainJob()
                                     // "IterativeFreqSIC_X",
                                     // "SidelobeFwd_X",
                                     // "SidelobeInv_X",
-                                    "Sidelobe3_X",
-                                    "Sidelobe5_X",
+
+                                    // "PH3_LS",
+                                    // "PH5_LS",
+                                    "PH7_LS",
+                                    // "OPH3_LS",
+                                    // "OPH5_LS",
+                                    "OPH7_LS",
+                                    // "SubPH3_LS",
+                                    // "SubPH5_LS",
+                                    "SubPH7_LS",
+                                    // "OSubPH3_LS",
+                                    // "OSubPH5_LS",
+                                    "OSubPH7_LS",
+
+                                    // "Sidelobe3_X",
+                                    // "Sidelobe5_X",
                                     "Sidelobe7_X",
+
+                                    // "FHF3_LS",
+                                    // "FHF5_LS",
+                                    // "FHF7_LS",
+                                    // "S2FHF3_LS",
+                                    // "S2FHF5_LS",
+                                    // "S2FHF7_LS",
+                                    // "SubFHF3_LS",
+                                    // "SubFHF5_LS",
+                                    // "SubFHF7_LS",
+                                    // "SubS2FHF3_LS",
+                                    // "SubS2FHF5_LS",
+                                    // "SubS2FHF7_LS",
             ))
     {
         bool[string] dirset;
@@ -140,6 +166,24 @@ void mainJob()
         scope(exit){
             enforce(appender.length == dirset.length);
             taskList ~= appender;
+            /+
+            foreach(dir, _; dirset) {
+                if(!exists(buildPath(dir, "allResult.json"))){
+                    sumOfTaskNums += 1;
+                    // writeln(dir);
+
+                    sumOfTrials += numOfTrials;
+
+                    string resListDumpFilePath = buildPath(dir, "resList_dumped.json");
+                    if(exists(resListDumpFilePath)) {
+                        size_t compls = std.file.readText(resListDumpFilePath)
+                                        .parseJSON(JSONOptions.specialFloatLiterals).array.length;
+                        sumOfTrials -= compls;
+                        writefln!"%s: %s complete"(dir, compls);
+                    }
+                }
+            }
+            +/
         }
 
 
@@ -157,7 +201,7 @@ void mainJob()
             modelSeed.iterNumOfNewton = 10;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_estimate_iters", dir ~ format("_%s", nIters));
+            dir = buildPath("PA3_LNA3", "results_estimate_iters", dir ~ format("_%s", nIters));
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -177,7 +221,7 @@ void mainJob()
             modelSeed.iterNumOfNewton = newtonIters;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_newton_iters", dir ~ format("_%s", newtonIters));
+            dir = buildPath("PA3_LNA3", "results_newton_iters", dir ~ format("_%s", newtonIters));
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -198,16 +242,15 @@ void mainJob()
             modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_ber", dir ~ "_onlyDesired");
+            dir = buildPath("PA3_LNA3", "results_ber", dir ~ "_onlyDesired");
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
         +/
 
-
         // learning symbols vs (EVM / SIC / BER)
-        foreach(inr; iota(50, 62, 2))
-        foreach(learningSymbols; iota(2, 21))
+        foreach(inr; [50, 60])
+        foreach(learningSymbols; iota(2, 21).chain(iota(25, 105, 5)))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
@@ -218,42 +261,45 @@ void mainJob()
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_trsyms", dir);
+            dir = buildPath("PA3_LNA3", "results_trsyms", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
         // INR vs (EVM / SIC / BER)
+        foreach(learningSymbols; [5, 10, 25, 50, 100])
         foreach(inr; iota(20, 82, 2))
         {
             ModelSeed modelSeed;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_inr_vs_sic", dir);
+            dir = buildPath("PA3_LNA3", "results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
         // TXP vs (EVM. SIC /  BER)
-        foreach(txp; iota(10, 32, 1)) {
+        foreach(inr; [40, 50, 60])
+        foreach(learningSymbols; [5, 10, 25, 50, 100])
+        foreach(txp; iota(10, 32, 2)) {
             ModelSeed modelSeed;
             modelSeed.txPower = txp.dBm;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 10;
-            modelSeed.INR = ((txp - 23)+50).dB;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.INR = ((txp - 23) + inr).dB;
             modelSeed.txPower = txp.dBm;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_txp_vs_sic", dir);
+            dir = buildPath("PA3_LNA3", "results_txp_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -261,9 +307,18 @@ void mainJob()
 
     import std.stdio;
 
-    // writefln("%s tasks will be submitted.", taskList.length);
+    /+
+    writefln("%s tasks will be submitted.", taskList.length);
+    writefln("%s tasks will be computed.", sumOfTaskNums);
+
+    immutable size_t totalTrials = numOfTrials * taskList.length;
+    immutable size_t completeTrials = totalTrials - sumOfTrials;
+    writefln("%s/%s (%2.2f%%) is completed. ", completeTrials, totalTrials, completeTrials*1.0/totalTrials*100);
+    +/
+
     JobEnvironment env;
     tuthpc.taskqueue.run(taskList, env);
+
     // foreach(i; 0 .. taskList.length)
     //     taskList[i]();
 }
@@ -427,6 +482,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 
     if(exists(buildPath(dir, "allResult.json"))) return;
 
+    writeln(dir);
     // 前回異常終了等で死んでいれば，このファイルがあるはず
     // 中間状態のダンプファイル
     immutable resListDumpFilePath = buildPath(dir, "resList_dumped.json");
@@ -438,8 +494,12 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     }
     scope(success) {
         // このプロセスが正常終了すれば中間状態のダンプファイルは不要
-        std.file.remove(buildPath(dir, "resList_dumped.json"));
+        if(exists(resListDumpFilePath))
+            std.file.remove(buildPath(dir, "resList_dumped.json"));
     }
+
+    import std.datetime;
+    auto lastUpdateTime = Clock.currTime;
 
 
     JSONValue[] resList;
@@ -457,8 +517,14 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
             resList ~= res;
 
             // このプロセスで計算できた試行回数が前回を上回っていればダンプファイルを更新
-            if(resList.length > lastDumpedList.length)
+            // ただし，前回の更新時より1分以上空いていること
+            auto ct = Clock.currTime;
+            if(resList.length > lastDumpedList.length
+                && (lastUpdateTime - ct) > 60.seconds )
+            {
                 std.file.write(resListDumpFilePath, JSONValue(resList).toString(JSONOptions.specialFloatLiterals));
+                lastUpdateTime = ct;
+            }
         }
 
         if(lastDumpedList.length >= i+1) {
@@ -483,7 +549,6 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
                 return jv;
             }();
         }
-        resList ~= res;
 
         if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF")){
             auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();

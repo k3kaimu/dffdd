@@ -345,18 +345,18 @@ auto thermalNoise(Model model, uint seedOffset = 123321)
 }
 
 
-auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, bool useWL = true, bool isOrthogonalized, Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(string optimizer, alias Dist, bool isOrthogonalized, Mod)(Mod mod, Model model)
 {
     alias C = Complex!float;
 
-  static if(useWL)
-    alias Dist = CompleteDistorter!(distortionOrder);
-  else
-  {
-    // static assert(distortionOrder == 1);
-    // alias Dist = Distorter!(C, x => x);
-    alias Dist = OnlyPADistorter!(C, distortionOrder);
-  }
+//   static if(useWL)
+//     alias Dist = CompleteDistorter!(distortionOrder);
+//   else
+//   {
+//     // static assert(distortionOrder == 1);
+//     // alias Dist = Distorter!(C, x => x);
+//     alias Dist = OnlyPADistorter!(C, distortionOrder);
+//   }
 
     static if(isOrthogonalized)
     {
@@ -412,16 +412,16 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = def
 }
 
 
-auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder, bool useWL = true)(Model model)
+auto makeFrequencyHammersteinFilter2(string optimizer, alias Dist)(Model model)
 {
     import dffdd.filter.freqdomain;
 
     alias C = Complex!float;
 
-    static if(useWL)
-        alias Dist = CompleteDistorter!(distortionOrder);
-    else
-        alias Dist = OnlyPADistorter!(C, distortionOrder);
+    // static if(useWL)
+    //     alias Dist = CompleteDistorter!(distortionOrder);
+    // else
+    //     alias Dist = OnlyPADistorter!(C, distortionOrder);
 
     auto makeOptimizer(State)(State state)
     {

@@ -152,12 +152,12 @@ if(P % 2 == 1)
     enum size_t inputBlockLength = 1;
 
 
-    template indexOfConjugated(size_t i)
+    ptrdiff_t indexOfConjugated(size_t i)
     {
-        static if(i % 2 == 0)
-            enum ptrdiff_t indexOfConjugated = i + 1;
+        if(i % 2 == 0)
+            return i + 1;
         else
-            enum ptrdiff_t indexOfConjugated = i - 1;
+            return i - 1;
     }
 
 
