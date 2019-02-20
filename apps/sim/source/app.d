@@ -520,7 +520,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
             // ただし，前回の更新時より1分以上空いていること
             auto ct = Clock.currTime;
             if(resList.length > lastDumpedList.length
-                && (lastUpdateTime - ct) > 60.seconds )
+                && (ct - lastUpdateTime) > 60.seconds )
             {
                 std.file.write(resListDumpFilePath, JSONValue(resList).toString(JSONOptions.specialFloatLiterals));
                 lastUpdateTime = ct;
