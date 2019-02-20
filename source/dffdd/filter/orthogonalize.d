@@ -186,7 +186,7 @@ final class GramSchmidtOBFFactory(C)
     }
 
 
-    Slice!(Contiguous, [2], C*) convertMatrix() @property
+    Slice!(C*, 2, Contiguous) convertMatrix() @property
     {
         return _m;
     }
@@ -194,7 +194,7 @@ final class GramSchmidtOBFFactory(C)
 
   private:
     size_t _dim;
-    Slice!(Contiguous, [2], C*) _m;
+    Slice!(C*, 2, Contiguous) _m;
     immutable(C[])[] _xs;
 }
 
@@ -212,14 +212,14 @@ final class VectorConverter(C)
     }
 
 
-    this(Slice!(Contiguous, [2], C*) convMatrix)
+    this(Slice!(C*, 2, Contiguous) convMatrix)
     {
         _m = convMatrix;
         _dim = convMatrix.length!0;
     }
 
 
-    Slice!(Contiguous, [2], C*) convertMatrix() @property 
+    Slice!(C*, 2, Contiguous) convertMatrix() @property 
     {
         return _m;
     }
@@ -240,7 +240,7 @@ final class VectorConverter(C)
 
   private:
     size_t _dim;
-    Slice!(Contiguous, [2], C*) _m;
+    Slice!(C*, 2, Contiguous) _m;
 }
 
 unittest

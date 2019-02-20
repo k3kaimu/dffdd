@@ -217,7 +217,7 @@ body{
 
 alias dotT = dot;
 
-E dotH(E)(Slice!(Contiguous, [1], E*) x, Slice!(Contiguous, [1], E*) y)
+E dotH(E)(Slice!(E*, 1, Contiguous) x, Slice!(E*, 1, Contiguous) y)
 in{
     assert(x.length == y.length);
 }
@@ -290,7 +290,7 @@ Transpose transposeValue(string op)(bool isTransposed)
 }
 
 
-void gemv(string opA = "", E)(E alpha, Slice!(Contiguous, [2], E*) matA, Slice!(Contiguous, [1], E*) x, E beta, Slice!(Contiguous, [1], E*) y)
+void gemv(string opA = "", E)(E alpha, Slice!(E*, 2, Contiguous) matA, Slice!(E*, 1, Contiguous) x, E beta, Slice!(E*, 1, Contiguous) y)
 {
     // assert(!matA.isTransposed);
     // immutable isTA = false;
@@ -301,11 +301,11 @@ void gemv(string opA = "", E)(E alpha, Slice!(Contiguous, [2], E*) matA, Slice!(
     cblas_dgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA._stride!0, &(x[0]), cast(int)x._stride!0, beta, &(y[0]), cast(int)y._stride!0);
   else static if(is(typeof(E.init.re) == float))
   {
-    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cfloat*)&alpha, cast(_cfloat*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&beta, cast(_cfloat*)&(y[0]), cast(int)y._stride!0);
+    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(_cfloat*)&alpha, cast(_cfloat*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, *cast(_cfloat*)&beta, cast(_cfloat*)&(y[0]), cast(int)y._stride!0);
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&beta, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
+    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, *cast(_cfloat*)&beta, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
   }
   else
     static assert(0);

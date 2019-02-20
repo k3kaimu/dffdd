@@ -75,11 +75,11 @@ final class RLSAdapter(State)
 
   private:
     real _lambdaInv;
-    Slice!(Contiguous, [1], C*) _u;
-    Slice!(Contiguous, [2], C*) _p;
-    Slice!(Contiguous, [1], C*) _pu;
-    Slice!(Contiguous, [1], C*) _uhp;
-    Slice!(Contiguous, [1], C*) _k;
+    Slice!(C*, 1, Contiguous) _u;
+    Slice!(C*, 2, Contiguous) _p;
+    Slice!(C*, 1, Contiguous) _pu;
+    Slice!(C*, 1, Contiguous) _uhp;
+    Slice!(C*, 1, Contiguous) _k;
 }
 
 
@@ -101,7 +101,7 @@ unittest
 
 
 private
-void matop_M_mul_V(C)(Slice!(Contiguous, [2], C*) mat, Slice!(Contiguous, [1], C*) v, Slice!(Contiguous, [1], C*) dst)
+void matop_M_mul_V(C)(Slice!(C*, 2, Contiguous) mat, Slice!(C*, 1, Contiguous) v, Slice!(C*, 1, Contiguous) dst)
 {
     // foreach(i; 0 .. dst.length){
     //     dst[i] = complexZero!C;
@@ -130,7 +130,7 @@ unittest
 
 
 private
-void matop_Vh_mul_M(C)(Slice!(Contiguous, [1], C*) v, Slice!(Contiguous, [2], C*) mat, Slice!(Contiguous, [1], C*) dst)
+void matop_Vh_mul_M(C)(Slice!(C*, 1, Contiguous) v, Slice!(C*, 2, Contiguous) mat, Slice!(C*, 1, Contiguous) dst)
 {
     // foreach(i; 0 .. dst.length){
     //     dst[i] = complexZero!C;
@@ -144,7 +144,7 @@ void matop_Vh_mul_M(C)(Slice!(Contiguous, [1], C*) v, Slice!(Contiguous, [2], C*
 
 
 private
-C matop_Vh_dot_V(C)(Slice!(Contiguous, [1], C*) a, Slice!(Contiguous, [1], C*) b)
+C matop_Vh_dot_V(C)(Slice!(C*, 1, Contiguous) a, Slice!(C*, 1, Contiguous) b)
 {
     // C c = complexZero!C;
     // foreach(i; 0 .. a.length)
