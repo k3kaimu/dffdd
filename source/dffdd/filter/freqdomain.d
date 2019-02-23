@@ -572,8 +572,17 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
     void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator)
     {
+        // メンバーを持っているかどうかチェック
+        static assert(hasMemberAsSignal!(typeof(signalGenerator(model)), "txBaseband"));
+
+        // learningFromTX(signalGenerator(model).txBaseband);
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
-            _distorter.learn(signalGenerator(model).txBaseband);
+        {
+            auto sig = signalGenerator(model);
+            auto buf = new C[](model.orthogonalizer.numOfTrainingSamples);
+            sig.fillBuffer!(["txBaseband"])(buf);
+            _distorter.learn(buf);
+        }
     }
 
 

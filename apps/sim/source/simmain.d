@@ -270,7 +270,7 @@ auto makeFilter(string filterType)(Model model)
     static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
   else static if(filterStructure[0 .. $-1].endsWith("FHF"))
   {
-    static assert(!isOrthogonalized);
+    // static assert(!isOrthogonalized);
 
     enum size_t POrder = filterStructure[$-1 .. $].to!int;
 
@@ -279,7 +279,19 @@ auto makeFilter(string filterType)(Model model)
     else
         alias Dist = PADistorter!(Complex!float, POrder);
 
-    auto freqFilter = makeFrequencyHammersteinFilter2!(filterOptimizer, Dist)(model);
+    static if(isOrthogonalized)
+    {
+        import dffdd.filter.orthogonalize;
+
+        alias GS = GramSchmidtOBFFactory!(Complex!float);
+        auto dist = new OrthogonalizedVectorDistorter!(Complex!float, Dist, GS)(new Dist(), new GS(Dist.outputDim));
+    }
+    else
+    {
+        auto dist = new Dist();
+    }
+
+    auto freqFilter = makeFrequencyHammersteinFilter2!(filterOptimizer, typeof(dist))(dist, model);
 
     static if(filterStructure.canFind("S2"))
     {
