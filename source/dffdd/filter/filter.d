@@ -272,7 +272,7 @@ if(isBlockConverter!(Dist, C, C[]))
         static if(is(typeof((Dist dist, C[] txs){ dist.learn(txs); })))
         {
             auto sig = signalGenerator(model);
-            auto buf = new C[](model.orthogonalizer.numOfTrainingSymbols);
+            auto buf = new C[](model.orthogonalizer.numOfTrainingSamples);
             sig.fillBuffer!(["txBaseband"])(buf);
             _distorter.learn(buf);
         }

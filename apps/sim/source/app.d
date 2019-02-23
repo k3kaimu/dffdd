@@ -397,7 +397,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 
         /* キャンセラの設定 */
         {
-            model.orthogonalizer.numOfTrainingSymbols = 10000;
+            model.orthogonalizer.numOfTrainingSamples = 10_000;
             model.firFilter.taps = model.channel.taps;
 
             if(methodName[0] == 'O')
