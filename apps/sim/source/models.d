@@ -412,7 +412,7 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = def
 }
 
 
-auto makeFrequencyHammersteinFilter2(string optimizer, alias Dist)(Model model)
+auto makeFrequencyHammersteinFilter2(string optimizer, Dist)(Dist dist, Model model)
 {
     import dffdd.filter.freqdomain;
 
@@ -437,7 +437,6 @@ auto makeFrequencyHammersteinFilter2(string optimizer, alias Dist)(Model model)
 
     alias Adapter = typeof(makeOptimizer!(MultiFIRState!C)(MultiFIRState!C.init));
 
-    auto dist = new Dist();
     auto regen = new OverlapSaveRegenerator2!C(Dist.outputDim, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
     auto stateAdapter = new FrequencyDomainParallelHammersteinStateAdapter!(C, Adapter)
                         (
@@ -448,7 +447,7 @@ auto makeFrequencyHammersteinFilter2(string optimizer, alias Dist)(Model model)
 
     return new FrequencyDomainHammersteinFilter!(
             Complex!float,
-            typeof(dist),
+            Dist,
             typeof(stateAdapter),
         )(
             dist,
