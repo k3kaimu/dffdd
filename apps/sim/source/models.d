@@ -268,7 +268,7 @@ struct Model
     struct Orthogonalizer
     {
         bool enabled = false;
-        size_t numOfTrainingSymbols = 10000;
+        size_t numOfTrainingSamples = 1000000;
     }
     Orthogonalizer orthogonalizer;
 
@@ -377,10 +377,7 @@ auto makeParallelHammersteinFilter(string optimizer, alias Dist, bool isOrthogon
         else static if(optimizer == "RLS")
             return makeRLSAdapter(state, model.rlsAdapter.lambda, model.rlsAdapter.delta).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "LS")
-        {
-            // immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
             return makeLSAdapter(state, samplesOfOnePeriod).trainingLimit(samplesOfOnePeriod).ignoreHeadSamples(samplesOfOnePeriod);
-        }
     }
 
     return new SimpleTimeDomainParallelHammersteinFilter!(Complex!float, typeof(dist), (s) => makeOptimizer(s))(dist, model.firFilter.taps);

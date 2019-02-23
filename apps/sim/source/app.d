@@ -420,6 +420,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
                 model.learningCount = 1;
             }
 
+            model.numOfFilterTrainingSymbols = max(model.learningSymbols * model.learningCount * 2 + 10, 100);
+
             model.swappedSymbols = 100000;
             model.rlsAdapter.delta = modelSeed.rlsDelta;
             model.rlsAdapter.lambda = modelSeed.rlsLambda;

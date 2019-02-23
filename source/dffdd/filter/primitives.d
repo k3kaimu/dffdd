@@ -8,6 +8,7 @@ import std.complex;
 import dffdd.filter.traits;
 import dffdd.mod.primitives;
 import dffdd.utils.fft;
+import dffdd.filter.state;
 
 
 final class LimitedTrainingAdaptor(Adaptor)
@@ -92,9 +93,9 @@ IgnoreHeadSamplesAdaptor!Adaptor ignoreHeadSamples(Adaptor)(Adaptor adaptor, siz
 }
 
 
-interface IAdaptor(C)
+interface IAdapter(C)
 {
-    void adapt(ref MultiFIRFilter!C state, C error);
+    void adapt(ref MultiFIRState!C state, C error);
 }
 
 
