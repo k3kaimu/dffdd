@@ -359,7 +359,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 freqPsiX[p] ~= ops.dup;
 
                 ips[] = _transmits[_nCP * _nOS + i * nSym .. (i+1) * nSym];
-                foreach(ref e; ips) e = e + e.conj * _iqTX;
+                foreach(ref e; ips) e = e + e.conj * _iqTX;     // apply TX I/Q imbalance
+                e = mypoly(e, _paCoefs[]);                      // apply TX PA Distortion
                 _fftw.fft!R();
                 foreach(f, ref e; ips) e = ops[f] * _channelFreqResponse[f];
                 _fftw.ifft!R();
