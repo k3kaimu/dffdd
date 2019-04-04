@@ -53,7 +53,7 @@ struct ModelSeed
     Gain paGain = paGain_dB.dB;
 
     /* LNA */
-    uint lnaSmoothFactor = 3;
+    uint lnaSmoothFactor = 1;
 
     /* Other */
     Gain SNR = 11.dB;
@@ -104,6 +104,10 @@ void mainJob()
     }
 
 
+    enum bool isProgressChecker = true;
+    enum bool isDumpedFileCheck = true;
+
+
     enum numOfTrials = 201;
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
@@ -138,10 +142,10 @@ void mainJob()
                                     "OPH7_LS",
                                     // "SubPH3_LS",
                                     // "SubPH5_LS",
-                                    "SubPH7_LS",
+                                    // "SubPH7_LS",
                                     // "OSubPH3_LS",
                                     // "OSubPH5_LS",
-                                    "OSubPH7_LS",
+                                    // "OSubPH7_LS",
 
                                     // "Sidelobe3_X",
                                     // "Sidelobe5_X",
@@ -159,6 +163,19 @@ void mainJob()
                                     // "SubS2FHF3_LS",
                                     // "SubS2FHF5_LS",
                                     // "SubS2FHF7_LS",
+
+                                    // "FHF3_RLS",
+                                    // "FHF5_RLS",
+                                    // "FHF7_RLS",
+                                    // "S2FHF3_RLS",
+                                    // "S2FHF5_RLS",
+                                    // "S2FHF7_RLS",
+                                    // "SubFHF3_RLS",
+                                    // "SubFHF5_RLS",
+                                    // "SubFHF7_RLS",
+                                    // "SubS2FHF3_RLS",
+                                    // "SubS2FHF5_RLS",
+                                    // "SubS2FHF7_RLS",
             ))
     {
         bool[string] dirset;
@@ -166,24 +183,26 @@ void mainJob()
         scope(exit){
             enforce(appender.length == dirset.length);
             taskList ~= appender;
-            /+
-            foreach(dir, _; dirset) {
-                if(!exists(buildPath(dir, "allResult.json"))){
-                    sumOfTaskNums += 1;
-                    // writeln(dir);
+            
+            static if(isProgressChecker)
+            {
+                foreach(dir, _; dirset) {
+                    if(!exists(buildPath(dir, "allResult.json"))){
+                        sumOfTaskNums += 1;
+                        // writeln(dir);
 
-                    sumOfTrials += numOfTrials;
+                        sumOfTrials += numOfTrials;
 
-                    string resListDumpFilePath = buildPath(dir, "resList_dumped.json");
-                    if(exists(resListDumpFilePath)) {
-                        size_t compls = std.file.readText(resListDumpFilePath)
-                                        .parseJSON(JSONOptions.specialFloatLiterals).array.length;
-                        sumOfTrials -= compls;
-                        writefln!"%s: %s complete"(dir, compls);
+                        string resListDumpFilePath = buildPath(dir, "resList_dumped.json");
+                        if(isDumpedFileCheck && exists(resListDumpFilePath)) {
+                            size_t compls = std.file.readText(resListDumpFilePath)
+                                            .parseJSON(JSONOptions.specialFloatLiterals).array.length;
+                            sumOfTrials -= compls;
+                            writefln!"%s: %s complete"(dir, compls);
+                        }
                     }
                 }
             }
-            +/
         }
 
 
@@ -201,7 +220,7 @@ void mainJob()
             modelSeed.iterNumOfNewton = 10;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA3", "results_estimate_iters", dir ~ format("_%s", nIters));
+            dir = buildPath("PA3_LNA1_LS", "results_estimate_iters", dir ~ format("_%s", nIters));
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -221,7 +240,7 @@ void mainJob()
             modelSeed.iterNumOfNewton = newtonIters;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA3", "results_newton_iters", dir ~ format("_%s", newtonIters));
+            dir = buildPath("PA3_LNA1_LS", "results_newton_iters", dir ~ format("_%s", newtonIters));
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -242,14 +261,14 @@ void mainJob()
             modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA3", "results_ber", dir ~ "_onlyDesired");
+            dir = buildPath("PA3_LNA1_LS", "results_ber", dir ~ "_onlyDesired");
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
         +/
 
         // learning symbols vs (EVM / SIC / BER)
-        foreach(inr; [50, 60])
+        foreach(inr; [50])
         foreach(learningSymbols; iota(2, 21).chain(iota(25, 105, 5)))
         {
             ModelSeed modelSeed;
@@ -261,14 +280,14 @@ void mainJob()
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA3", "results_trsyms", dir);
+            dir = buildPath("PA3_LNA1_LS", "results_trsyms", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
         // INR vs (EVM / SIC / BER)
-        foreach(learningSymbols; [5, 10, 25, 50, 100])
+        foreach(learningSymbols; [100])
         foreach(inr; iota(20, 82, 2))
         {
             ModelSeed modelSeed;
@@ -279,7 +298,7 @@ void mainJob()
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA3", "results_inr_vs_sic", dir);
+            dir = buildPath("PA3_LNA1_LS", "results_inr_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -287,8 +306,8 @@ void mainJob()
 
         // TXP vs (EVM. SIC /  BER)
         foreach(inr; [40, 50, 60])
-        foreach(learningSymbols; [5, 10, 25, 50, 100])
-        foreach(txp; iota(10, 32, 2)) {
+        foreach(learningSymbols; [100])
+        foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
             modelSeed.txPower = txp.dBm;
             modelSeed.cancellerType = methodName;
@@ -299,7 +318,7 @@ void mainJob()
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA3", "results_txp_vs_sic", dir);
+            dir = buildPath("PA3_LNA1_LS", "results_txp_vs_sic", dir);
             dirset[dir] = true;
             appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -307,17 +326,20 @@ void mainJob()
 
     import std.stdio;
 
-    /+
-    writefln("%s tasks will be submitted.", taskList.length);
-    writefln("%s tasks will be computed.", sumOfTaskNums);
+    static if(isProgressChecker)
+    {
+        writefln("%s tasks will be submitted.", taskList.length);
+        writefln("%s tasks will be computed.", sumOfTaskNums);
 
-    immutable size_t totalTrials = numOfTrials * taskList.length;
-    immutable size_t completeTrials = totalTrials - sumOfTrials;
-    writefln("%s/%s (%2.2f%%) is completed. ", completeTrials, totalTrials, completeTrials*1.0/totalTrials*100);
-    +/
-
-    JobEnvironment env;
-    tuthpc.taskqueue.run(taskList, env);
+        immutable size_t totalTrials = numOfTrials * taskList.length;
+        immutable size_t completeTrials = totalTrials - sumOfTrials;
+        writefln("%s/%s (%2.2f%%) is completed. ", completeTrials, totalTrials, completeTrials*1.0/totalTrials*100);
+    }
+    else
+    {
+        JobEnvironment env = defaultJobEnvironment();
+        tuthpc.taskqueue.run(taskList, env);
+    }
 
     // foreach(i; 0 .. taskList.length)
     //     taskList[i]();

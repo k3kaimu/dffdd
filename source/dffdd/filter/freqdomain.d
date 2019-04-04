@@ -852,12 +852,14 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
     C[][] estimateCFR(Signals)(Signals signals, C iqRX = C(0, 0))
     {
+        alias Adapter = typeof(makeLSAdapter(MultiFIRState!C.init, 64));
+
         // 次のようなフィルタを学習してみる
         // + 適応アルゴリズム : 最小二乗法
         // + 使用シンボル数：1024シンボル
-        auto testfilter = new FrequencyDomainHammersteinFilter!(C, Dist, FrequencyDomainParallelHammersteinStateAdapter!(C, LSAdapter!(MultiFIRState!(C))))
+        auto testfilter = new FrequencyDomainHammersteinFilter!(C, Dist, FrequencyDomainParallelHammersteinStateAdapter!(C, Adapter))
                             (_distorter,
-                            new FrequencyDomainParallelHammersteinStateAdapter!(C, LSAdapter!(MultiFIRState!(C)))
+                            new FrequencyDomainParallelHammersteinStateAdapter!(C, Adapter)
                                 ((size_t i, bool b, MultiFIRState!C s) => makeLSAdapter(s, 64), _scMap, _distorter.outputDim)
                             ,
                             _scMap, _nFFT, _nCP, _nOS, _sampFreq);
@@ -1022,7 +1024,7 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
         auto jv = this.info;
         auto file = File(buildPath(dir, "info.json"), "w");
-        file.writeln(jv.toPrettyString());
+        file.writeln(jv.toPrettyString(JSONOptions.specialFloatLiterals));
     }
 
 
