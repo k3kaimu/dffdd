@@ -13,9 +13,9 @@ import mir.ndslice;
 IAdapter!(State.StateElementType) makeLSAdapter(State)(State state, size_t L)
 {
     // if(state.state.elementsCount * L < 1E6)
-    return new LSAdapter!State(state, L);
+    //return new LSAdapter!State(state, L);
     // else
-    // return new LowMemoryLSAdapter!State(state, L);
+    return new LowMemoryLSAdapter!State(state, L);
 }
 
 

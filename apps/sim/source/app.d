@@ -28,7 +28,17 @@ extern(C) int openblas_get_num_threads();
 
 shared static this()
 {
-    openblas_set_num_threads(1);
+    import tuthpc.cluster;
+
+    if(auto inst = cast(KyotoBInfo)ClusterInfo.currInstance)
+    {
+        if(inst.maxPPN == 36)
+            openblas_set_num_threads(2);
+        else
+            openblas_set_num_threads(1);
+    }
+    else
+        openblas_set_num_threads(1);
 }
 
 
@@ -88,7 +98,8 @@ void mainJob()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    auto taskList = new MultiTaskList();
+    auto taskListShort = new MultiTaskList();
+    auto taskListLong = new MultiTaskList();
 
     auto setRLSLMSParam(ref ModelSeed model)
     {
@@ -179,10 +190,12 @@ void mainJob()
             ))
     {
         bool[string] dirset;
-        auto appender = uniqueTaskAppender(&mainForEachTrial!methodName);
+        auto appShort = uniqueTaskAppender(&mainForEachTrial!methodName);
+        auto appLong = uniqueTaskAppender(&mainForEachTrial!methodName);
         scope(exit){
-            enforce(appender.length == dirset.length);
-            taskList ~= appender;
+            enforce(appShort.length + appLong.length == dirset.length);
+            taskListShort ~= appShort;
+            taskListLong ~= appLong;
             
             static if(isProgressChecker)
             {
@@ -222,7 +235,7 @@ void mainJob()
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("PA3_LNA1_LS", "results_estimate_iters", dir ~ format("_%s", nIters));
             dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
@@ -242,7 +255,7 @@ void mainJob()
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("PA3_LNA1_LS", "results_newton_iters", dir ~ format("_%s", newtonIters));
             dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
@@ -263,7 +276,7 @@ void mainJob()
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("PA3_LNA1_LS", "results_ber", dir ~ "_onlyDesired");
             dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
         +/
 
@@ -282,7 +295,7 @@ void mainJob()
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("PA3_LNA1_LS", "results_trsyms", dir);
             dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
@@ -294,13 +307,13 @@ void mainJob()
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("PA3_LNA1_LS", "results_inr_vs_sic", dir);
             dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
@@ -314,13 +327,13 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = ((txp - 23) + inr).dB;
             modelSeed.txPower = txp.dBm;
-            modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath("PA3_LNA1_LS", "results_txp_vs_sic", dir);
             dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
     }
 
@@ -328,17 +341,20 @@ void mainJob()
 
     static if(isProgressChecker)
     {
-        writefln("%s tasks will be submitted.", taskList.length);
+        immutable size_t totalTaskListLen = taskListShort.length + taskListLong.length;
+
+        writefln("%s tasks will be submitted.", totalTaskListLen);
         writefln("%s tasks will be computed.", sumOfTaskNums);
 
-        immutable size_t totalTrials = numOfTrials * taskList.length;
+        immutable size_t totalTrials = numOfTrials * totalTaskListLen;
         immutable size_t completeTrials = totalTrials - sumOfTrials;
         writefln("%s/%s (%2.2f%%) is completed. ", completeTrials, totalTrials, completeTrials*1.0/totalTrials*100);
     }
     else
     {
         JobEnvironment env = defaultJobEnvironment();
-        tuthpc.taskqueue.run(taskList, env);
+        tuthpc.taskqueue.run(taskListShort, env);
+        tuthpc.taskqueue.run(taskListLong, env);
     }
 
     // foreach(i; 0 .. taskList.length)
