@@ -1,19 +1,20 @@
 module app;
 
 import std.algorithm;
+import std.complex;
+import std.conv;
+import std.exception;
+import std.file;
 import std.format;
 import std.json;
 import std.math;
 import std.meta;
 import std.path;
-import std.range;
-import std.stdio;
 import std.random;
 import std.range;
-import std.file;
+import std.range;
+import std.stdio;
 import std.typecons;
-import std.exception;
-import std.complex;
 
 import dffdd.utils.unit;
 import dffdd.blockdiagram.noise;
@@ -57,17 +58,19 @@ struct ModelSeed
     // Gain paGain = 27.dB;
     enum real txBackoff_dB = 7;
     enum real txPower_dBm = 23;
-    enum real paGain_dB = 20;
+    enum real paGain_dB = 30;
     Voltage txPower = txPower_dBm.dBm;
     Voltage paIIP3 = (txPower_dBm - paGain_dB + 6 + txBackoff_dB).dBm;
     Gain paGain = paGain_dB.dB;
+    uint paSmoothFactor = 2;
 
     /* LNA */
-    uint lnaSmoothFactor = 1;
+    uint lnaSmoothFactor = 2;
 
     /* Other */
     Gain SNR = 11.dB;
-    Gain INR = 50.dB;
+    Nullable!Gain INR;
+    Nullable!Gain TXRXISO;
     uint numOfTrainingSymbols = 20;
     Gain gamma = 0.dB;
 
@@ -83,6 +86,9 @@ struct ModelSeed
     /* frequency domain iterative */
     uint iterNumOfIteration = 3;
     uint iterNumOfNewton = 1;
+    uint iterNumOfSCForEstNL = 8;
+    string iterEstOrder = "IHD";
+    Flag!"use3rdSidelobe" iterUse3rdSidelobe = Yes.use3rdSidelobe;
 
     /* measure only desired signal */
     bool onlyDesired = false;
@@ -115,7 +121,7 @@ void mainJob()
     }
 
 
-    enum bool isProgressChecker = true;
+    enum bool isProgressChecker = false;
     enum bool isDumpedFileCheck = true;
 
 
@@ -123,6 +129,7 @@ void mainJob()
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
+    foreach(sfPair; [[3, 1], [2, 2]])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     // "S2FHF_LS",
@@ -147,7 +154,7 @@ void mainJob()
 
                                     // "PH3_LS",
                                     // "PH5_LS",
-                                    "PH7_LS",
+                                    // "PH7_LS",
                                     // "OPH3_LS",
                                     // "OPH5_LS",
                                     "OPH7_LS",
@@ -219,11 +226,19 @@ void mainJob()
         }
 
 
+        immutable uint paSF = sfPair[0],
+                       lnaSF = sfPair[1];
+        string parentDir = format("PA%s_LNA%s", paSF, lnaSF);
+
+        /+
         /* change the number of iterations */
         static if(methodName == "Sidelobe7_X")
-        foreach(nIters; iota(1, 11))
+        foreach(nIters; iota(1, 6))
+        foreach(order; ["IHD", "HID", "HDI"])
         {
             ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 20;
             modelSeed.INR = 60.dB;
@@ -231,9 +246,11 @@ void mainJob()
             modelSeed.outputEVM = false;
             modelSeed.iterNumOfIteration = nIters;
             modelSeed.iterNumOfNewton = 10;
+            modelSeed.iterEstOrder = order;
+            modelSeed.iterNumOfSCForEstNL = 52;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA1_LS", "results_estimate_iters", dir ~ format("_%s", nIters));
+            dir = buildPath(parentDir, "results_estimate_iters", dir ~ format("_%s", nIters));
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -241,19 +258,64 @@ void mainJob()
 
         /* change the number of newton's method loop */
         static if(methodName == "Sidelobe7_X")
-        foreach(newtonIters; iota(0, 11))
+        foreach(newtonIters; iota(0, 6))
         {
             ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 20;
             modelSeed.INR = 60.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
-            modelSeed.iterNumOfIteration = 10;
             modelSeed.iterNumOfNewton = newtonIters;
+            modelSeed.iterNumOfSCForEstNL = 52;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA1_LS", "results_newton_iters", dir ~ format("_%s", newtonIters));
+            dir = buildPath(parentDir, "results_newton_iters", dir ~ format("_%s", newtonIters));
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }+/
+
+
+        static if(methodName == "Sidelobe7_X")
+        foreach(flag; [Yes.use3rdSidelobe, No.use3rdSidelobe])
+        foreach(iter; iota(3, 102, 4))
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName ~ (flag ? "_Side_" : "_Main_");
+            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfIteration = iter;
+            modelSeed.iterNumOfSCForEstNL = 52;
+            modelSeed.iterUse3rdSidelobe = flag;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_MainOrSide", dir ~ format("_%s", iter));
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
+
+
+        static if(methodName == "Sidelobe7_X")
+        foreach(nSCForNL; iota(2, 52, 2))
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfSCForEstNL = nSCForNL;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_nSC4EstNL", dir ~ format("_%s", nSCForNL));
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -265,6 +327,8 @@ void mainJob()
         foreach(snr; iota(0, 21, 1))
         {
             ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = 20.dB;
@@ -274,17 +338,20 @@ void mainJob()
             modelSeed.outputEVM = true;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA1_LS", "results_ber", dir ~ "_onlyDesired");
+            dir = buildPath(parentDir, "results_ber", dir ~ "_onlyDesired");
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
         +/
 
+        /+
         // learning symbols vs (EVM / SIC / BER)
         foreach(inr; [50])
         foreach(learningSymbols; iota(2, 21).chain(iota(25, 105, 5)))
         {
             ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
@@ -293,7 +360,7 @@ void mainJob()
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA1_LS", "results_trsyms", dir);
+            dir = buildPath(parentDir, "results_trsyms", dir);
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -301,40 +368,45 @@ void mainJob()
 
         // INR vs (EVM / SIC / BER)
         foreach(learningSymbols; [100])
-        foreach(inr; iota(20, 82, 2))
+        foreach(inr; iota(20, 72, 2))
         {
             ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA1_LS", "results_inr_vs_sic", dir);
+            dir = buildPath(parentDir, "results_inr_vs_sic", dir);
             dirset[dir] = true;
-            appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
         // TXP vs (EVM. SIC /  BER)
-        foreach(inr; [40, 50, 60])
+        foreach(isoRF; [50, 60, 70])
         foreach(learningSymbols; [100])
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.txPower = txp.dBm;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = ((txp - 23) + inr).dB;
+            // modelSeed.INR = (txp-23+inr).dB;
+            modelSeed.TXRXISO = isoRF.dB;
             modelSeed.txPower = txp.dBm;
-            modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("PA3_LNA1_LS", "results_txp_vs_sic", dir);
+            dir = buildPath(parentDir, "results_txp_vs_sic", dir);
             dirset[dir] = true;
-            appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }+/
     }
 
     import std.stdio;
@@ -353,8 +425,15 @@ void mainJob()
     else
     {
         JobEnvironment env = defaultJobEnvironment();
-        tuthpc.taskqueue.run(taskListShort, env);
-        tuthpc.taskqueue.run(taskListLong, env);
+        env.pmem = 5;
+        env.mem = env.pmem * env.taskGroupSize;
+        // env.scriptPath = "jobscript.sh";
+
+        if(taskListShort.length != 0)
+            tuthpc.taskqueue.run(taskListShort, env);
+
+        if(taskListLong.length != 0)
+            tuthpc.taskqueue.run(taskListLong, env);
     }
 
     // foreach(i; 0 .. taskList.length)
@@ -364,6 +443,7 @@ void mainJob()
 
 Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 {
+    import dffdd.blockdiagram.noise : noisePower;
     Model[] models;
 
     foreach(iTrial; 0 .. numOfTrials) {
@@ -371,9 +451,16 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         scope(success)
             models ~= model;
 
+        immutable NP = (10*log10(noisePower(model.samplingFreq, 300)) + 30).dBm * 4.dB;
+
         model.rndSeed = cast(uint)hashOf(iTrial);
         model.SNR = modelSeed.SNR;
-        model.INR = modelSeed.INR;
+
+        if(modelSeed.INR.isNull)
+            model.INR = modelSeed.txPower / NP / modelSeed.TXRXISO;
+        else
+            model.INR = modelSeed.INR;
+
         // model.pa.TX_POWER = modelSeed.txPower;
         // model.txIQMixer.IRR = modelSeed.txIRR;
         // model.rxIQMixer.IRR = modelSeed.rxIRR;
@@ -402,6 +489,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
             model.pa.TX_POWER = modelSeed.txPower;
             model.pa.IIP3 = modelSeed.paIIP3;
             model.pa.GAIN = modelSeed.paGain;
+            model.pa.smoothFactor = modelSeed.paSmoothFactor;
         }
 
         /* TX IQ Mixer の設定 */
@@ -466,6 +554,9 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
             model.nlmsAdapter.mu = modelSeed.nlmsMu;
             model.iterativeFreqSIC.iterations = modelSeed.iterNumOfIteration;
             model.iterativeFreqSIC.newtonIterations = modelSeed.iterNumOfNewton;
+            model.iterativeFreqSIC.numOfSCForEstNL = modelSeed.iterNumOfSCForEstNL;
+            model.iterativeFreqSIC.estimationOrder = modelSeed.iterEstOrder;
+            model.iterativeFreqSIC.use3rdSidelobe = modelSeed.iterUse3rdSidelobe;
         }
     }
 
@@ -475,27 +566,35 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 
 string makeDirNameOfModelSeed(ModelSeed modelSeed)
 {
+    string strINRorISO;
+    if(modelSeed.INR.isNull)
+        strINRorISO = format("iso%s", modelSeed.TXRXISO.get);
+    else
+        strINRorISO = format("inr%s", modelSeed.INR.get);
+
+    string cancellerName = modelSeed.cancellerType;
+    if(cancellerName.canFind("Sidelobe"))
+        cancellerName ~= "_" ~ modelSeed.iterEstOrder;
+
     string dir;
     if(modelSeed.cancellerType.split("_")[0].endsWith("FHF"))
     {
-        dir = "TXP%s_inr%s_snr%s_%s_SF%s_G%s_IRR%s_%s"
+        dir = "TXP%s_%s_snr%s_%s_G%s_IRR%s_%s"
             .format(modelSeed.txPower,
-                    modelSeed.INR,
+                    strINRorISO,
                     modelSeed.SNR,
-                    modelSeed.cancellerType,
-                    modelSeed.lnaSmoothFactor,
+                    cancellerName,
                     modelSeed.bfsNoiseMargin,
                     modelSeed.txIRR,
                     modelSeed.numOfTrainingSymbols);
     }
     else
     {
-        dir = "TXP%s_inr%s_snr%s_%s_SF%s_IRR%s_%s"
+        dir = "TXP%s_%s_snr%s_%s_IRR%s_%s"
             .format(modelSeed.txPower,
-                    modelSeed.INR,
+                    strINRorISO,
                     modelSeed.SNR,
-                    modelSeed.cancellerType,
-                    modelSeed.lnaSmoothFactor,
+                    cancellerName,
                     modelSeed.txIRR,
                     modelSeed.numOfTrainingSymbols);
     }

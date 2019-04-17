@@ -243,7 +243,12 @@ auto makeFilter(string filterType)(Model model)
     enum size_t POrder = filterStructure[$-1 .. $].to!int / 2 + 1;
 
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, POrder)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations, Yes.useMainlobe);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, POrder)(
+        model.learningSymbols, model.iterativeFreqSIC.iterations,
+        model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling,
+        model.channel.taps, No.isChFreqEst, Yes.isInvertRX,
+        Yes.useNewton, model.iterativeFreqSIC.newtonIterations, model.iterativeFreqSIC.use3rdSidelobe,
+        model.iterativeFreqSIC.numOfSCForEstNL, model.iterativeFreqSIC.estimationOrder);
   }
   else static if(filterStructure.endsWith("WLFHF"))
   {
