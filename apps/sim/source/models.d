@@ -195,6 +195,7 @@ struct Model
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
         Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
         Gain MAX_VAR_GAIN = 0.dB;       // 利得の最大変異，dB単位で一様分布
+        uint smoothFactor = 3;
     }
     PA pa;
 
@@ -285,6 +286,9 @@ struct Model
     {
         size_t iterations = 2;
         size_t newtonIterations = 2;
+        size_t numOfSCForEstNL = 50;
+        string estimationOrder = "IHD";
+        Flag!"use3rdSidelobe" use3rdSidelobe = Yes.use3rdSidelobe;
     }
     IterativeFreqSIC iterativeFreqSIC;
 

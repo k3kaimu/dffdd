@@ -3,6 +3,7 @@ module dffdd.filter.sidelobe;
 import std.algorithm;
 import std.array;
 import std.complex;
+import std.exception;
 import std.json;
 import std.range;
 import std.typecons;
@@ -29,7 +30,9 @@ final class SidelobeIterativeWLNL(C, size_t P)
     this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, size_t nImpulseTaps,
         Flag!"isChFreqEst" isChFreqEst = Yes.isChFreqEst, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX,
         Flag!"useNewton" useNewton = No.useNewton, size_t nNewtonIter = 10,
-        Flag!"useMainlobe" useMainlobe = No.useMainlobe)
+        Flag!"use3rdSidelobe" use3rdSidelobe = No.use3rdSidelobe,
+        size_t nUseSCForEstNonlin = 50,
+        string estOrder = "IHD")
     {
         _nTr = trainingSymbols;
         _nIter = nIter;
@@ -42,7 +45,11 @@ final class SidelobeIterativeWLNL(C, size_t P)
         _isChFreqEst = cast(bool)isChFreqEst;
         _isInvertRX = cast(bool)isInvertRX;
         _useNewton = cast(bool)useNewton;
-        _useMainlobe = cast(bool)useMainlobe;
+        _use3rdSidelobe = cast(bool)use3rdSidelobe;
+        _estOrder = estOrder;
+
+        _nUseSC = min(nUseSCForEstNonlin, nTone);
+        enforce(_nUseSC % 2 == 0);
 
         _fftw = makeFFTWObject!Complex(_nFFT * _nOS);
         _regenerator = new OverlapSaveRegenerator2!C(1, _nFFT * _nOS);
@@ -106,10 +113,11 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
   private:
     immutable size_t _nTr;
-    immutable size_t _nIter, _nNewtonIter;
+    immutable size_t _nIter, _nNewtonIter, _nUseSC;
     immutable size_t _nCP, _nFFT, _nOS, _nSC;
     immutable size_t _nImpulseTaps;
-    immutable bool _isChFreqEst, _isInvertRX, _useNewton, _useMainlobe;
+    immutable bool _isChFreqEst, _isInvertRX, _useNewton, _use3rdSidelobe;
+    immutable string _estOrder;
 
     FFTWObject!Complex _fftw;
     OverlapSaveRegenerator2!C _regenerator;
@@ -135,12 +143,15 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
             // 学習用の信号が溜まったら，一度に学習する
             if(_nBufferedSymbols == _nTr) {
+                void delegate()[char] stages = [
+                    'I': &estimateIQImbalance,
+                    'H': &estimateChannel,
+                    'D': &estimateNLCoefs,
+                ];
+
                 foreach(iIter; 0 .. _nIter) {
-                    // estimateChannel();
-                    // estimateIQImbalance();
-                    estimateIQImbalance();
-                    estimateChannel();
-                    estimateNLCoefs();
+                    foreach(char c; _estOrder)    // estOrderで指定された順に推定する
+                        stages[c]();
                 }
             }
         }
@@ -376,12 +387,24 @@ final class SidelobeIterativeWLNL(C, size_t P)
             freqY ~= ops.dup;
         }
 
-        if(_useMainlobe) {
+        // メインローブを使うなら
+        if(!_use3rdSidelobe) {
+            // 線形成分を抜いておく
+            foreach(i; 0 .. _nTr)
+                foreach(f, ref e; freqY[i])
+                    e -= freqPsiX[0][i][f]; 
+        }
+
+        size_t[] targetFS;
+        if(_use3rdSidelobe)
+            targetFS = getSCIndex4PthAMPCoef(1).array;  // 3次IMDを利用
+        else
+            targetFS = getSCIndex4IQ(Yes.forNL).array;  // メインローブを利用
+
+        // if(_use3rdSidelobe)
+        {
             import mir.ndslice;
             import lubeck;
-
-            // auto targetFS = getSCIndex4IQ();
-            auto targetFS = getSCIndex4PthAMPCoef(1);       // 3次のサブキャリアのインデックス
 
             Complex!R[] vecY = new Complex!R[](targetFS.length * _nTr);
             auto matX = slice!(Complex!R)(targetFS.length * _nTr, (P-1) * 2);
@@ -404,7 +427,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 _lnaCoefs[p] = coefs[(p-1) + (P-1)];
             }
         }
-        else {
+        version(none)
+        {
             // 係数を推定していく
             foreach_reverse(p; 1 .. P) {
                 Complex!R[] vecPsiX, vecPsiY, vecY;
@@ -430,14 +454,18 @@ final class SidelobeIterativeWLNL(C, size_t P)
     }
 
 
-    auto getSCIndex4IQ()
+    auto getSCIndex4IQ(Flag!"forNL" forNL = No.forNL)
     {
         size_t n = _nSC;
 
         n /= 2;
         auto r1 = iota(1, 1 + n);
-        auto r2 = iota(_nFFT * _nOS - n, _nFFT * _nOS);
-        return r1.chain(r2);
+        auto r2 = iota(_nFFT * _nOS - n, _nFFT * _nOS).retro();
+
+        if(forNL)
+            return r1[0 .. _nUseSC/2].chain(r2[0 .. _nUseSC/2]);
+        else
+            return r1.chain(r2);
     }
 
 
@@ -445,8 +473,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
     {
         size_t n = _nSC;
         n /= 2;
-        auto r1 = iota(1+(p*2-1)*n, 1+(p*2+1)*n-10);
-        auto r2 = iota(_nFFT * _nOS - (p*2+1)*n+10, _nFFT * _nOS - (p*2-1)*n);
+        auto r1 = iota(1+(p*2-1)*n, 1+(p*2+1)*n)[0 .. _nUseSC/2];
+        auto r2 = iota(_nFFT * _nOS - (p*2+1)*n, _nFFT * _nOS - (p*2-1)*n).retro()[0 .. _nUseSC / 2];
         return r1.chain(r2);
     }
 
