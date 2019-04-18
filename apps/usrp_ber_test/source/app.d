@@ -429,7 +429,7 @@ void rxMain(Mod)(
         OFDM!C ofdm = new OFDM!C(Constant.OFDM.nFFT, Constant.OFDM.nCP, Constant.OFDM.nSC, Constant.nOverSampling);
         PreambleDetector detector = new PreambleDetector(preambles);
 
-        File file = File(format("baseband_%s_%s.dat", cast(int)round(10*log10(snr)), Mod.stringof[0..4]), "w");
+        File file = File(format("baseband_%s_%s.dat", 10*log10(snr), Mod.stringof[0..4]), "w");
 
         size_t recvCount;
         size_t errorCount;
