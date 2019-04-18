@@ -383,10 +383,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, 3, (model.pa.TX_POWER / model.pa.GAIN * 7.dB).volt);
-        // dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, 1, model.pa.IIP3.volt / 2);
-        // dst._txPANonlin = SalehModelConverter!C(model.pa.GAIN, (model.pa.TX_POWER / model.pa.GAIN * 7.dB).volt);
-        //  dst._txPANonlin = SoftLimitConverter!C(model.pa.GAIN, (model.pa.TX_POWER / model.pa.GAIN * 7.dB).volt);
+        dst._txPARapp = RappModelConverter!C(model.pa.GAIN, model.pa.smoothFactor, model.pa.IIP3.volt / 2);
     }else{
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }

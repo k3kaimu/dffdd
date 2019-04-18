@@ -513,31 +513,43 @@ struct FFTWObjectImpl(alias Cpx)
         auto newInput = input;
         auto newOutput = output;
 
+        void checkMemory()
+        {
+            if(newInput is null || newOutput is null)
+            {
+                import core.exception;
+                onOutOfMemoryError();
+            }
+        }
+
         synchronized(fftwMutex)
         {
           static if(is(F == float))
           {
             if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
             if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
-            auto planFwd = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_MEASURE);
-            auto planInv = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_MEASURE);
+            checkMemory();
+            auto planFwd = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
+            auto planInv = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
           else static if(is(F == double))
           {
             if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
             if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
-            auto planFwd = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_MEASURE);
-            auto planInv = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_MEASURE);
+            checkMemory();
+            auto planFwd = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
+            auto planInv = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
           else static if(is(F == real))
           {
             if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
             if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
-            auto planFwd = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_MEASURE);
-            auto planInv = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_MEASURE);
+            checkMemory();
+            auto planFwd = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
+            auto planInv = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
 
-            if(newInput is null || newOutput is null || planFwd is null || planInv is null)
+            if(planFwd is null || planInv is null)
             {
                 import core.exception;
                 onOutOfMemoryError();

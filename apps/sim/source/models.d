@@ -195,6 +195,7 @@ struct Model
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
         Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
         Gain MAX_VAR_GAIN = 0.dB;       // 利得の最大変異，dB単位で一様分布
+        uint smoothFactor = 3;
     }
     PA pa;
 
@@ -204,7 +205,7 @@ struct Model
         Gain NF = 4.dB;         // 4dB
         uint noiseSeedOffset = 123;
         Gain DR = 70.dB;        // Dynamic Range
-        Voltage IIP3 = (-3).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
+        Voltage IIP3 = (0).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
         uint smoothFactor = 3;
     }
     LNA lna;
@@ -268,7 +269,7 @@ struct Model
     struct Orthogonalizer
     {
         bool enabled = false;
-        size_t numOfTrainingSymbols = 10000;
+        size_t numOfTrainingSamples = 1000000;
     }
     Orthogonalizer orthogonalizer;
 
@@ -285,6 +286,9 @@ struct Model
     {
         size_t iterations = 2;
         size_t newtonIterations = 2;
+        size_t numOfSCForEstNL = 50;
+        string estimationOrder = "IHD";
+        Flag!"use3rdSidelobe" use3rdSidelobe = Yes.use3rdSidelobe;
     }
     IterativeFreqSIC iterativeFreqSIC;
 
@@ -345,18 +349,18 @@ auto thermalNoise(Model model, uint seedOffset = 123321)
 }
 
 
-auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = defaultDistortionOrder, bool useWL = true, bool isOrthogonalized, Mod)(Mod mod, Model model)
+auto makeParallelHammersteinFilter(string optimizer, alias Dist, bool isOrthogonalized, Mod)(Mod mod, Model model)
 {
     alias C = Complex!float;
 
-  static if(useWL)
-    alias Dist = CompleteDistorter!(distortionOrder);
-  else
-  {
-    // static assert(distortionOrder == 1);
-    // alias Dist = Distorter!(C, x => x);
-    alias Dist = OnlyPADistorter!(C, distortionOrder);
-  }
+//   static if(useWL)
+//     alias Dist = CompleteDistorter!(distortionOrder);
+//   else
+//   {
+//     // static assert(distortionOrder == 1);
+//     // alias Dist = Distorter!(C, x => x);
+//     alias Dist = OnlyPADistorter!(C, distortionOrder);
+//   }
 
     static if(isOrthogonalized)
     {
@@ -377,10 +381,7 @@ auto makeParallelHammersteinFilter(string optimizer, size_t distortionOrder = de
         else static if(optimizer == "RLS")
             return makeRLSAdapter(state, model.rlsAdapter.lambda, model.rlsAdapter.delta).trainingLimit(samplesOfOnePeriod);
         else static if(optimizer == "LS")
-        {
-            // immutable samplesOfOnePeriod = model.ofdm.numOfSamplesOf1Symbol * model.learningSymbols;
             return makeLSAdapter(state, samplesOfOnePeriod).trainingLimit(samplesOfOnePeriod).ignoreHeadSamples(samplesOfOnePeriod);
-        }
     }
 
     return new SimpleTimeDomainParallelHammersteinFilter!(Complex!float, typeof(dist), (s) => makeOptimizer(s))(dist, model.firFilter.taps);
@@ -412,16 +413,16 @@ auto makeCascadeHammersteinFilter(string optimizer, size_t distortionOrder = def
 }
 
 
-auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = defaultDistortionOrder, bool useWL = true)(Model model)
+auto makeFrequencyHammersteinFilter2(string optimizer, Dist)(Dist dist, Model model)
 {
     import dffdd.filter.freqdomain;
 
     alias C = Complex!float;
 
-    static if(useWL)
-        alias Dist = CompleteDistorter!(distortionOrder);
-    else
-        alias Dist = OnlyPADistorter!(C, distortionOrder);
+    // static if(useWL)
+    //     alias Dist = CompleteDistorter!(distortionOrder);
+    // else
+    //     alias Dist = OnlyPADistorter!(C, distortionOrder);
 
     auto makeOptimizer(State)(State state)
     {
@@ -437,7 +438,6 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
 
     alias Adapter = typeof(makeOptimizer!(MultiFIRState!C)(MultiFIRState!C.init));
 
-    auto dist = new Dist();
     auto regen = new OverlapSaveRegenerator2!C(Dist.outputDim, model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling);
     auto stateAdapter = new FrequencyDomainParallelHammersteinStateAdapter!(C, Adapter)
                         (
@@ -448,7 +448,7 @@ auto makeFrequencyHammersteinFilter2(string optimizer, size_t distortionOrder = 
 
     return new FrequencyDomainHammersteinFilter!(
             Complex!float,
-            typeof(dist),
+            Dist,
             typeof(stateAdapter),
         )(
             dist,

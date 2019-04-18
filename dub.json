@@ -14,8 +14,22 @@
     "dependencies": {
         "carbon": {"path": "../carbon"},
         "dfftw3": "~>1.0.1",
-        "cblas": "~>1.0.0",
-        "mir-algorithm": "~>1.0.0-alpha4",
-        "libnlopt": "~>0.2.0"
+        "cblas": "~>2.0.3",
+        "mir-algorithm": "~>3.3.8",
+        "libnlopt": "~>0.2.0",
+        "lubeck": "~>1.1.3",
+        "mir-blas": "~>1.1.4"
+    },
+
+    "subConfigurations": {
+        "lubeck": "openblas"
+    },
+
+    "buildTypes": {
+        "debug": { "buildOptions": ["debugMode"] },
+        "release": {
+            "buildOptions": ["releaseMode", "optimize", "inline"],
+            "__dflags-ldc": ["-enable-cross-module-inlining", "-mcpu=native", "-oq"]
+        }
     }
 }

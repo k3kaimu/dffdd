@@ -1,19 +1,20 @@
 module app;
 
 import std.algorithm;
+import std.complex;
+import std.conv;
+import std.exception;
+import std.file;
 import std.format;
 import std.json;
 import std.math;
 import std.meta;
 import std.path;
-import std.range;
-import std.stdio;
 import std.random;
 import std.range;
-import std.file;
+import std.range;
+import std.stdio;
 import std.typecons;
-import std.exception;
-import std.complex;
 
 import dffdd.utils.unit;
 import dffdd.blockdiagram.noise;
@@ -28,7 +29,17 @@ extern(C) int openblas_get_num_threads();
 
 shared static this()
 {
-    openblas_set_num_threads(1);
+    import tuthpc.cluster;
+
+    if(auto inst = cast(KyotoBInfo)ClusterInfo.currInstance)
+    {
+        if(inst.maxPPN == 36)
+            openblas_set_num_threads(2);
+        else
+            openblas_set_num_threads(1);
+    }
+    else
+        openblas_set_num_threads(1);
 }
 
 
@@ -42,16 +53,24 @@ struct ModelSeed
     Gain rxIRR = 25.dB;
 
     /* PA */
-    Voltage txPower = 23.dBm;
-    Voltage paIIP3 = 21.8.dBm;
-    Gain paGain = 28.5.dB;
+    // Voltage txPower = 23.dBm;
+    // Voltage paIIP3 = 20.dBm;
+    // Gain paGain = 27.dB;
+    enum real txBackoff_dB = 7;
+    enum real txPower_dBm = 23;
+    enum real paGain_dB = 30;
+    Voltage txPower = txPower_dBm.dBm;
+    Voltage paIIP3 = (txPower_dBm - paGain_dB + 6 + txBackoff_dB).dBm;
+    Gain paGain = paGain_dB.dB;
+    uint paSmoothFactor = 2;
 
     /* LNA */
-    uint lnaSmoothFactor = 3;
+    uint lnaSmoothFactor = 2;
 
     /* Other */
     Gain SNR = 11.dB;
-    Gain INR = 50.dB;
+    Nullable!Gain INR;
+    Nullable!Gain TXRXISO;
     uint numOfTrainingSymbols = 20;
     Gain gamma = 0.dB;
 
@@ -67,6 +86,9 @@ struct ModelSeed
     /* frequency domain iterative */
     uint iterNumOfIteration = 3;
     uint iterNumOfNewton = 1;
+    uint iterNumOfSCForEstNL = 8;
+    string iterEstOrder = "IHD";
+    Flag!"use3rdSidelobe" iterUse3rdSidelobe = Yes.use3rdSidelobe;
 
     /* measure only desired signal */
     bool onlyDesired = false;
@@ -82,7 +104,8 @@ void mainJob()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    auto taskList = new MultiTaskList();
+    auto taskListShort = new MultiTaskList();
+    auto taskListLong = new MultiTaskList();
 
     auto setRLSLMSParam(ref ModelSeed model)
     {
@@ -98,8 +121,15 @@ void mainJob()
     }
 
 
-    enum numOfTrials = 31;
+    enum bool isProgressChecker = false;
+    enum bool isDumpedFileCheck = true;
 
+
+    enum numOfTrials = 201;
+    size_t sumOfTaskNums = 0;
+    size_t sumOfTrials = 0;
+
+    foreach(sfPair; [[3, 1], [2, 2]])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     // "S2FHF_LS",
@@ -111,7 +141,6 @@ void mainJob()
                                     // "FHF_LMS",
                                     // //
                                     // "OPH_RLS",
-                                    "PH_LS",
                                     // "PH_RLS",
                                     // "PH_RLS",
                                     // "OPH_LMS",
@@ -122,143 +151,299 @@ void mainJob()
                                     // "IterativeFreqSIC_X",
                                     // "SidelobeFwd_X",
                                     // "SidelobeInv_X",
-                                    // "SidelobeInv2_X",
+
+                                    // "PH3_LS",
+                                    // "PH5_LS",
+                                    // "PH7_LS",
+                                    // "OPH3_LS",
+                                    // "OPH5_LS",
+                                    "OPH7_LS",
+                                    // "SubPH3_LS",
+                                    // "SubPH5_LS",
+                                    // "SubPH7_LS",
+                                    // "OSubPH3_LS",
+                                    // "OSubPH5_LS",
+                                    // "OSubPH7_LS",
+
+                                    // "Sidelobe3_X",
+                                    // "Sidelobe5_X",
+                                    "Sidelobe7_X",
+
+                                    // "FHF3_LS",
+                                    // "FHF5_LS",
+                                    // "FHF7_LS",
+                                    // "S2FHF3_LS",
+                                    // "S2FHF5_LS",
+                                    // "S2FHF7_LS",
+                                    // "SubFHF3_LS",
+                                    // "SubFHF5_LS",
+                                    // "SubFHF7_LS",
+                                    // "SubS2FHF3_LS",
+                                    // "SubS2FHF5_LS",
+                                    // "SubS2FHF7_LS",
+
+                                    // "FHF3_RLS",
+                                    // "FHF5_RLS",
+                                    // "FHF7_RLS",
+                                    // "S2FHF3_RLS",
+                                    // "S2FHF5_RLS",
+                                    // "S2FHF7_RLS",
+                                    // "SubFHF3_RLS",
+                                    // "SubFHF5_RLS",
+                                    // "SubFHF7_RLS",
+                                    // "SubS2FHF3_RLS",
+                                    // "SubS2FHF5_RLS",
+                                    // "SubS2FHF7_RLS",
             ))
     {
         bool[string] dirset;
-        auto appender = uniqueTaskAppender(&mainForEachTrial!methodName);
+        auto appShort = uniqueTaskAppender(&mainForEachTrial!methodName);
+        auto appLong = uniqueTaskAppender(&mainForEachTrial!methodName);
         scope(exit){
-            enforce(appender.length == dirset.length);
-            taskList ~= appender;
+            enforce(appShort.length + appLong.length == dirset.length);
+            taskListShort ~= appShort;
+            taskListLong ~= appLong;
+            
+            static if(isProgressChecker)
+            {
+                foreach(dir, _; dirset) {
+                    if(!exists(buildPath(dir, "allResult.json"))){
+                        sumOfTaskNums += 1;
+                        // writeln(dir);
+
+                        sumOfTrials += numOfTrials;
+
+                        string resListDumpFilePath = buildPath(dir, "resList_dumped.json");
+                        if(isDumpedFileCheck && exists(resListDumpFilePath)) {
+                            size_t compls = std.file.readText(resListDumpFilePath)
+                                            .parseJSON(JSONOptions.specialFloatLiterals).array.length;
+                            sumOfTrials -= compls;
+                            writefln!"%s: %s complete"(dir, compls);
+                        }
+                    }
+                }
+            }
         }
 
 
-        // /* change the number of iterations */
-        // static if(methodName == "SidelobeInv2_X")
-        // foreach(nIters; iota(1, 11))
-        // {
-        //     ModelSeed modelSeed;
-        //     modelSeed.cancellerType = methodName;
-        //     modelSeed.numOfTrainingSymbols = 10;
-        //     modelSeed.INR = 60.dB;
-        //     modelSeed.outputBER = false;
-        //     modelSeed.outputEVM = false;
-        //     modelSeed.iterNumOfIteration = nIters;
-        //     modelSeed.iterNumOfNewton = 10;
+        immutable uint paSF = sfPair[0],
+                       lnaSF = sfPair[1];
+        string parentDir = format("PA%s_LNA%s", paSF, lnaSF);
 
-        //     auto dir = makeDirNameOfModelSeed(modelSeed);
-        //     dir = buildPath("results_estimate_iters", dir ~ format("_%s", nIters));
-        //     dirset[dir] = true;
-        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        // }
+        /+
+        /* change the number of iterations */
+        static if(methodName == "Sidelobe7_X")
+        foreach(nIters; iota(1, 6))
+        foreach(order; ["IHD", "HID", "HDI"])
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfIteration = nIters;
+            modelSeed.iterNumOfNewton = 10;
+            modelSeed.iterEstOrder = order;
+            modelSeed.iterNumOfSCForEstNL = 52;
 
-
-        // /* change the number of newton's method loop */
-        // static if(methodName == "SidelobeInv2_X")
-        // foreach(newtonIters; iota(0, 11))
-        // {
-        //     ModelSeed modelSeed;
-        //     modelSeed.cancellerType = methodName;
-        //     modelSeed.numOfTrainingSymbols = 10;
-        //     modelSeed.INR = 60.dB;
-        //     modelSeed.outputBER = false;
-        //     modelSeed.outputEVM = false;
-        //     modelSeed.iterNumOfIteration = 10;
-        //     modelSeed.iterNumOfNewton = newtonIters;
-
-        //     auto dir = makeDirNameOfModelSeed(modelSeed);
-        //     dir = buildPath("results_newton_iters", dir ~ format("_%s", newtonIters));
-        //     dirset[dir] = true;
-        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        // }
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_estimate_iters", dir ~ format("_%s", nIters));
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
 
 
-        // // only desired signal
-        // static if(methodName == "PH_LS")
-        // foreach(snr; iota(0, 21, 1))
-        // {
-        //     ModelSeed modelSeed;
-        //     modelSeed.cancellerType = methodName;
-        //     modelSeed.numOfTrainingSymbols = 10;
-        //     modelSeed.INR = 20.dB;
-        //     modelSeed.SNR = snr.dB;
-        //     modelSeed.onlyDesired = true;
-        //     modelSeed.outputBER = true;
-        //     modelSeed.outputEVM = true;
+        /* change the number of newton's method loop */
+        static if(methodName == "Sidelobe7_X")
+        foreach(newtonIters; iota(0, 6))
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfNewton = newtonIters;
+            modelSeed.iterNumOfSCForEstNL = 52;
 
-        //     auto dir = makeDirNameOfModelSeed(modelSeed);
-        //     dir = buildPath("results_ber", dir ~ "_onlyDesired");
-        //     dirset[dir] = true;
-        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        // }
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_newton_iters", dir ~ format("_%s", newtonIters));
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }+/
 
 
-        // // learning symbols vs (EVM / SIC / BER)
-        // foreach(inr; iota(50, 62, 2))
-        // foreach(learningSymbols; iota(2, 21))
-        // {
-        //     ModelSeed modelSeed;
-        //     modelSeed.cancellerType = methodName;
-        //     modelSeed.numOfTrainingSymbols = learningSymbols;
-        //     modelSeed.INR = inr.dB;
-        //     modelSeed.SNR = 20.dB;
-        //     modelSeed.outputBER = true;
-        //     modelSeed.outputEVM = true;
+        static if(methodName == "Sidelobe7_X")
+        foreach(flag; [Yes.use3rdSidelobe, No.use3rdSidelobe])
+        foreach(iter; iota(3, 102, 4))
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName ~ (flag ? "_Side_" : "_Main_");
+            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfIteration = iter;
+            modelSeed.iterNumOfSCForEstNL = 52;
+            modelSeed.iterUse3rdSidelobe = flag;
 
-        //     auto dir = makeDirNameOfModelSeed(modelSeed);
-        //     dir = buildPath("results_ber", dir);
-        //     dirset[dir] = true;
-        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        // }
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_MainOrSide", dir ~ format("_%s", iter));
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
+
+
+        static if(methodName == "Sidelobe7_X")
+        foreach(nSCForNL; iota(2, 52, 2))
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 20;
+            modelSeed.INR = 60.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+            modelSeed.iterNumOfSCForEstNL = nSCForNL;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_nSC4EstNL", dir ~ format("_%s", nSCForNL));
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
+
+
+        /+
+        // only desired signal
+        static if(methodName == "PH7_LS")
+        foreach(snr; iota(0, 21, 1))
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = 10;
+            modelSeed.INR = 20.dB;
+            modelSeed.SNR = snr.dB;
+            modelSeed.onlyDesired = true;
+            modelSeed.outputBER = true;
+            modelSeed.outputEVM = true;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_ber", dir ~ "_onlyDesired");
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
+        +/
+
+        /+
+        // learning symbols vs (EVM / SIC / BER)
+        foreach(inr; [50])
+        foreach(learningSymbols; iota(2, 21).chain(iota(25, 105, 5)))
+        {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.INR = inr.dB;
+            modelSeed.SNR = 20.dB;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_trsyms", dir);
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
 
 
         // INR vs (EVM / SIC / BER)
-        foreach(inr; iota(20, 82, 5))
+        foreach(learningSymbols; [100])
+        foreach(inr; iota(20, 72, 2))
         {
             ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = 50;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
             modelSeed.outputBER = false;
             modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath("results_20181015", "rapp", "P7", "results_inr_vs_sic", dir);
+            dir = buildPath(parentDir, "results_inr_vs_sic", dir);
             dirset[dir] = true;
-            appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
 
-        // // TXP vs (EVM. SIC /  BER)
-        // foreach(txp; iota(10, 40, 1)) {
-        //     ModelSeed modelSeed;
-        //     modelSeed.txPower = txp.dBm;
-        //     modelSeed.cancellerType = methodName;
-        //     modelSeed.numOfTrainingSymbols = 50;
-        //     modelSeed.INR = ((txp - 23)+50).dB;
-        //     modelSeed.txPower = txp.dBm;
-        //     modelSeed.outputBER = false;
-        //     modelSeed.outputEVM = false;
+        // TXP vs (EVM. SIC /  BER)
+        foreach(isoRF; [50, 60, 70])
+        foreach(learningSymbols; [100])
+        foreach(txp; iota(10, 32, 1)) {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = paSF;
+            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.txPower = txp.dBm;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            // modelSeed.INR = (txp-23+inr).dB;
+            modelSeed.TXRXISO = isoRF.dB;
+            modelSeed.txPower = txp.dBm;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
-        //     auto dir = makeDirNameOfModelSeed(modelSeed);
-        //     dir = buildPath("results_20181015", "softlimit", "P3", "results_txp_vs_sic", dir);
-        //     dirset[dir] = true;
-        //     appender.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        // }
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_txp_vs_sic", dir);
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }+/
     }
 
     import std.stdio;
 
-    // writefln("%s tasks will be submitted.", taskList.length);
-    JobEnvironment env;
-    tuthpc.taskqueue.run(taskList, env);
+    static if(isProgressChecker)
+    {
+        immutable size_t totalTaskListLen = taskListShort.length + taskListLong.length;
+
+        writefln("%s tasks will be submitted.", totalTaskListLen);
+        writefln("%s tasks will be computed.", sumOfTaskNums);
+
+        immutable size_t totalTrials = numOfTrials * totalTaskListLen;
+        immutable size_t completeTrials = totalTrials - sumOfTrials;
+        writefln("%s/%s (%2.2f%%) is completed. ", completeTrials, totalTrials, completeTrials*1.0/totalTrials*100);
+    }
+    else
+    {
+        JobEnvironment env = defaultJobEnvironment();
+        env.pmem = 5;
+        env.mem = env.pmem * env.taskGroupSize;
+        // env.scriptPath = "jobscript.sh";
+
+        if(taskListShort.length != 0)
+            tuthpc.taskqueue.run(taskListShort, env);
+
+        if(taskListLong.length != 0)
+            tuthpc.taskqueue.run(taskListLong, env);
+    }
+
     // foreach(i; 0 .. taskList.length)
-        // taskList[i]();
+    //     taskList[i]();
 }
 
 
 Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 {
+    import dffdd.blockdiagram.noise : noisePower;
     Model[] models;
 
     foreach(iTrial; 0 .. numOfTrials) {
@@ -266,9 +451,16 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
         scope(success)
             models ~= model;
 
+        immutable NP = (10*log10(noisePower(model.samplingFreq, 300)) + 30).dBm * 4.dB;
+
         model.rndSeed = cast(uint)hashOf(iTrial);
         model.SNR = modelSeed.SNR;
-        model.INR = modelSeed.INR;
+
+        if(modelSeed.INR.isNull)
+            model.INR = modelSeed.txPower / NP / modelSeed.TXRXISO;
+        else
+            model.INR = modelSeed.INR;
+
         // model.pa.TX_POWER = modelSeed.txPower;
         // model.txIQMixer.IRR = modelSeed.txIRR;
         // model.rxIQMixer.IRR = modelSeed.rxIRR;
@@ -297,6 +489,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
             model.pa.TX_POWER = modelSeed.txPower;
             model.pa.IIP3 = modelSeed.paIIP3;
             model.pa.GAIN = modelSeed.paGain;
+            model.pa.smoothFactor = modelSeed.paSmoothFactor;
         }
 
         /* TX IQ Mixer の設定 */
@@ -330,7 +523,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 
         /* キャンセラの設定 */
         {
-            model.orthogonalizer.numOfTrainingSymbols = 10000;
+            model.orthogonalizer.numOfTrainingSamples = 10_000;
             model.firFilter.taps = model.channel.taps;
 
             if(methodName[0] == 'O')
@@ -353,12 +546,17 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
                 model.learningCount = 1;
             }
 
+            model.numOfFilterTrainingSymbols = max(model.learningSymbols * model.learningCount * 2 + 10, 100);
+
             model.swappedSymbols = 100000;
             model.rlsAdapter.delta = modelSeed.rlsDelta;
             model.rlsAdapter.lambda = modelSeed.rlsLambda;
             model.nlmsAdapter.mu = modelSeed.nlmsMu;
             model.iterativeFreqSIC.iterations = modelSeed.iterNumOfIteration;
             model.iterativeFreqSIC.newtonIterations = modelSeed.iterNumOfNewton;
+            model.iterativeFreqSIC.numOfSCForEstNL = modelSeed.iterNumOfSCForEstNL;
+            model.iterativeFreqSIC.estimationOrder = modelSeed.iterEstOrder;
+            model.iterativeFreqSIC.use3rdSidelobe = modelSeed.iterUse3rdSidelobe;
         }
     }
 
@@ -368,27 +566,35 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 
 string makeDirNameOfModelSeed(ModelSeed modelSeed)
 {
+    string strINRorISO;
+    if(modelSeed.INR.isNull)
+        strINRorISO = format("iso%s", modelSeed.TXRXISO.get);
+    else
+        strINRorISO = format("inr%s", modelSeed.INR.get);
+
+    string cancellerName = modelSeed.cancellerType;
+    if(cancellerName.canFind("Sidelobe"))
+        cancellerName ~= "_" ~ modelSeed.iterEstOrder;
+
     string dir;
     if(modelSeed.cancellerType.split("_")[0].endsWith("FHF"))
     {
-        dir = "TXP%s_inr%s_snr%s_%s_SF%s_G%s_IRR%s_%s"
+        dir = "TXP%s_%s_snr%s_%s_G%s_IRR%s_%s"
             .format(modelSeed.txPower,
-                    modelSeed.INR,
+                    strINRorISO,
                     modelSeed.SNR,
-                    modelSeed.cancellerType,
-                    modelSeed.lnaSmoothFactor,
+                    cancellerName,
                     modelSeed.bfsNoiseMargin,
                     modelSeed.txIRR,
                     modelSeed.numOfTrainingSymbols);
     }
     else
     {
-        dir = "TXP%s_inr%s_snr%s_%s_SF%s_IRR%s_%s"
+        dir = "TXP%s_%s_snr%s_%s_IRR%s_%s"
             .format(modelSeed.txPower,
-                    modelSeed.INR,
+                    strINRorISO,
                     modelSeed.SNR,
-                    modelSeed.cancellerType,
-                    modelSeed.lnaSmoothFactor,
+                    cancellerName,
                     modelSeed.txIRR,
                     modelSeed.numOfTrainingSymbols);
     }
@@ -415,11 +621,60 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 
     if(exists(buildPath(dir, "allResult.json"))) return;
 
+    writeln(dir);
+    // 前回異常終了等で死んでいれば，このファイルがあるはず
+    // 中間状態のダンプファイル
+    immutable resListDumpFilePath = buildPath(dir, "resList_dumped.json");
+    JSONValue[] lastDumpedList;
+    if(exists(resListDumpFilePath))
+    {
+        lastDumpedList = std.file.readText(resListDumpFilePath)
+            .parseJSON(JSONOptions.specialFloatLiterals).array;
+    }
+    scope(success) {
+        // このプロセスが正常終了すれば中間状態のダンプファイルは不要
+        if(exists(resListDumpFilePath))
+            std.file.remove(buildPath(dir, "resList_dumped.json"));
+    }
+
+    import std.datetime;
+    auto lastUpdateTime = Clock.currTime;
+
+
     JSONValue[] resList;
     uint sumOfSuccFreq;
     JSONValue[] selectingRatioList;
     foreach(i, ref m; models) {
-        auto res = mainImpl!methodName(m, i == 0 ? dir : null);
+        {
+            import core.memory;
+            GC.collect();
+        }
+
+        JSONValue res; // この試行での結果が格納される
+        scope(success)
+        {
+            resList ~= res;
+
+            // このプロセスで計算できた試行回数が前回を上回っていればダンプファイルを更新
+            // ただし，前回の更新時より1分以上空いていること
+            auto ct = Clock.currTime;
+            if(resList.length > lastDumpedList.length
+                && (ct - lastUpdateTime) > 60.seconds )
+            {
+                std.file.write(resListDumpFilePath, JSONValue(resList).toString(JSONOptions.specialFloatLiterals));
+                lastUpdateTime = ct;
+            }
+        }
+
+        if(lastDumpedList.length >= i+1) {
+            // 前回中断時にすでに計算済みなのでそのデータを復元
+            res = lastDumpedList[i];
+            continue;
+        }
+        else {
+            // まだ未計算なので計算する
+            res = mainImpl!(methodName)(m, i == 0 ? dir : null);
+        }
 
         if(saveAllRAWData) {
             res["model"] = (){
@@ -433,7 +688,6 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
                 return jv;
             }();
         }
-        resList ~= res;
 
         if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF")){
             auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();

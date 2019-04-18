@@ -3,6 +3,7 @@ module dffdd.filter.sidelobe;
 import std.algorithm;
 import std.array;
 import std.complex;
+import std.exception;
 import std.json;
 import std.range;
 import std.typecons;
@@ -23,10 +24,15 @@ final class SidelobeIterativeWLNL(C, size_t P)
     alias R = typeof(C.init.re);
 
     // 今のところP==2,　つまりx|x|^2の3次の項までしか考慮していない
-    static assert(P == 2);
+    // static assert(P == 2);
 
 
-    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, size_t nImpulseTaps, Flag!"isChFreqEst" isChFreqEst = Yes.isChFreqEst, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX, Flag!"useNewton" useNewton = No.useNewton, size_t nNewtonIter = 10)
+    this(size_t trainingSymbols, size_t nIter, size_t nFFT, size_t nCP, size_t nTone, size_t nOS, size_t nImpulseTaps,
+        Flag!"isChFreqEst" isChFreqEst = Yes.isChFreqEst, Flag!"isInvertRX" isInvertRX = Yes.isInvertRX,
+        Flag!"useNewton" useNewton = No.useNewton, size_t nNewtonIter = 10,
+        Flag!"use3rdSidelobe" use3rdSidelobe = No.use3rdSidelobe,
+        size_t nUseSCForEstNonlin = 50,
+        string estOrder = "IHD")
     {
         _nTr = trainingSymbols;
         _nIter = nIter;
@@ -39,6 +45,11 @@ final class SidelobeIterativeWLNL(C, size_t P)
         _isChFreqEst = cast(bool)isChFreqEst;
         _isInvertRX = cast(bool)isInvertRX;
         _useNewton = cast(bool)useNewton;
+        _use3rdSidelobe = cast(bool)use3rdSidelobe;
+        _estOrder = estOrder;
+
+        _nUseSC = min(nUseSCForEstNonlin, nTone);
+        enforce(_nUseSC % 2 == 0);
 
         _fftw = makeFFTWObject!Complex(_nFFT * _nOS);
         _regenerator = new OverlapSaveRegenerator2!C(1, _nFFT * _nOS);
@@ -102,10 +113,11 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
   private:
     immutable size_t _nTr;
-    immutable size_t _nIter, _nNewtonIter;
+    immutable size_t _nIter, _nNewtonIter, _nUseSC;
     immutable size_t _nCP, _nFFT, _nOS, _nSC;
     immutable size_t _nImpulseTaps;
-    immutable bool _isChFreqEst, _isInvertRX, _useNewton;
+    immutable bool _isChFreqEst, _isInvertRX, _useNewton, _use3rdSidelobe;
+    immutable string _estOrder;
 
     FFTWObject!Complex _fftw;
     OverlapSaveRegenerator2!C _regenerator;
@@ -131,12 +143,15 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
             // 学習用の信号が溜まったら，一度に学習する
             if(_nBufferedSymbols == _nTr) {
+                void delegate()[char] stages = [
+                    'I': &estimateIQImbalance,
+                    'H': &estimateChannel,
+                    'D': &estimateNLCoefs,
+                ];
+
                 foreach(iIter; 0 .. _nIter) {
-                    // estimateChannel();
-                    // estimateIQImbalance();
-                    estimateIQImbalance();
-                    estimateChannel();
-                    estimateNLCoefs();
+                    foreach(char c; _estOrder)    // estOrderで指定された順に推定する
+                        stages[c]();
                 }
             }
         }
@@ -148,7 +163,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
         if(_isInvertRX){
             foreach(ref e; outputs) {
                 e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
-                e = invertPoly(e, C(_lnaCoefs[1]));
+                // e = invertPoly(e, C(_lnaCoefs[1]));
+                e = invertPoly(e, _lnaCoefs[]);
             }
         }
 
@@ -157,7 +173,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
         foreach(ref e; _buffer4Regen){
             e = e + _iqTX * e.conj;
             immutable c = e;
-            foreach(p; 1 .. P) e += _paCoefs[p] * c * c.sqAbs^^p;
+            // foreach(p; 1 .. P) e += _paCoefs[p] * c * c.sqAbs^^p;
+            e = mypoly(e, _paCoefs[]);
         }
 
         // 推定したチャネルに通す
@@ -168,7 +185,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
         // 受信機側の非線形性を再現する
         if(!_isInvertRX){
             foreach(ref e; reconsted) {
-                e += _lnaCoefs[1] * e * e.sqAbs;
+                // e += _lnaCoefs[1] * e * e.sqAbs;
+                e = mypoly(e, _lnaCoefs[]);
                 e += e.conj * _iqRX;
             }
         }
@@ -184,14 +202,15 @@ final class SidelobeIterativeWLNL(C, size_t P)
         auto txs = _transmits.dup;
         foreach(ref e; txs) {
             e += e.conj * _iqTX;
-            e += _paCoefs[1] * e * e.sqAbs;
+            // e += _paCoefs[1] * e * e.sqAbs;
+            e = mypoly(e, _paCoefs[]);
             e = (e - _iqTX * e.conj) / (1 - _iqTX.sqAbs);
         }
 
         auto rxs = _receives.dup;
         foreach(ref e; rxs) {
             e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
-            e = invertPoly(e, C(_lnaCoefs[1]));
+            e = invertPoly(e, _lnaCoefs[]);
             e += e.conj * _iqRX;
         }
 
@@ -341,7 +360,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
         auto ips = _fftw.inputs!R;
         auto ops = _fftw.outputs!R;
         foreach(i; 0 .. _nTr) {
-            foreach(p; 1 .. P) {
+            foreach(p; 0 .. P) {
                 // i番目のシンボルを抜き出して非線形変換
                 ips[] = _transmits[_nCP * _nOS + i * nSym .. (i+1) * nSym];
                 foreach(ref e; ips) e = e + e.conj * _iqTX;
@@ -351,7 +370,8 @@ final class SidelobeIterativeWLNL(C, size_t P)
                 freqPsiX[p] ~= ops.dup;
 
                 ips[] = _transmits[_nCP * _nOS + i * nSym .. (i+1) * nSym];
-                foreach(ref e; ips) e = e + e.conj * _iqTX;
+                foreach(ref e; ips) e = e + e.conj * _iqTX;     // apply TX I/Q imbalance
+                foreach(ref e; ips) e = mypoly(e, _paCoefs[]);  // apply TX PA Distortion
                 _fftw.fft!R();
                 foreach(f, ref e; ips) e = ops[f] * _channelFreqResponse[f];
                 _fftw.ifft!R();
@@ -363,41 +383,89 @@ final class SidelobeIterativeWLNL(C, size_t P)
             ips[] = _receives[_nCP * _nOS + i * nSym .. (i+1) * nSym];
             foreach(ref e; ips) e = (e - _iqRX * e.conj) / (1 - _iqRX.sqAbs);
             _fftw.fft!R();
+            // foreach(f, ref e; ops) e -= freqPsiX[0][i][f];      // 線形成分を抜いておく
             freqY ~= ops.dup;
         }
 
-        // 係数を推定していく
-        foreach_reverse(p; 1 .. P) {
-            Complex!R[] vecPsiX, vecPsiY, vecY;
-            
-            foreach(f; getSCIndex4PthAMPCoef(p)) foreach(i; 0 .. _nTr){
-                vecPsiX ~= freqPsiX[p][i][f];
-                vecPsiY ~= freqPsiY[p][i][f];
-                vecY ~= freqY[i][f];
+        // メインローブを使うなら
+        if(!_use3rdSidelobe) {
+            // 線形成分を抜いておく
+            foreach(i; 0 .. _nTr)
+                foreach(f, ref e; freqY[i])
+                    e -= freqPsiX[0][i][f]; 
+        }
+
+        size_t[] targetFS;
+        if(_use3rdSidelobe)
+            targetFS = getSCIndex4PthAMPCoef(1).array;  // 3次IMDを利用
+        else
+            targetFS = getSCIndex4IQ(Yes.forNL).array;  // メインローブを利用
+
+        // if(_use3rdSidelobe)
+        {
+            import mir.ndslice;
+            import lubeck;
+
+            Complex!R[] vecY = new Complex!R[](targetFS.length * _nTr);
+            auto matX = slice!(Complex!R)(targetFS.length * _nTr, (P-1) * 2);
+
+            foreach(ri, idxFI; cartesianProduct(targetFS, iota(_nTr)).enumerate) {
+                size_t f = idxFI[0];        // 周波数インデックス
+                size_t i = idxFI[1];        // シンボルインデックス
+
+                vecY[ri] = freqY[i][f];
+
+                foreach(p; 1 .. P){
+                    matX[ri, (p-1)]         = freqPsiX[p][i][f];
+                    matX[ri, (p-1) + (P-1)] = freqPsiY[p][i][f];
+                }
             }
 
-            auto estCoefs = leastSquareEstimate2(vecPsiX, vecPsiY, vecY);
+            auto coefs = matX.transposed.slice.leastSquareEstimateColumnMajor(vecY);
+            foreach(p; 1 .. P) {
+                _paCoefs[p] = coefs[(p-1) ];
+                _lnaCoefs[p] = coefs[(p-1) + (P-1)];
+            }
+        }
+        version(none)
+        {
+            // 係数を推定していく
+            foreach_reverse(p; 1 .. P) {
+                Complex!R[] vecPsiX, vecPsiY, vecY;
+                
+                foreach(f; getSCIndex4PthAMPCoef(p)) foreach(i; 0 .. _nTr){
+                    vecPsiX ~= freqPsiX[p][i][f];
+                    vecPsiY ~= freqPsiY[p][i][f];
+                    vecY ~= freqY[i][f];
+                }
 
-            _paCoefs[p] = estCoefs[0];
-            _lnaCoefs[p] = estCoefs[1];
+                auto estCoefs = leastSquareEstimate2(vecPsiX, vecPsiY, vecY);
 
-            // 干渉除去する
-            foreach(f; 0 .. _nFFT * _nOS) foreach(i; 0 .. _nTr){
-                freqY[i][f] -= freqPsiX[p][i][f] * _paCoefs[p];
-                freqY[i][f] -= freqPsiY[p][i][f] * _lnaCoefs[p];
+                _paCoefs[p] = estCoefs[0];
+                _lnaCoefs[p] = estCoefs[1];
+
+                // 干渉除去する
+                foreach(f; 0 .. _nFFT * _nOS) foreach(i; 0 .. _nTr){
+                    freqY[i][f] -= freqPsiX[p][i][f] * _paCoefs[p];
+                    freqY[i][f] -= freqPsiY[p][i][f] * _lnaCoefs[p];
+                }
             }
         }
     }
 
 
-    auto getSCIndex4IQ()
+    auto getSCIndex4IQ(Flag!"forNL" forNL = No.forNL)
     {
         size_t n = _nSC;
 
         n /= 2;
         auto r1 = iota(1, 1 + n);
-        auto r2 = iota(_nFFT * _nOS - n, _nFFT * _nOS);
-        return r1.chain(r2);
+        auto r2 = iota(_nFFT * _nOS - n, _nFFT * _nOS).retro();
+
+        if(forNL)
+            return r1[0 .. _nUseSC/2].chain(r2[0 .. _nUseSC/2]);
+        else
+            return r1.chain(r2);
     }
 
 
@@ -405,26 +473,57 @@ final class SidelobeIterativeWLNL(C, size_t P)
     {
         size_t n = _nSC;
         n /= 2;
-        auto r1 = iota(1+(p*2-1)*n, 1+(p*2+1)*n-10);
-        auto r2 = iota(_nFFT * _nOS - (p*2+1)*n+10, _nFFT * _nOS - (p*2-1)*n);
+        auto r1 = iota(1+(p*2-1)*n, 1+(p*2+1)*n)[0 .. _nUseSC/2];
+        auto r2 = iota(_nFFT * _nOS - (p*2+1)*n, _nFFT * _nOS - (p*2-1)*n).retro()[0 .. _nUseSC / 2];
         return r1.chain(r2);
     }
 
 
-    C invertPoly(C y, C coefs3) const
+    static
+    C mypoly(C2)(C x, in C2[] coefs)
+    {
+        C sum = C(0);
+        C xp = x;
+        real sq = x.sqAbs;
+        foreach(i, e; coefs) {
+            sum += xp * e;
+            xp *= sq;
+        }
+
+        return sum;
+    }
+
+
+    C invertPoly(C2)(C y, in C2[] coefs) const
     {
         if(_useNewton) {
-            C e = y;
-            foreach(i; 0 .. _nNewtonIter)
-            {
-                C fx = e + e * e.sqAbs * coefs3 - y;
-                C dfx = 1 + 2 * coefs3 * e.sqAbs;
+            real yabs = y.abs;
+            real e = yabs;
+            foreach(i; 0 .. _nNewtonIter) {
+                real fx = mypoly(C(e), coefs).abs - yabs;
+
+                real sumR = 0, sumI = 0, sumRD = 0, sumID = 0;
+                foreach(p, c; coefs) {
+                    immutable ep = e^^(2*p);
+                    sumR += c.re * ep * e;
+                    sumI += c.im * ep * e;
+                    sumRD += (2*p+1) * c.re * ep;
+                    sumID += (2*p+1) * c.im * ep;
+                }
+
+                import std.math : sqrt;
+                real dfx = 1 / sqrt(sumR^^2 + sumI^^2);
+                dfx *= sumR * sumRD + sumI * sumID;
+
                 e -= fx / dfx;
             }
 
-            return e;
-        }else{
-            return C(y - coefs3 * y * y.sqAbs);
+            immutable real xabs = e;
+            immutable C ypoly = mypoly(C(xabs), coefs);
+            immutable C ytheta = ypoly / ypoly.abs;
+            return C(xabs * (y/yabs) / ytheta);
+        } else {
+            return C(y - coefs[1] * y * y.sqAbs);
         }
     }
 

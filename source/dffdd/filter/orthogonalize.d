@@ -186,7 +186,7 @@ final class GramSchmidtOBFFactory(C)
     }
 
 
-    Slice!(Contiguous, [2], C*) convertMatrix() @property
+    Slice!(C*, 2, Contiguous) convertMatrix() @property
     {
         return _m;
     }
@@ -194,7 +194,7 @@ final class GramSchmidtOBFFactory(C)
 
   private:
     size_t _dim;
-    Slice!(Contiguous, [2], C*) _m;
+    Slice!(C*, 2, Contiguous) _m;
     immutable(C[])[] _xs;
 }
 
@@ -212,14 +212,14 @@ final class VectorConverter(C)
     }
 
 
-    this(Slice!(Contiguous, [2], C*) convMatrix)
+    this(Slice!(C*, 2, Contiguous) convMatrix)
     {
         _m = convMatrix;
         _dim = convMatrix.length!0;
     }
 
 
-    Slice!(Contiguous, [2], C*) convertMatrix() @property 
+    Slice!(C*, 2, Contiguous) convertMatrix() @property 
     {
         return _m;
     }
@@ -240,7 +240,7 @@ final class VectorConverter(C)
 
   private:
     size_t _dim;
-    Slice!(Contiguous, [2], C*) _m;
+    Slice!(C*, 2, Contiguous) _m;
 }
 
 unittest
@@ -340,6 +340,7 @@ if(Distorter.inputBlockLength == 1)
         _dist = distorter;
         _orth = orthogonalizer;
         _conn = new typeof(_conn)(_dist, new VectorConverter!C(_dist.outputDim));
+        _distbuf = new C[_dist.outputDim];
     }
 
 
@@ -351,19 +352,36 @@ if(Distorter.inputBlockLength == 1)
     enum size_t inputBlockLength = 1;
 
 
+    void start()
+    {
+        _orth.start();
+    }
+
+
+    void finish()
+    {
+        _orth.finish();
+        _conn.converter.convertMatrix[] = _orth.convertMatrix;
+    }
+
+
+    void put(C e)
+    {
+        _dist(e, _distbuf);
+        .put(_orth, _distbuf);
+    }
+
+
     void learn(R)(R input)
     if(isInputRange!R && is(Unqual!(ElementType!R) : C))
     {
-        _orth.start();
+        this.start();
 
-        C[] output = new C[this.outputDim];
         foreach(e; input){
-            _dist(e, output);
-            .put(_orth, output);
+            this.put(e);
         }
 
-        _orth.finish();
-        _conn.converter.convertMatrix[] = _orth.convertMatrix;
+        this.finish();
     }
 
 
@@ -386,6 +404,7 @@ if(Distorter.inputBlockLength == 1)
     Distorter _dist;
     Orthogonalizer _orth;
     ConvertedVectorDistorter!(C, Distorter, VectorConverter!C) _conn;
+    C[] _distbuf;
 }
 
 unittest

@@ -8,6 +8,7 @@ import std.complex;
 import dffdd.filter.traits;
 import dffdd.mod.primitives;
 import dffdd.utils.fft;
+import dffdd.filter.state;
 
 
 final class LimitedTrainingAdaptor(Adaptor)
@@ -92,9 +93,9 @@ IgnoreHeadSamplesAdaptor!Adaptor ignoreHeadSamples(Adaptor)(Adaptor adaptor, siz
 }
 
 
-interface IAdaptor(C)
+interface IAdapter(C)
 {
-    void adapt(ref MultiFIRFilter!C state, C error);
+    void adapt(ref MultiFIRState!C state, C error);
 }
 
 
@@ -152,12 +153,12 @@ if(P % 2 == 1)
     enum size_t inputBlockLength = 1;
 
 
-    template indexOfConjugated(size_t i)
+    ptrdiff_t indexOfConjugated(size_t i)
     {
-        static if(i % 2 == 0)
-            enum ptrdiff_t indexOfConjugated = i + 1;
+        if(i % 2 == 0)
+            return i + 1;
         else
-            enum ptrdiff_t indexOfConjugated = i - 1;
+            return i - 1;
     }
 
 

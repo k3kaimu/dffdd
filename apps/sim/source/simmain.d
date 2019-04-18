@@ -13,6 +13,7 @@ import std.range;
 import std.random;
 import std.stdio;
 import std.typecons;
+import std.conv;
 
 import carbon.math : nextPowOf2;
 
@@ -21,6 +22,7 @@ import dffdd.blockdiagram.utils;
 import dffdd.dsp.statistics;
 import dffdd.utils.fft;
 import dffdd.utils.unit;
+import dffdd.filter.primitives;
 
 import models;
 import snippet;
@@ -215,8 +217,16 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeParallelHammersteinWithDCMethodFilter!isOrthogonalized(modOFDM(model), model);
   else static if(filterStructure.endsWith("ARPH"))
     auto filter = makeAliasRemovableParallelHammersteinFilter!(isOrthogonalized, filterOptimizer)(modOFDM(model), model);
-  else static if(filterStructure.endsWith("PH"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, defaultDistortionOrder, false, isOrthogonalized)(modOFDM(model), model);
+  else static if(filterStructure[0 .. $-1].endsWith("SubPH"))
+  {
+    enum size_t POrder = filterStructure[$-1 .. $].to!int;
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, SubSetOfPADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
+  }
+  else static if(filterStructure[0 .. $-1].endsWith("PH"))
+  {
+    enum size_t POrder = filterStructure[$-1 .. $].to!int;
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, PADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
+  }
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
   // else static if(filterStructure.endsWith("CWLH"))
@@ -228,20 +238,17 @@ auto makeFilter(string filterType)(Model model)
     import dffdd.filter.freqdomain;
     auto filter = new IQInversionSuccessiveInterferenceCanceller!(Complex!float, (defaultDistortionOrder+1)/2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.subCarrierMap, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.scaleOfUpSampling);
   }
-  else static if(filterStructure.endsWith("SidelobeInv2"))
+  else static if(filterStructure[0 .. $-1].endsWith("Sidelobe"))
   {
+    enum size_t POrder = filterStructure[$-1 .. $].to!int / 2 + 1;
+
     import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations);
-  }
-  else static if(filterStructure.endsWith("SidelobeInv"))
-  {
-    import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, Yes.isInvertRX, No.useNewton, model.iterativeFreqSIC.newtonIterations);
-  }
-  else static if(filterStructure.endsWith("SidelobeFwd"))
-  {
-    import dffdd.filter.sidelobe;
-    auto filter = new SidelobeIterativeWLNL!(Complex!float, 2)(model.learningSymbols, model.iterativeFreqSIC.iterations, model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling, model.channel.taps, No.isChFreqEst, No.isInvertRX, Yes.useNewton, model.iterativeFreqSIC.newtonIterations);
+    auto filter = new SidelobeIterativeWLNL!(Complex!float, POrder)(
+        model.learningSymbols, model.iterativeFreqSIC.iterations,
+        model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling,
+        model.channel.taps, No.isChFreqEst, Yes.isInvertRX,
+        Yes.useNewton, model.iterativeFreqSIC.newtonIterations, model.iterativeFreqSIC.use3rdSidelobe,
+        model.iterativeFreqSIC.numOfSCForEstNL, model.iterativeFreqSIC.estimationOrder);
   }
   else static if(filterStructure.endsWith("WLFHF"))
   {
@@ -266,12 +273,32 @@ auto makeFilter(string filterType)(Model model)
   }
   else static if(filterStructure.endsWith("CFHF"))
     static assert(0); // auto filter = makeFrequencyCascadeHammersteinFilter!(true, filterOptimizer)(model);
-  else static if(filterStructure.endsWith("FHF")){
-    static assert(!isOrthogonalized);
+  else static if(filterStructure[0 .. $-1].endsWith("FHF"))
+  {
+    // static assert(!isOrthogonalized);
 
-    auto freqFilter = makeFrequencyHammersteinFilter2!(filterOptimizer)(model);
+    enum size_t POrder = filterStructure[$-1 .. $].to!int;
 
-    static if(filterStructure.endsWith("S2FHF"))
+    static if(filterStructure.canFind("Sub"))
+        alias Dist = SubSetOfPADistorter!(Complex!float, POrder);
+    else
+        alias Dist = PADistorter!(Complex!float, POrder);
+
+    static if(isOrthogonalized)
+    {
+        import dffdd.filter.orthogonalize;
+
+        alias GS = GramSchmidtOBFFactory!(Complex!float);
+        auto dist = new OrthogonalizedVectorDistorter!(Complex!float, Dist, GS)(new Dist(), new GS(Dist.outputDim));
+    }
+    else
+    {
+        auto dist = new Dist();
+    }
+
+    auto freqFilter = makeFrequencyHammersteinFilter2!(filterOptimizer, typeof(dist))(dist, model);
+
+    static if(filterStructure.canFind("S2"))
     {
         auto filter = makeFrequencyDomainBasisFunctionSelector(model, freqFilter);
     }
@@ -287,6 +314,8 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else
     static assert("Cannot identify filter model.");
+
+    pragma(msg, typeof(filter).stringof ~ " is instantiated.");
 
     return filter;
 }
@@ -353,7 +382,7 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         StopWatch sw;
         foreach(blockIdx; 0 .. model.numOfFilterTrainingSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
         {
-            static if(filterStructure.endsWith("FHF") || filterStructure.endsWith("IterativeFreqSIC"))
+            static if(filterStructure[0 .. $-1].endsWith("FHF") || filterStructure.endsWith("IterativeFreqSIC"))
             {
                 if(blockIdx >= model.swappedSymbols * model.ofdm.numOfSamplesOf1Symbol / model.blockSize)
                     signals.useSWPOFDM = false;

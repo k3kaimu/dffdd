@@ -4,6 +4,8 @@ import carbon.math;
 
 import dffdd.utils.fft;
 
+import std.math;
+
 final class OFDM(C)
 {
     alias InputElementType = C;
@@ -18,6 +20,7 @@ final class OFDM(C)
         _nUpSampling = nUpSampling;
         _inpBuffer = new C[nFFT * nUpSampling];
         _fftw = makeFFTWObject!C(nFFT * nUpSampling);
+        _scaleTX = sqrt((nFFT * nUpSampling * 1.0)^^2 / nTone);
     }
 
 
@@ -47,7 +50,6 @@ final class OFDM(C)
             if(_nTone == _nFFT){
                 mainLobeH[0 .. _nTone/2] = inpTones[0 .. _nTone/2];
                 mainLobeL[$-_nTone/2 .. $] = inpTones[_nTone/2 .. $];
-
             }else if(_nTone == _nFFT -1){
                 mainLobeH[1 .. $] = inpTones[0 .. _nFFT/2-1];
                 mainLobeL[0 .. $] = inpTones[_nFFT/2-1 .. _nTone];
@@ -68,6 +70,9 @@ final class OFDM(C)
             //dst[$-1] /= 4;
             assert(dst.ptr == outputs.ptr + i*symOutputLength);
         }
+
+        foreach(ref e; outputs)
+            e *= _scaleTX;
 
         return outputs;
     }
@@ -92,7 +97,8 @@ final class OFDM(C)
             .fft!RealType(_fftw, inputSymbol[_nUpSampling * _nCp .. $], _inpBuffer);
 
             if(_nTone == _nFFT){
-                outputSymbol[] = _inpBuffer[];
+                outputSymbol[0 .. _nFFT/2] = mainLobeH[0 .. $];
+                outputSymbol[_nFFT/2 .. _nFFT] = mainLobeL[0 .. $];
             }else if(_nTone == _nFFT -1){
                 outputSymbol[0 .. _nFFT/2 -1] = mainLobeH[1 .. $];
                 outputSymbol[_nFFT/2 -1.. _nTone] = mainLobeL[0 .. $];
@@ -105,6 +111,9 @@ final class OFDM(C)
             }
         }
 
+        foreach(ref e; outputs)
+            e /= _scaleTX;
+
         return outputs;
     }
 
@@ -116,6 +125,7 @@ final class OFDM(C)
     uint _nCp;
     uint _nTone;
     uint _nUpSampling;
+    real _scaleTX;
 }
 
 //
