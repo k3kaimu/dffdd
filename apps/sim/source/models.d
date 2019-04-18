@@ -79,6 +79,7 @@ struct Model
     bool outputEVM = true;
 
     uint rndSeed = 114514;
+    string uniqueId;
 
 
     bool useDTXIQ = true;

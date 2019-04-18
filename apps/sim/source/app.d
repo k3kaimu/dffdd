@@ -441,10 +441,16 @@ void mainJob()
 }
 
 
-Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
+Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, string uniqueString)
 {
     import dffdd.blockdiagram.noise : noisePower;
     Model[] models;
+
+    immutable string hashOfModelSeed = () @trusted {
+        import std.digest.crc;
+        import tuthpc.taskqueue : hashOfExe;
+        return crc32Of(methodName, (cast(ubyte*)&modelSeed)[0 .. modelSeed.sizeof], hashOfExe(), uniqueString).crcHexString;
+    }();
 
     foreach(iTrial; 0 .. numOfTrials) {
         Model model;
@@ -453,6 +459,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed)
 
         immutable NP = (10*log10(noisePower(model.samplingFreq, 300)) + 30).dBm * 4.dB;
 
+        model.uniqueId = format("%s_%s", hashOfModelSeed, iTrial.to!string);
         model.rndSeed = cast(uint)hashOf(iTrial);
         model.SNR = modelSeed.SNR;
 
@@ -617,7 +624,7 @@ Random uniqueRandom(Args...)(Args args)
 
 void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
 {
-    Model[] models = makeModels!methodName(nTrials, modelSeed);
+    Model[] models = makeModels!methodName(nTrials, modelSeed, dir);
 
     if(exists(buildPath(dir, "allResult.json"))) return;
 
@@ -702,13 +709,33 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     jv["INRs"] = resList.map!(a => a["INR_dB"]).array();
     if(modelSeed.outputBER) jv["bers"] = resList.map!(a => a["ber"]).array();
     if(modelSeed.outputEVM) jv["evms"] = resList.map!(a => a["evm"]).array();
-    
+
     auto file = File(buildPath(dir, "allResult.json"), "w");
     file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
 
     if(saveAllRAWData){
         file = File(buildPath(dir, "rawAllResult.json"), "w");
         file.write(JSONValue(resList).toPrettyString(JSONOptions.specialFloatLiterals));
+    }
+
+    if(methodName.startsWith("Log_")){
+        foreach(i, res; resList){
+            import std.file : mkdirRecurse;
+
+            auto siglogpath = buildPath(dir, "signallog");
+            mkdirRecurse(siglogpath);
+
+            auto uniqueId = res["filterSpec"]["uniqueId"].str;
+            foreach(iden; ["TrX", "TrY", "TrZ", "CnX", "CnY", "CnZ"]){
+                string filename = "signal_%s_%s.dat".format(iden, uniqueId);
+                auto frompath = buildPath("signallog", filename);
+                auto topath = buildPath(siglogpath, "signal_%s_%s.dat".format(iden, i));
+                
+                // frompathからtopathにファイルをコピーする
+                std.file.rename(frompath, topath);
+                writefln("%s -> %s", frompath, topath);
+            }
+        }
     }
 }
 
