@@ -312,6 +312,8 @@ auto makeFilter(string filterType)(Model model)
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false, false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
+  else static if(filterStructure.endsWith("Nop"))
+    auto filter = new NopCanceller!(Complex!float)();
   else
     static assert("Cannot identify filter model.");
 
@@ -345,7 +347,15 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
     auto signals = makeSimulatedSignals(model, resultDir);
     signals.trainAGC();
 
-    auto filter = makeFilter!filterType(model);
+    // フィルタを作成．信号のLog出力をするのであれば，ラッパをかませる．
+    static if(filterType.startsWith("Log_"))
+    {
+        import std.file : mkdirRecurse;
+        mkdirRecurse("signallog");
+        auto filter = makeSignalLoggingCanceller!(Complex!float)(makeFilter!(filterType[4 .. $])(model), "signallog", model.uniqueId);
+    }
+    else
+        auto filter = makeFilter!filterType(model);
 
     // フィルタの学習
     auto recvs = new Complex!float[model.blockSize],

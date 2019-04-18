@@ -348,3 +348,99 @@ final class ModulatedRange(R, Mod, bool isDemod = false)
     B[] _outputBuf;
     size_t _idx;
 }
+
+
+/**
+信号に対して何も作用しないキャンセラ
+*/
+final class NopCanceller(C)
+{
+    this() {}
+
+    enum inputBlockLength = 1;
+
+    void apply(Flag!"learning" doLearning)(in C[] input, in C[] received, C[] errors)
+    in{
+        assert(input.length == received.length);
+        assert(input.length == errors.length);
+    }
+    do{
+        errors[] = received[];
+    }
+
+
+    void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator) {}
+}
+
+
+/**
+キャンセラに入力される信号やキャンセラからの出力を保存するためのキャンセラのラッパーを作成し，返します．
+*/
+auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller, string resultDir, string uniqueId)
+{
+    import std.string;
+    import std.json;
+    import std.path;
+
+    static
+    final class SignalLoggingImpl
+    {
+        enum inputBlockLength = 1;
+
+        this(Canceller canc, string resultDir, string uniqueId)
+        {
+            _canc = canc;
+            _uniqueId = uniqueId;
+            _resultDir = resultDir;
+
+            foreach(iden; ["TrX", "TrY", "TrZ", "CnX", "CnY", "CnZ"]){
+                string filename = "signal_%s_%s.dat".format(iden, uniqueId);
+                auto filepath = buildPath(resultDir, filename);
+                _files[iden] = File(filepath, "w");
+            }
+        }
+
+
+        void apply(Flag!"learning" doLearning)(in C[] input, in C[] received, C[] errors)
+        in{
+            assert(input.length == received.length);
+            assert(input.length == errors.length);
+        }
+        body{
+            // errors[] = received[];
+            _canc.apply!doLearning(input, received, errors);
+
+            if(doLearning){
+                _files["TrX"].rawWrite(input);
+                _files["TrY"].rawWrite(received);
+                _files["TrZ"].rawWrite(errors);
+            }else{
+                _files["CnX"].rawWrite(input);
+                _files["CnY"].rawWrite(received);
+                _files["CnZ"].rawWrite(errors);
+            }
+        }
+
+
+        JSONValue info() @property
+        {
+            JSONValue[string] dst;
+            dst["resultDir"] = _resultDir;
+            dst["uniqueId"] = _uniqueId;
+            return JSONValue(dst);
+        }
+
+
+        void preLearning(M, Signals)(M model, Signals delegate(M) signalGenerator) {}
+
+
+      private:
+        Canceller _canc;
+        string _resultDir;
+        string _uniqueId;
+        // 学習用信号と，除去用信号の保存ファイル
+        File[string] _files;
+    }
+
+    return new SignalLoggingImpl(canceller, resultDir, uniqueId);
+}
