@@ -307,13 +307,22 @@ auto makeFilter(string filterType)(Model model)
         alias filter = freqFilter;
     }
   }else static if(filterStructure.endsWith("WL"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, true, isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, PADistorter!(Complex!float, 1), isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, 1, false, false)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, OnlyPADistorter!(Complex!float, 1), false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else static if(filterStructure.endsWith("Nop"))
     auto filter = new NopCanceller!(Complex!float)();
+  else static if(filterStructure.endsWith("Ahmed2013"))
+  {
+    import dffdd.filter.iterative_ahmed_2013;
+    auto filter = new IterativeAhmed2013!(Complex!float)(
+        model.learningSymbols, 10, 5,
+        model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling,
+        model.channel.taps
+    );
+  }
   else
     static assert("Cannot identify filter model.");
 

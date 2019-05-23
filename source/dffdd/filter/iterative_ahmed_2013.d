@@ -1,5 +1,19 @@
 module dffdd.filter.iterative_ahmed_2013;
 
+import std.algorithm;
+import std.array;
+import std.complex;
+import std.stdio;
+import std.typecons;
+
+import mir.ndslice : slice;
+
+import carbon.math : complexZero;
+
+import dffdd.filter.freqdomain : OverlapSaveRegenerator2;
+import dffdd.utils.fft;
+import dffdd.utils.linalg;
+
 
 
 final class IterativeAhmed2013(C)
@@ -9,7 +23,6 @@ final class IterativeAhmed2013(C)
         _nTr = trainingSymbols;
         _nIter = nIter;
         _nIterNL = nIterNL;
-        _nNewtonIter = nNewtonIter;
         _nSC = nTone;
         _nFFT = nFFT;
         _nCP = nCP;
@@ -17,8 +30,11 @@ final class IterativeAhmed2013(C)
         _nImpulseTaps = nImpulseTaps;
         _nBufferedSymbols = 0;
 
-        _channelFreqResponse = new Complex!double[_nFFT * _nOS];
+        _channelFreqResponse = new C[_nFFT * _nOS];
         foreach(ref e; _channelFreqResponse) e = 0;
+
+        _paCoef = 0;
+        _lnaCoef = 0;
 
         foreach(ref es; _buffer4Regen)
             es = new C[(_nFFT + _nCP) * _nOS];
@@ -49,6 +65,8 @@ final class IterativeAhmed2013(C)
 
 
   private:
+    alias F = typeof(C.init.re);
+
     immutable size_t _nTr;
     immutable size_t _nIter, _nIterNL;
     immutable size_t _nCP, _nFFT, _nOS, _nSC;
@@ -65,7 +83,7 @@ final class IterativeAhmed2013(C)
 
 
 
-    void applyForEachSymbol(Flag!"doLearning" doLearning)(in C[] transmits, in C[] receives, C[] outputs)
+    void applyForEachSymbol(Flag!"learning" doLearning)(in C[] transmits, in C[] receives, C[] outputs)
     {
         if(doLearning && _nBufferedSymbols < _nTr) {
             _transmits ~= transmits;
@@ -86,15 +104,15 @@ final class IterativeAhmed2013(C)
         outputs[] = receives[];
 
         // 推定解を用いて送信信号にPAの歪みを与えていく
-        _buffer4Regen[0] = transmits[];
+        _buffer4Regen[0][] = transmits[];
         foreach(ref e; _buffer4Regen[0]){
             immutable c = e;
-            e += _paCoefs * c * c.sqAbs;
+            e += _paCoef * c * c.sqAbs;
         }
 
         // チャネルに通す
         auto state = RegeneratorMISOState(this, _nFFT * _nOS);
-        _regenerator.apply(state, _buffer4Regen.map!"[a]".array(), _buffer4Regen[1]);
+        _regenerator.apply(state, _buffer4Regen[0].map!"[a]".array(), _buffer4Regen[1]);
 
         // LNAの歪みを加える
         foreach(ref e; _buffer4Regen[1]) {
@@ -108,11 +126,45 @@ final class IterativeAhmed2013(C)
     }
 
 
+    C[] applyChannel(in C[] signal)
+    {
+        C[] outputs = signal.dup;
+
+        // チャネルに通す
+        auto state = RegeneratorMISOState(this, _nFFT * _nOS);
+        auto regen = new OverlapSaveRegenerator2!C(1, _nFFT * _nOS);
+
+        regen.apply(state, signal.map!"[a]".array(), outputs);
+        return outputs;
+    }
+
+
+    // PAの歪み信号とLNAの歪み信号を返す
+    C[][2] makeNonlinearSignal(in C[] signal)
+    {
+        auto distPA = applyChannel(signal.map!(a => a * a.sqAbs).array());
+        auto distLNA = applyChannel(signal.map!(a => a + _paCoef * a * a.sqAbs).array()).map!(a => a * a.sqAbs).array();
+
+        return [distPA, distLNA];
+    }
+
+
     void estimateChannel()
     {
         immutable nSym = (_nFFT + _nCP) * _nOS;
         auto txs = _transmits.dup;
         auto rxs = _receives.dup;
+
+        auto dist = makeNonlinearSignal(txs);
+
+        foreach(i, ref e; rxs) {
+            e -= _paCoef * dist[0][i];
+            e -= _lnaCoef * dist[1][i];
+        }
+
+        // 先頭1シンボルだけ飛ばす
+        txs = txs[nSym .. $];
+        rxs = rxs[nSym .. $];
 
         rxs = rxs[_nImpulseTaps-1 .. $];
         auto mx = slice!C(_nImpulseTaps, rxs.length);
@@ -124,17 +176,54 @@ final class IterativeAhmed2013(C)
 
         auto estimatedH = leastSquareEstimateColumnMajor(mx, rxs);
         estimatedH.reverse();
-        foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
+        foreach(i, ref e; _fftw.inputs!F[0 .. _nImpulseTaps])
             e = estimatedH[i];
 
-        _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
-        _fftw.fft!double();
-        _channelFreqResponse[] = _fftw.outputs!double[];
+        _fftw.inputs!F[_nImpulseTaps .. $] = complexZero!(Complex!F);
+        _fftw.fft!F();
+        _channelFreqResponse[] = _fftw.outputs!F[];
     }
 
 
     void estimateNLCoefs()
     {
-        
+        immutable nSym = (_nFFT + _nCP) * _nOS;
+        auto txs = _transmits.dup;
+        auto rxs = _receives.dup;
+
+        auto linear = applyChannel(txs);
+
+        foreach(i, ref e; rxs)
+            e -= linear[i];
+
+
+        foreach(_; 0 .. _nIterNL) {
+            auto dist = makeNonlinearSignal(txs);
+            auto param = leastSquareEstimate2(dist[0][nSym .. $], dist[1][nSym .. $], rxs[nSym .. $]);
+
+            _paCoef = param[0];
+            _lnaCoef = param[1];
+        }
+    }
+
+
+    static struct RegeneratorMISOState
+    {
+        this(const IterativeAhmed2013 c, size_t nFFT)
+        {
+            this.canceller = c;
+            this.nFFT = nFFT;
+        }
+
+        const(IterativeAhmed2013) canceller;
+        size_t nFFT;
+
+        void regenerate(C[][] distX, ref C[] dst)
+        {
+            if(dst.length != nFFT) dst.length = nFFT;
+
+            foreach(f; 0 .. nFFT)
+                dst[f] = canceller._channelFreqResponse[f] * distX[f][0];
+        }
     }
 }
