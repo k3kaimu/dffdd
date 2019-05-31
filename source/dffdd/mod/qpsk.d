@@ -2,9 +2,11 @@ module dffdd.mod.qpsk;
 
 import std.complex;
 
+import dffdd.mod.primitives : Bit;
+
 struct QPSK(C)
 {
-    alias InputElementType = ubyte;
+    alias InputElementType = Bit;
     alias OutputElementType = C;
 
     enum size_t symInputLength = 2;

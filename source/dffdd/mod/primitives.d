@@ -39,6 +39,28 @@ Mod.InputElementType[] demod(Mod, E)(ref Mod mod, in E[] sig)
 }
 
 
+struct Bit
+{
+    ubyte value;
+    alias value this;
+
+
+    this(long v)
+    {
+        this.opAssign(v);
+    }
+
+
+    void opAssign(long v)
+    {
+        if(v)
+            value = 1;
+        else
+            value = 0;
+    }
+}
+
+
 struct ChainedMod(Mod1, Mod2)
 if(isModulator!Mod1 && isModulator!Mod2 && is(Mod1.OutputElementType == Mod2.InputElementType))
 {
@@ -108,6 +130,8 @@ auto chainedMod(Mod1, Mod2)(Mod1 mod1, Mod2 mod2)
 ///
 unittest
 {
+    import std.algorithm : map;
+    import std.array : array;
     import std.complex;
     import dffdd.mod.ofdm;
     import dffdd.mod.qpsk;
@@ -122,7 +146,7 @@ unittest
     assert(mod.symInputLength == 2 * 4);
     assert(mod.symOutputLength == (8 + 3) * 2);
 
-    ubyte[] inps = [1, 1, 0, 0, 1, 0, 0, 1];
+    Bit[] inps = [1, 1, 0, 0, 1, 0, 0, 1].map!(a => Bit(a & 0xFF)).array();
     Complex!float[] res;
 
     // 変調
@@ -132,7 +156,7 @@ unittest
     foreach(i; 0 .. 3 * 2)
         assert(res[i] == res[$ - 3*2 + i]);
 
-    ubyte[] decoded;
+    Bit[] decoded;
 
     // 復調
     mod.demodulate(res, decoded);

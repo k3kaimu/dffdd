@@ -5,20 +5,21 @@ import std.mathspecial;
 import std.math;
 import std.numeric;
 
+import dffdd.mod.primitives : Bit;
 import dffdd.mod.bpsk;
 import dffdd.mod.qpsk;
 import dffdd.utils.unit;
 
 
-ubyte[][] getGrayCode(size_t N)
+Bit[][] getGrayCode(size_t N)
 {
   if(N == 1)
   {
-    return cast(ubyte[][])[[false], [true]];
+    return [[Bit(0)], [Bit(1)]];
   }
   else
   {
-    ubyte[][] dst = new ubyte[][](2^^N, N);
+    Bit[][] dst = new Bit[][](2^^N, N);
     dst.length = 2^^N;
     foreach(i, ref e; dst) e[0] = i < 2^^(N-1) ? 0 : 1;
 
@@ -33,7 +34,7 @@ ubyte[][] getGrayCode(size_t N)
 
 struct QAM(C)
 {
-    alias InputElementType = ubyte;
+    alias InputElementType = Bit;
     alias OutputElementType = C;
     alias R = typeof(C.init.re);
 
@@ -63,7 +64,7 @@ struct QAM(C)
     size_t symOutputLength() const @property { return 1; }
 
 
-    ref C[] modulate(in ubyte[] inputs, return ref C[] outputs)
+    ref C[] modulate(in Bit[] inputs, return ref C[] outputs)
     in{
         assert(inputs.length % _k == 0);
     }
@@ -81,7 +82,7 @@ struct QAM(C)
     }
 
 
-    ref ubyte[] demodulate(in C[] inputs, return ref ubyte[] outputs)
+    ref Bit[] demodulate(in C[] inputs, return ref Bit[] outputs)
     {
         outputs.length = inputs.length * _k;
 
@@ -125,7 +126,7 @@ struct QAM(C)
   private:
     size_t _k, _M, _L;
     real _scale;
-    ubyte[][] _grayCode;
+    Bit[][] _grayCode;
     real[] _toSymbol;
 
 
@@ -217,7 +218,7 @@ unittest
     Complex!float[] dst;
 
     auto noiseGen = boxMullerNoise();
-    ubyte[] inbits = L1CACode(1).map!"cast(ubyte)(a > 0 ? 0 : 1)".take(1024*3).array();
+    Bit[] inbits = L1CACode(1).map!"cast(ubyte)(a > 0 ? 0 : 1)".take(1024*3).map!(a => Bit(a)).array();
 
     foreach(scheme; AliasSeq!("BPSK", "QPSK", "16QAM", "64QAM", "256QAM"))
     {
@@ -257,7 +258,7 @@ unittest
                     noiseGen.popFront();
                 }
 
-                ubyte[] bs;
+                Bit[] bs;
                 mod.demodulate(dst, bs);
 
                 total += inbits.length;

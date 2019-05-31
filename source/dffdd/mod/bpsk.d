@@ -5,10 +5,12 @@ import std.mathspecial;
 import std.math;
 import std.numeric;
 
+import dffdd.mod.primitives : Bit;
+
 
 struct BPSK(C)
 {
-    alias InputElementType = ubyte;
+    alias InputElementType = Bit;
     alias OutputElementType = C;
 
     enum size_t symInputLength = 1;
