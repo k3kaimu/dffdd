@@ -318,7 +318,7 @@ auto makeFilter(string filterType)(Model model)
   {
     import dffdd.filter.iterative_ahmed_2013;
     auto filter = new IterativeAhmed2013!(Complex!float)(
-        model.learningSymbols, 10, 5,
+        model.learningSymbols, model.iterativeFreqSIC.iterations, model.iterativeFreqSIC.newtonIterations,
         model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling,
         model.channel.taps
     );
