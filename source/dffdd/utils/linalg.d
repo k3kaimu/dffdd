@@ -87,7 +87,7 @@ bool approxEqualCpx(F)(Complex!F a, Complex!F b)
 
 
 private
-bool checkMatrixStride(E, SliceKind kind)(in ref Slice!(kind, [2], E*) mat)
+bool checkMatrixStride(E, SliceKind kind)(in ref Slice!(E*, 2, kind) mat)
 if(kind == Contiguous || kind == Canonical)
 {
     return mat._stride!0 == 1 || mat._stride!1 == 1;
@@ -105,7 +105,7 @@ unittest
 
 
 private
-bool isTransposed(E, SliceKind kind)(in ref Slice!(kind, [2], E*) mat)
+bool isTransposed(E, SliceKind kind)(in ref Slice!(E*, 2, kind) mat)
 {
     return mat._stride!0 == 1;
 }
@@ -121,7 +121,7 @@ unittest
 
 
 private
-size_t leadingDimension(E, SliceKind kind)(in ref Slice!(kind, [2], E*) mat)
+size_t leadingDimension(E, SliceKind kind)(in ref Slice!(E*, 2, kind) mat)
 if(kind == Contiguous || kind == Canonical)
 {
     if(mat.isTransposed)
@@ -319,7 +319,7 @@ unittest
 /**
 逆行列
 */
-void gemi(E)(Slice!(Contiguous, [2], E*) matA)
+void gemi(E)(Slice!(E*, 2, Contiguous) matA)
 in{
     assert(!matA.isTransposed);
     assert(matA.length!0 == matA.length!1);
