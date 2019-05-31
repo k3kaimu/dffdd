@@ -866,193 +866,32 @@ unittest
 }
 
 
-/**
-FFTオブジェクトの生成と破棄を管理します．
-生成されたFFTオブジェクトはキャッシュされ，再利用されます．
-また，FFTオブジェクトは参照カウント方式により管理され，自動でキャッシュされます．
-*/
-final class FFTObjectBank(alias makeFFTObj)
+struct FFTObjectBank(alias makeFFTObject)
 {
-    alias FFTObj = typeof(makeFFTObj(0));
-
-    this() {}
+    alias FFTObject = typeof(makeFFTObject(0));
 
 
-    auto get(size_t n)
+    ref FFTObject opIndex(size_t n)
     {
         if(n !in _bank)
-            _bank[n] = Entry(n);
+            _bank[n] = makeFFTObject(n);
 
-        return RefCounted!RefCountedPayload(_bank[n].get(), this);
-    }
-
-
-    void free(ref RefCounted!RefCountedPayload obj)
-    {
-        obj = typeof(obj).init;
-    }
-
-
-    auto opIndex(size_t n)
-    {
-        return get(n);
-    }
-
-
-    /**
-    グローバルなインスタンスを返します
-    */
-    static
-    typeof(this) instance() @property
-    {
-        if(_instance is null)
-            _instance = new FFTObjectBank();
-
-        return _instance;
+        return _bank[n];
     }
 
 
   private:
-    void free(FFTObj obj)
-    {
-        auto size = obj.inputs!float.length;
-        if(auto p = size in _bank)
-            p.free(obj);
-    }
-
-
-    static struct RefCountedPayload
-    {
-        this(FFTObj obj, FFTObjectBank bank)
-        {
-            _obj = obj;
-            _bank = bank;
-        }
-
-
-        ~this()
-        {
-            if(_bank !is null){
-                _bank.free(_obj);
-                _obj = typeof(_obj).init;
-                _bank = null;
-            }
-        }
-
-
-        auto inputs(F)() @property { return _obj.inputs!F; }
-        auto outputs(F)() @property { return _obj.outputs!F; }
-        void fft(F)() { _obj.fft!F(); }
-        void ifft(F)() { _obj.ifft!F(); }
-
-
-      private:
-        FFTObj _obj;
-        FFTObjectBank _bank;
-    }
-
-
-    static struct Entry
-    {
-        this(size_t n)
-        {
-            _n = n;
-        }
-
-        bool[FFTObj] _used;
-        FFTObj[] _free;
-        size_t _n;
-
-
-        FFTObj get() @property
-        {
-            if(_free.length == 0)
-                _free ~= makeFFTObj(_n);
-
-            auto ret = _free[$-1];
-            _used[ret] = true;
-            _free = _free[0 .. $-1];
-            return ret;
-        }
-
-
-        void free(FFTObj obj)
-        {
-            if(_used.remove(obj))
-                _free ~= obj;
-        }
-    }
-
-    Entry[size_t] _bank;
-
-    static FFTObjectBank _instance;
-
-    // static this()
-    // {
-    //     _instance = new FFTObjectBank();
-    // }
-}
-
-///
-unittest
-{
-    import std.complex;
-
-    foreach(gen; AliasSeq!(makePhobosFFTObject, makeFFTWObject))
-    {
-        // バンクの作成
-        auto bank = FFTObjectBank!(gen!Complex).instance;
-
-        {
-            // バンクからサイズ4のFFTオブジェクトを取得
-            // キャッシュにない場合には，新たに生成する
-            auto obj1 = bank[4];
-            assert(obj1.inputs!float.length == 4);
-
-            // obj1によって最初に生成したFFTオブジェクトは利用中
-            // したがって，新たに生成する
-            auto obj2 = bank[4];
-            assert(obj1.inputs!float.length == 4);
-
-            // 新たに生成されているため，互いは別のオブジェクト
-            assert(obj1._obj !is obj2._obj);
-        }
-
-        // obj1とobj2が破棄されるので，
-        // キャッシュされているオブジェクトの数は2つ
-        assert(bank._bank[4]._free.length == 2);
-
-        // サイズ2のFFTオブジェクトの生成
-        auto obj = bank[2];
-
-        // 参照カウントで管理されている実際のFFTオブジェクト
-        auto o = obj._obj;
-
-        // objの破棄
-        bank.free(obj);
-
-        // 再度取得，キャッシュにより最初に生成したサイズ2のFFTオブジェクトが返される
-        obj = bank[2];
-
-        // 最初に生成したものと同じ
-        assert(obj._obj is o);
-    }
+    static FFTObject[size_t] _bank;
 }
 
 
 /**
 
 */
+deprecated
 auto globalBankOf(alias makeFFTObj)() @property
 {
-    return FFTObjectBank!makeFFTObj.instance;
-}
-
-
-///
-unittest
-{
-    assert(globalBankOf!(makePhobosFFTObject!Complex) is FFTObjectBank!(makePhobosFFTObject!Complex).instance);
+    return FFTObjectBank!makeFFTObj.init;
 }
 
 
