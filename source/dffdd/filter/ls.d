@@ -94,7 +94,7 @@ unittest
 {
     import dffdd.filter.state;
 
-    auto fir = new MultiFIRState!(Complex!float)(4, 4);
+    auto fir = MultiFIRState!(Complex!float)(4, 4);
     auto lsAdpt = makeLSAdapter(fir, 100);
 }
 

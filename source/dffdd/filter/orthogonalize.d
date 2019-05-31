@@ -11,7 +11,7 @@ import std.complex;
 import std.traits;
 import std.meta;
 
-import mir.ndslice;
+import mir.ndslice : Slice, slice, Contiguous, sliced, diagonal;
 
 final class DiagonalizationOBFFactory(C, basisFuncs...)
 {
