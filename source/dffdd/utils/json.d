@@ -452,7 +452,7 @@ if(fields.length && fields.length % 2 == 0)
     }
 
 
-    private ref typeof(this) fromJSONValueImpl_(JSONValue jv)
+    private ref typeof(this) fromJSONValueImpl_(JSONValue jv) return
     {
         foreach(i; _StaticIota!(0, fields.length))
         {
@@ -548,7 +548,7 @@ unittest{
 
 
         // refで返すプロパティ
-        ref real flt() @property
+        ref real flt() @property return
         {
             return _flt;
         }
