@@ -483,11 +483,11 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         model.useDTXIQ = false;
         model.useDTXPN = false;
         model.useDTXPA = false;
-        model.useSTXIQ = false;
+        model.useSTXIQ = true;
         model.useSTXPN = false;
         model.useSTXPA = true;
         model.useSRXLN = true;
-        model.useSRXIQ = false;
+        model.useSRXIQ = true;
         model.useSRXQZ = false;
 
 
