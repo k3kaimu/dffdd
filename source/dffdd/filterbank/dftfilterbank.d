@@ -353,7 +353,9 @@ unittest
 
 unittest
 {
-    import std.experimental.all;
+    import std.algorithm;
+    import std.format;
+    import std.stdio;
 
     auto fftw = makeFFTWObject!Complex(1024*16);
 
