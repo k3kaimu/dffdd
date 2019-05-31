@@ -12,7 +12,7 @@ import mir.ndslice;
 
 IAdapter!(State.StateElementType) makeLSAdapter(State)(State state, size_t L)
 {
-    // if(state.state.elementsCount * L < 1E6)
+    // if(state.state.elementCount * L < 1E6)
     return new LSAdapter!State(state, L);
     // else
     // return new LowMemoryLSAdapter!State(state, L);
@@ -38,8 +38,8 @@ final class LSAdapter(State) : IAdapter!(State.StateElementType)
     this(State state, size_t L)
     {
         _L = L;
-        _mx = new C[state.state.elementsCount * L].sliced(state.state.elementsCount, L);
-        _yv = new C[max(state.state.elementsCount, L)];
+        _mx = new C[state.state.elementCount * L].sliced(state.state.elementCount, L);
+        _yv = new C[max(state.state.elementCount, L)];
         _fillCNT = 0;
     }
 
@@ -60,7 +60,7 @@ final class LSAdapter(State) : IAdapter!(State.StateElementType)
   private:
     bool update(ref State state)
     {
-        if(auto addW = leastSquare(state.state.elementsCount)){
+        if(auto addW = leastSquare(state.state.elementCount)){
             state.weight[] += addW.sliced(state.weight.shape);
             return true;
         }
@@ -119,7 +119,7 @@ final class LowMemoryLSAdapter(State) : IAdapter!(State.StateElementType)
     this(State state, size_t L)
     {
         _Nlearn = L;
-        _Nparam = state.state.elementsCount;
+        _Nparam = state.state.elementCount;
         _fillCNT = 0;
         _partCNT = 0;
 

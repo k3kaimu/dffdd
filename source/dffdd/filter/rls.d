@@ -21,7 +21,7 @@ final class RLSAdapter(State)
     {
         _lambdaInv = 1/lambda;
 
-        immutable size = state.state.elementsCount;
+        immutable size = state.state.elementCount;
         _u = new C[size].sliced(size);
         _p = new C[size*size].sliced(size, size);
         _pu = new C[size].sliced(size);
