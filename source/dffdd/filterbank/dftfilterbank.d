@@ -113,8 +113,8 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
     size_t _nchannel;
     size_t _ntaps;
     FFTWObject!Complex _fftw;
-    ContiguousSlice!(2, C) _inputs;
-    ContiguousSlice!(2, C) _coefs;
+    Slice!(C*, 2, Contiguous) _inputs;
+    Slice!(C*, 2, Contiguous) _coefs;
 }
 
 
