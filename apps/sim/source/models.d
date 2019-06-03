@@ -76,7 +76,6 @@ struct Model
     size_t swappedSymbols = 0;
     bool outputWaveform = false;
     bool outputBER = true;
-    bool outputEVM = true;
 
     uint rndSeed = 114514;
     string uniqueId;
@@ -233,12 +232,13 @@ struct Model
     //    bool isCoaxialCable = false;
     //}
     //SIChannel channel;
-    struct SIChannel
+    struct Channel
     {
         Complex!real[] impulseResponse;
         size_t taps;
     }
-    SIChannel channel;
+    Channel channelSI, channelDesired;
+
 
 
     struct FIRFilter
@@ -301,7 +301,7 @@ struct Model
 
     void useCoaxialCableAsChannel() @property
     {
-        this.channel.taps = 1;
+        this.channelSI.taps = 1;
     }
 }
 
