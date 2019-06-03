@@ -126,7 +126,7 @@ void mainJob()
     enum bool isDumpedFileCheck = true;
 
 
-    enum numOfTrials = 3;
+    enum numOfTrials = 101;
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
@@ -173,8 +173,9 @@ void mainJob()
         string parentDir = format("PA%s_LNA%s", paSF, lnaSF);
 
 
-        // only desired signal
+        // only desired signal on AWGN or Rayleigh
         static if(methodName == "OPHPAOnly7_LS")
+        foreach(dtaps; [1, 48])
         foreach(snr; iota(0, 22, 3))
         {
             ModelSeed modelSeed;
@@ -186,12 +187,12 @@ void mainJob()
             modelSeed.SNR = snr.dB;
             modelSeed.onlyDesired = true;
             modelSeed.outputBER = true;
-            modelSeed.outputEVM = true;
+            modelSeed.numOfTapsOfDesiredChannel = dtaps;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_ber", dir ~ "_onlyDesired");
+            dir = buildPath(parentDir, "results_ber", dir ~ "_onlyDesired_%s".format(dtaps));
             dirset[dir] = true;
-            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
         /+
@@ -238,6 +239,7 @@ void mainJob()
 
     import std.stdio;
 
+
     static if(isProgressChecker)
     {
         immutable size_t totalTaskListLen = taskListShort.length + taskListLong.length;
@@ -263,8 +265,11 @@ void mainJob()
             tuthpc.taskqueue.run(taskListLong, env);
     }
 
-    // foreach(i; 0 .. taskList.length)
-    //     taskList[i]();
+    // foreach(i; 0 .. taskListShort.length)
+    //     taskListShort[i]();
+
+    // foreach(i; 0 .. taskListLong.length)
+    //     taskListLong[i]();
 }
 
 

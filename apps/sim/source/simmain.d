@@ -222,6 +222,11 @@ auto makeFilter(string filterType)(Model model)
     enum size_t POrder = filterStructure[$-1 .. $].to!int;
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, SubSetOfPADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
   }
+  else static if(filterStructure[0 .. $-1].endsWith("PHPAOnly"))
+  {
+    enum size_t POrder = filterStructure[$-1 .. $].to!int;
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, OnlyPADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
+  }
   else static if(filterStructure[0 .. $-1].endsWith("PH"))
   {
     enum size_t POrder = filterStructure[$-1 .. $].to!int;
