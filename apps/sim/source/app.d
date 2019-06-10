@@ -290,7 +290,6 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = 20;
             modelSeed.INR = 60.dB;
             modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
             modelSeed.iterNumOfIteration = iter;
             modelSeed.iterNumOfSCForEstNL = 52;
             modelSeed.iterUse3rdSidelobe = flag;
@@ -312,7 +311,6 @@ void mainJob()
             modelSeed.numOfTrainingSymbols = 20;
             modelSeed.INR = 60.dB;
             modelSeed.outputBER = false;
-            modelSeed.outputEVM = false;
             modelSeed.iterNumOfSCForEstNL = nSCForNL;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
@@ -532,14 +530,14 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
-            foreach(i; 0 .. model.channel.taps){
+            foreach(i; 0 .. model.channelDesired.taps){
                 // tapsのタップ数で40dB減衰
                 auto db = -1 * (40.0 / model.channelDesired.taps) * i;
                 coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
                 gGen.popFront();
             }
 
-            model.channel.impulseResponse = coefs;
+            model.channelDesired.impulseResponse = coefs;
         }
 
         /* キャンセラの設定 */
