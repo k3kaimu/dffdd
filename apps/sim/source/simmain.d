@@ -246,7 +246,7 @@ auto makeFilter(string filterType)(Model model)
     auto filter = new SidelobeIterativeWLNL!(Complex!float, POrder)(
         model.learningSymbols, model.iterativeFreqSIC.iterations,
         model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling,
-        model.channelSI.taps, No.isChFreqEst, Yes.isInvertRX,
+        model.channel.taps, No.isChFreqEst, Yes.isInvertRX,
         Yes.useNewton, model.iterativeFreqSIC.newtonIterations, model.iterativeFreqSIC.use3rdSidelobe,
         model.iterativeFreqSIC.numOfSCForEstNL, model.iterativeFreqSIC.estimationOrder);
   }
