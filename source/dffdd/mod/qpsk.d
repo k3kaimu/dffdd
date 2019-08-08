@@ -45,6 +45,22 @@ struct QPSK(C)
 
         return outputs;
     }
+
+
+    static
+    ref ushort[] demodulate_symbol(in OutputElementType[] inputs, return ref ushort[] symbols)
+    {
+        if(symbols.length != inputs.length)
+            symbols.length = inputs.length;
+
+        foreach(i; 0 .. inputs.length) {
+            symbols[i] = 0;
+            symbols[i] += inputs[i].re > 0 ? 0 : 2;
+            symbols[i] += inputs[i].im > 0 ? 0 : 1;
+        }
+
+        return symbols;
+    }
 }
 
 
