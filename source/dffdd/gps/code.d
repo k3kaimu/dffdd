@@ -262,7 +262,7 @@ struct L2CMCode
             r[0] = c;
         }
 
-        _code = code.map!"cast(byte)a".array();
+        _code = code.map!"cast(byte)a".array().idup;
         _prn = prn;
         _i = 0;
     }
