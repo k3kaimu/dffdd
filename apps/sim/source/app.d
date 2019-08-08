@@ -93,9 +93,8 @@ struct ModelSeed
     /* measure only desired signal */
     bool onlyDesired = false;
 
-    size_t numOfTapsOfDesiredChannel = 48;
-
     bool outputBER = false;
+    bool outputEVM = false;
 }
 
 
@@ -377,7 +376,8 @@ void mainJob()
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
-            modelSeed.outputBER = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_inr_vs_sic", dir);
@@ -399,7 +399,8 @@ void mainJob()
             // modelSeed.INR = (txp-23+inr).dB;
             modelSeed.TXRXISO = isoRF.dB;
             modelSeed.txPower = txp.dBm;
-            modelSeed.outputBER = true;
+            modelSeed.outputBER = false;
+            modelSeed.outputEVM = false;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_txp_vs_sic", dir);
@@ -513,28 +514,13 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channelSI.taps = 48;
-
-            BoxMuller!Random gGen = BoxMuller!Random(rnd);
-            Complex!real[] coefs;
-            foreach(i; 0 .. model.channelSI.taps){
-                // tapsのタップ数で40dB減衰
-                auto db = -1 * (40.0 / model.channelSI.taps) * i;
-                coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
-                gGen.popFront();
-            }
-
-            model.channelSI.impulseResponse = coefs;
-        }
-        {
-            Random rnd = uniqueRandom(iTrial, "ChannelDesired");
-            model.channelDesired.taps = modelSeed.numOfTapsOfDesiredChannel;
+            model.channel.taps = 48;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
             foreach(i; 0 .. model.channel.taps){
                 // tapsのタップ数で40dB減衰
-                auto db = -1 * (40.0 / model.channelDesired.taps) * i;
+                auto db = -1 * (40.0 / model.channel.taps) * i;
                 coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
                 gGen.popFront();
             }
@@ -545,7 +531,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         /* キャンセラの設定 */
         {
             model.orthogonalizer.numOfTrainingSamples = 10_000;
-            model.firFilter.taps = model.channelSI.taps;
+            model.firFilter.taps = model.channel.taps;
 
             if(methodName[0] == 'O')
                 model.orthogonalizer.enabled = true;
@@ -557,6 +543,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
 
             // BERの出力
             model.outputBER = modelSeed.outputBER;
+            model.outputEVM = modelSeed.outputEVM;
 
             if(methodName.canFind("DCM")) {
                 model.learningSymbols = 10;
@@ -701,8 +688,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
                 static JSONValue cpx2JV(F)(Complex!F a) { return JSONValue(["re": a.re, "im": a.im]); }
 
                 JSONValue jv = cast(JSONValue[string])null;
-                jv["impulseResponseSI"] = m.channelSI.impulseResponse.map!cpx2JV.array();
-                jv["impulseResponseDesired"] = m.channelDesired.impulseResponse.map!cpx2JV.array();
+                jv["impulseResponse"] = m.channel.impulseResponse.map!cpx2JV.array();
                 jv["txIQCoef"] = cpx2JV(m.txIQMixer.imbCoef);
                 jv["rxIQCoef"] = cpx2JV(m.rxIQMixer.imbCoef);
 
@@ -721,10 +707,8 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
     jv["RINRs"] = resList.map!(a => a["RINR_dB"]).array();
     jv["INRs"] = resList.map!(a => a["INR_dB"]).array();
-    if(modelSeed.outputBER){
-        jv["bers"] = resList.map!(a => a["ber"]).array();
-        jv["evms"] = resList.map!(a => a["evm"]).array();
-    }
+    if(modelSeed.outputBER) jv["bers"] = resList.map!(a => a["ber"]).array();
+    if(modelSeed.outputEVM) jv["evms"] = resList.map!(a => a["evm"]).array();
 
     auto file = File(buildPath(dir, "allResult.json"), "w");
     file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));

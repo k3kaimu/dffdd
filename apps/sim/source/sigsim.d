@@ -141,13 +141,11 @@ final class SimulatedSignals
             rxiqs = _tempbuf[9][0 .. len],
             rxqzvgas = _tempbuf[10][0 .. len],
             rxqzs = _tempbuf[11][0 .. len],
-            rxds = _tempbuf[12][0 .. len],
-            rxdsants = _tempbuf[13][0 .. len];
+            rxds = _tempbuf[12][0 .. len];
 
-        _channelSI(txpas, rxants);
+        _channel(txpas, rxants);
         _rxLNAVGA(rxants, rxvgas);
-        _channelDesired(ds, rxdsants);
-        _rxDESVGA(rxdsants, rxds);
+        _rxDESVGA(ds, rxds);
 
         if(_nowTrainingMode){
             foreach(i; 0 .. len)
@@ -230,14 +228,13 @@ final class SimulatedSignals
 
         if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.dup;
         if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.dup;
-        if(!this._txPANonlin.isNull)    dst._txPANonlin = this._txPANonlin.dup;
+        if(!this._txPANonlin.isNull)      dst._txPANonlin = this._txPANonlin.dup;
         
-        if(!this._channelSI.isNull)         dst._channelSI = this._channelSI.dup;
-        if(!this._channelDesired.isNull)    dst._channelDesired = this._channelDesired.dup;
+        if(!this._channel.isNull)       dst._channel = this._channel.dup;
 
         if(!this._rxDESVGA.isNull)      dst._rxDESVGA = this._rxDESVGA.dup;
         if(!this._rxLNAVGA.isNull)      dst._rxLNAVGA = this._rxLNAVGA.dup;
-        if(!this._rxLNANonlin.isNull)   dst._rxLNANonlin = this._rxLNANonlin.dup;
+        if(!this._rxLNANonlin.isNull)     dst._rxLNANonlin = this._rxLNANonlin.dup;
         if(!this._rxIQMixer.isNull)     dst._rxIQMixer = this._rxIQMixer.dup;
         if(!this._rxQZVGA.isNull)       dst._rxQZVGA = this._rxQZVGA.dup;
         if(!this._rxQZ.isNull)          dst._rxQZ = this._rxQZ.dup;
@@ -252,8 +249,7 @@ final class SimulatedSignals
         if(!_txIQMixer.isNull)  dst["txIQMixer"] = _txIQMixer.dumpInfoToJSON();
         if(!_txPAVGA.isNull)    dst["txPAVGA"] = _txPAVGA.dumpInfoToJSON();
         if(!_txPANonlin.isNull)   dst["txPANonlin"] = _txPANonlin.dumpInfoToJSON();
-        if(!_channelSI.isNull)    dst["channelSI"] = _channelSI.dumpInfoToJSON();
-        if(!_channelDesired.isNull)    dst["channelDesired"] = _channelDesired.dumpInfoToJSON();
+        if(!_channel.isNull)    dst["channel"] = _channel.dumpInfoToJSON();
         if(!_rxLNAVGA.isNull)   dst["rxLNAVGA"] = _rxLNAVGA.dumpInfoToJSON();
         if(!_rxLNANonlin.isNull)  dst["rxLNARapp"] = _rxLNANonlin.dumpInfoToJSON();
         if(!_rxIQMixer.isNull)  dst["rxIQMixer"] = _rxIQMixer.dumpInfoToJSON();
@@ -305,7 +301,7 @@ final class SimulatedSignals
 
     C[] linearSIChannel() @property
     {
-        C[] channel = _channelSI.coefficients.dup;
+        C[] channel = _channel.coefficients.dup;
 
         Gain g = Gain.fromPowerGain(1);
         if(!_txIQMixer.isNull)  g *= _txIQMixer.gain;
@@ -332,7 +328,7 @@ final class SimulatedSignals
     Signal noise;
 
   private:
-    C[][14] _tempbuf;
+    C[][13] _tempbuf;
 
     bool _nowTrainingMode;
     bool* _useSWPOFDM;
@@ -345,8 +341,7 @@ final class SimulatedSignals
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
     Nullable!(RappModelConverter!C) _txPANonlin;
 
-    Nullable!(FIRFilterConverter!C) _channelSI;
-    Nullable!(FIRFilterConverter!C) _channelDesired;
+    Nullable!(FIRFilterConverter!C) _channel;
 
     Nullable!(PowerControlAmplifierConverter!C) _rxDESVGA;
     Nullable!(PowerControlAmplifierConverter!C) _rxLNAVGA;
@@ -394,8 +389,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     }
 
 
-    dst._channelSI = FIRFilterConverter!C(model.channelSI.impulseResponse[0 .. model.channelSI.taps]);
-    dst._channelDesired = FIRFilterConverter!C(model.channelDesired.impulseResponse[0 .. model.channelDesired.taps]);
+    dst._channel = FIRFilterConverter!C(model.channel.impulseResponse[0 .. model.channel.taps]);
     
     Voltage receivedSIPower = model.thermalNoise.power(model) * model.lna.NF * model.INR;
     if(model.useSRXLN){
