@@ -146,14 +146,18 @@ void sumProductDecodeP0P1SIMD(V, F)(ref SpDecoderWorkspace!V ws, in uint[][] _ro
     static if(P != 1) {
         foreach(i; 0 .. P) foreach(j; 0 .. _N) {
             input_p0p1_copy[j][i] = input_p0p1[i*_N + j];
-            updated_p0p1[j][i] = input_p0p1[i*_N + j];
         }
     } else {
         foreach(i; 0 .. _N) {
             input_p0p1_copy[i] = input_p0p1[i];
-            updated_p0p1[i] = input_p0p1[i];
         }
     }
+
+    foreach(i; 0 .. _N) {
+        input_p0p1_copy[i] = vecminmax(input_p0p1_copy[i], 0, 2.0^^25);
+    }
+
+    updated_p0p1[] = input_p0p1_copy[];
 
     edge_mat[] = 1;
 
