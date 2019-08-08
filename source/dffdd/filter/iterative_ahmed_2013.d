@@ -8,8 +8,6 @@ import std.typecons;
 
 import mir.ndslice : slice;
 
-import carbon.math : complexZero;
-
 import dffdd.filter.freqdomain : OverlapSaveRegenerator2;
 import dffdd.utils.fft;
 import dffdd.utils.linalg;
@@ -179,7 +177,7 @@ final class IterativeAhmed2013(C)
         foreach(i, ref e; _fftw.inputs!F[0 .. _nImpulseTaps])
             e = estimatedH[i];
 
-        _fftw.inputs!F[_nImpulseTaps .. $] = complexZero!(Complex!F);
+        _fftw.inputs!F[_nImpulseTaps .. $] = Complex!F(0);
         _fftw.fft!F();
         _channelFreqResponse[] = _fftw.outputs!F[];
     }

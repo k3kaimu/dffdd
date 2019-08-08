@@ -33,7 +33,7 @@ final class OFDM(C)
         assert(inputs.length % this.symInputLength == 0);
     }
     body{
-        _inpBuffer[] = complexZero!C;
+        _inpBuffer[] = C(0);
 
         if(outputs.length != inputs.length / this.symInputLength * this.symOutputLength)
             outputs.length = inputs.length / this.symInputLength * this.symOutputLength;
@@ -42,9 +42,8 @@ final class OFDM(C)
         auto mainLobeL = _inpBuffer[$ - _nFFT/2 .. $];
 
         foreach(i; 0 .. inputs.length / _nTone){
-            //_inpBuffer[] = complexZero!C;
-            mainLobeL[] = complexZero!C;
-            mainLobeH[] = complexZero!C;
+            mainLobeL[] = C(0);
+            mainLobeH[] = C(0);
 
             auto inpTones = inputs[i*_nTone .. (i+1)*_nTone];
             if(_nTone == _nFFT){
@@ -83,7 +82,7 @@ final class OFDM(C)
         assert(inputs.length % this.symOutputLength == 0);
     }
     body{
-        //outputs[] = complexZero!C;
+        //outputs[] = C(0);
 
         auto mainLobeH = _inpBuffer[0 .. _nFFT/2];
         auto mainLobeL = _inpBuffer[$ - _nFFT/2 .. $];
@@ -107,7 +106,7 @@ final class OFDM(C)
                 outputSymbol[_nTone/2 .. _nTone] = mainLobeL[$ - _nTone/2 .. $];
             }else{
                 outputSymbol[0 .. (_nTone+1)/2] = mainLobeH[1 .. (_nTone+1)/2+1];
-                outputSymbol[(_nTone+1)/2 .. _nTone] = mainLobeH[$ - _nTone/2 .. $];
+                outputSymbol[(_nTone+1)/2 .. _nTone] = mainLobeL[$ - _nTone/2 .. $];
             }
         }
 
@@ -151,12 +150,13 @@ unittest
     foreach(i; 0 .. 3 * 2)
         assert(res[i] == res[$ - 3*2 + i]);
 
-    ofdmMod.demodulate(res.dup, res);
+    Complex!float[] demodsym;
+    ofdmMod.demodulate(res, demodsym);
 
-    assert(res.length == inps.length);
+    assert(demodsym.length == inps.length);
 
     foreach(i; 0 .. inps.length){
-        assert(approxEqual(inps[i].re, res[i].re));
-        assert(approxEqual(inps[i].im, res[i].im));
+        assert(approxEqual(inps[i].re, demodsym[i].re));
+        assert(approxEqual(inps[i].im, demodsym[i].im));
     }
 }

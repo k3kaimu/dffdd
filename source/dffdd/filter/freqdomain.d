@@ -16,8 +16,6 @@ import std.numeric;
 import std.range;
 import std.typecons;
 
-import carbon.math : complexZero;
-
 
 enum bool isFrequencyDomainMISOStateAdapter(T, C = Complex!float) = is(typeof((T adapter){
     C[][] distX;    // 送信信号とその歪信号の各周波数成分，各周波数で必要な次元数にすでに減らされている
@@ -76,7 +74,7 @@ final class FrequencyDomainParallelHammersteinStateAdapter(C, Adapter)
             foreach(i; 0 .. _states[f].numOfFIR){
                 C* v = &(_states[f].weight[0][i]);
                 if(v.re.isNaN || v.im.isNaN)
-                    *v = complexZero!C;
+                    *v = C(0);
             }
         }
     }
@@ -87,7 +85,7 @@ final class FrequencyDomainParallelHammersteinStateAdapter(C, Adapter)
         if(dst.length != _nFFT) dst.length = _nFFT;
 
         foreach(f; 0 .. _nFFT){
-            dst[f] = complexZero!C;
+            dst[f] = C(0);
 
             foreach(i; 0 .. _states[f].numOfFIR)
                 dst[f] += _states[f].weight[0][i] * distX[f][i];
@@ -195,7 +193,7 @@ final class FrequencyDomainDCMHammersteinStateAdapter(C, Adapter, Flag!"isParall
         if(dst.length != _nFFT) dst.length = _nFFT;
 
         foreach(f; 0 .. _nFFT){
-            C e = complexZero!C;
+            C e = C(0);
 
             foreach(p, ref st; _states[f])
                 e += st.weight[0, 0] * distX[f][p];
@@ -259,7 +257,7 @@ final class OverlapSaveRegenerator2(C)
         _maxDim = maxDim;
         _buffer = new C[](nFFT);
         _inputs = new C[][](maxDim, nFFT);
-        foreach(ref es; _inputs) foreach(ref e; es) e = complexZero!C;
+        foreach(ref es; _inputs) foreach(ref e; es) e = C(0);
         _distFFTBuf = new C[][](maxDim, nFFT);
         _distFFTBufSelected = new C[][](nFFT, maxDim);
     }
@@ -329,10 +327,10 @@ final class OverlapSaveRegenerator2(C)
     }
     body{
         immutable size_t size = tx.length;
-        output[] = complexZero!C;
+        output[] = C(0);
 
         // _bufferをゼロ初期化
-        foreach(ref e; _buffer) e = complexZero!C;
+        foreach(ref e; _buffer) e = C(0);
 
         foreach(p; 0 .. _maxDim)
         {
@@ -520,7 +518,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
                 foreach(p; 0 .. _distorter.outputDim){
                     if(_selectedBasisFuncs !is null){
                         foreach(f; 0 .. _nFFT * _nOS)
-                            ips[f] = cfr[f][p] !is null ? *(cfr[f][p]) : complexZero!C;
+                            ips[f] = cfr[f][p] !is null ? *(cfr[f][p]) : C(0);
                     }else{
                         auto ws = _stateAdapter.allWeights;
                         foreach(f; 0 .. _nFFT * _nOS)
@@ -530,7 +528,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
 
                     _fftw.ifft!R();
                     ips[0 .. _nCP * _nOS] = ops[0 .. _nCP * _nOS];
-                    ips[_nCP * _nOS .. $] = complexZero!C;
+                    ips[_nCP * _nOS .. $] = C(0);
                     _fftw.fft!R();
 
                     if(_selectedBasisFuncs !is null){
@@ -1363,8 +1361,8 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
         C[][] freqX = new C[][](_nWLLearning, _nFFT * _nOS);
         C[][] freqY = new C[][](_nWLLearning, _nFFT * _nOS);
         foreach(i; 0 .. _nWLLearning) foreach(f; 0 .. _nFFT * _nOS){
-            freqX[i][f] = complexZero!C;
-            freqY[i][f] = complexZero!C;
+            freqX[i][f] = C(0);
+            freqY[i][f] = C(0);
         }
 
         foreach(i; 0 .. _nWLLearning){
@@ -1381,8 +1379,8 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
         }
 
         foreach(f; 0 .. _nFFT * _nOS){
-            Complex!real num = complexZero!C,
-                         den = complexZero!C;
+            Complex!real num = C(0),
+                         den = C(0);
 
             foreach(i; 0 .. _nWLLearning){
                 num += freqX[i][f].conj * freqY[i][f];
@@ -1395,7 +1393,7 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
         _fftw.inputs!R[] = _channelFreqResponse[];
         _fftw.ifft!R();
         _fftw.inputs!R[0 .. _nCP * _nOS] = _fftw.outputs!R[0 .. _nCP * _nOS];
-        _fftw.inputs!R[_nCP * _nOS .. $] = complexZero!C;
+        _fftw.inputs!R[_nCP * _nOS .. $] = C(0);
         _fftw.fft!R();
         _channelFreqResponse[] = _fftw.outputs!R[];
     }
@@ -1428,8 +1426,8 @@ final class IQInversionSuccessiveInterferenceCanceller(C, size_t P)
 
         // a_pを推定していく
         foreach_reverse(p; 1 .. P){
-            Complex!real num = complexZero!C,
-                         den = complexZero!C;
+            Complex!real num = C(0),
+                         den = C(0);
 
             foreach(f; getSCIndex4PthAMPCoef(p)) foreach(i; 0 .. nLearningSymbols / 2){
                 auto x = freqX[p][i][f] * _channelFreqResponse[f];

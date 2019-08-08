@@ -28,9 +28,9 @@ final class RLSAdapter(State)
         _uhp = new C[size].sliced(size);
         _k = new C[size].sliced(size);
 
-        _u[] = complexZero!C;
-        _p[] = complexZero!C;
-        _p.diagonal[] = ((1/delta) + complexZero!C);
+        _u[] = C(0);
+        _p[] = C(0);
+        _p.diagonal[] = ((1/delta) + C(0));
     }
 
 
@@ -104,7 +104,7 @@ private
 void matop_M_mul_V(C)(Slice!(C*, 2, Contiguous) mat, Slice!(C*, 1, Contiguous) v, Slice!(C*, 1, Contiguous) dst)
 {
     // foreach(i; 0 .. dst.length){
-    //     dst[i] = complexZero!C;
+    //     dst[i] = C(0);
     //     foreach(j; 0 .. mat.length!1)
     //         dst[i] += mat[i, j] * v[j];
     // }
@@ -133,7 +133,7 @@ private
 void matop_Vh_mul_M(C)(Slice!(C*, 1, Contiguous) v, Slice!(C*, 2, Contiguous) mat, Slice!(C*, 1, Contiguous) dst)
 {
     // foreach(i; 0 .. dst.length){
-    //     dst[i] = complexZero!C;
+    //     dst[i] = C(0);
     //     foreach(j; 0 .. mat.length!0)
     //         dst[i] += v[j].conj * mat[j, i];
     // }
@@ -146,7 +146,7 @@ void matop_Vh_mul_M(C)(Slice!(C*, 1, Contiguous) v, Slice!(C*, 2, Contiguous) ma
 private
 C matop_Vh_dot_V(C)(Slice!(C*, 1, Contiguous) a, Slice!(C*, 1, Contiguous) b)
 {
-    // C c = complexZero!C;
+    // C c = C(0);
     // foreach(i; 0 .. a.length)
     //     c += a[i].conj * b[i];
 

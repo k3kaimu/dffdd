@@ -10,8 +10,6 @@ import std.typecons;
 
 import mir.ndslice : slice, Slice, Contiguous;
 
-import carbon.math : complexZero;
-
 import dffdd.filter.freqdomain;
 import dffdd.utils.fft;
 
@@ -275,7 +273,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
             auto impResp = estimateImpulseResponseFromFrequencyResponse(_nFFT*_nOS, _nImpulseTaps, estFreqResp, freqs, 0);
             foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
                 e = impResp[i];
-            _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
+            _fftw.inputs!double[_nImpulseTaps .. $] = Complex!double(0);
             _fftw.fft!double();
             _channelFreqResponse[] = _fftw.outputs!double[];
         }else{
@@ -293,7 +291,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
             foreach(i, ref e; _fftw.inputs!double[0 .. _nImpulseTaps])
                 e = estimatedH[i];
 
-            _fftw.inputs!double[_nImpulseTaps .. $] = complexZero!(Complex!double);
+            _fftw.inputs!double[_nImpulseTaps .. $] = Complex!double(0);
             _fftw.fft!double();
             _channelFreqResponse[] = _fftw.outputs!double[];
         }
@@ -583,7 +581,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
 
 //     {
 //         auto newsignal = signal.dup;
-//         newsignal[] = complexZero!(Complex!double);
+//         newsignal[] = Complex!double(0);
 
 //         foreach(i; 64 .. signal.length)
 //             foreach(j; 0 .. 64)

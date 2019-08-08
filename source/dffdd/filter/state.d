@@ -21,8 +21,8 @@ struct MultiFIRState(C)
             new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR).universal,
             /*new R[numOfFIR].sliced(numOfFIR).universal*/);
 
-        this.state[] = complexZero!C;
-        this.weight[] = complexZero!C;
+        this.state[] = C(0);
+        this.weight[] = C(0);
         // this.power[] = 1;
     }
 
@@ -60,7 +60,7 @@ struct MultiFIRState(C)
 
     C output() @property
     {
-        C dst = complexZero!C;
+        C dst = C(0);
 
         foreach(i; 0 .. this.numOfTaps)
             foreach(j; 0 .. this.numOfFIR)

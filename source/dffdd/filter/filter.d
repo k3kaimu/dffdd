@@ -464,7 +464,7 @@ if(isBlockConverter!(Dist, C, C[]))
         _genAdapter = genAdapter;
 
         auto sliceState = new C[nFFT * nOS * dim].sliced(nFFT * nOS, dim);
-        sliceState[] = complexZero!C;
+        sliceState[] = C(0);
 
         _regenerator = new OverlapSaveRegenerator!C(sliceState);
 
@@ -1011,7 +1011,7 @@ if(isBlockConverter!(Dist, C, C[]))
         _fftw = makeFFTWObject!Complex(nFFT * nOS);
         _distorter = dist;
         auto sliceState = new C[nFFT * nOS * dim].sliced(nFFT * nOS, dim);
-        sliceState[] = complexZero!C;
+        sliceState[] = C(0);
 
         _regenerator = new OverlapSaveRegenerator!C(sliceState);
 
