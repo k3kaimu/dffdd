@@ -23,6 +23,7 @@ import dffdd.dsp.statistics;
 import dffdd.utils.fft;
 import dffdd.utils.unit;
 import dffdd.filter.primitives;
+import dffdd.mod.primitives;
 
 import models;
 import snippet;
@@ -560,7 +561,6 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
 {
     import dffdd.mod.qam;
     import dffdd.mod.ofdm;
-    import carbon.math : complexZero;
     import dffdd.mod.primitives : Bit;
 
     alias F = float;
@@ -581,32 +581,63 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
         signals.ignoreDesired = true;
     }
 
-    // model.channelDesiredからチャネルの周波数応答の真値を得る．
-    auto channelFreqResp = (){
-        C[] buf = new C[nSYM];
-        C[] dst = new C[nSC];
-        buf[] = complexZero!C;
-        buf[nCP .. nCP + model.channelDesired.taps] = model.channelDesired.impulseResponse.map!(a => C(a)).array()[];
-        ofdmMod.demodulate(buf, dst);
+    // // model.channelDesiredからチャネルの周波数応答の真値を得る．
+    // auto channelFreqResp = (){
+    //     C[] buf = new C[nSYM];
+    //     C[] dst = new C[nSC];
+    //     buf[] = C(0);
+    //     buf[nCP .. nCP + model.channelDesired.taps] = model.channelDesired.impulseResponse.map!(a => C(a)).array()[];
+    //     ofdmMod.demodulate(buf, dst);
 
-        auto g = signals.desiredSignalGain.asV;
-        real scale = sqrt((nFFT * 1.0)^^2 / nSC);   // ofdmMod.demodulateの中でかかる係数
-        foreach(ref e; dst)
-            e *= g * scale;
+    //     auto g = signals.desiredSignalGain.asV;
+    //     real scale = sqrt((nFFT * 1.0)^^2 / nSC);   // ofdmMod.demodulateの中でかかる係数
+    //     foreach(ref e; dst)
+    //         e *= g * scale;
 
-        return dst;
-    }();
+    //     return dst;
+    // }();
+    C[] channelFreqResp;
+    C[] channelFreqCorr, txFreqSqAbs;
+    channelFreqCorr = new C[](nSC);
+    txFreqSqAbs = new C[](nSC);
+    channelFreqCorr[] = C(0);
+    txFreqSqAbs[] = C(0);
+    size_t numDesiredChannelTraining;
+    immutable maxNumDesiredChannelTraining = 10;    // 何シンボルでチャネルを学習するか
 
-    size_t totalBits, errorBits, totalSymbols;
+    C[] receivedSCs = new C[nSC],
+        referenceSCs = new C[nSC];
+
+    void trainingDesiredChannelFreqResp(in C[] receivedSymbol, in C[] referenceSymbol)
+    {
+        if(channelFreqResp !is null) return;
+
+        ofdmMod.demodulate(receivedSymbol, receivedSCs);
+        ofdmMod.demodulate(referenceSymbol, referenceSCs);
+
+        foreach(i; 0 .. receivedSCs.length) {
+            channelFreqCorr[i] += receivedSCs[i] * referenceSCs[i].conj;
+            txFreqSqAbs[i] += referenceSCs[i].sqAbs;
+        }
+
+        ++numDesiredChannelTraining;
+
+        if(numDesiredChannelTraining >= maxNumDesiredChannelTraining) {
+            channelFreqResp = new C[](nSC);
+            foreach(i, ref e; channelFreqResp)
+                e = channelFreqCorr[i] / txFreqSqAbs[i];
+        }
+    }
+
+    size_t totalOFDMSymbols;
+
+    ushort[] receivedQAMSyms, referenceQAMSyms;
+    BERCounter counter = BERCounter(qamMod.symInputLength);
 
     auto sumPs = new double[nSC],
          diffPs = new double[nSC];
     sumPs[] = 0;
     diffPs[] = 0;
-
-    C[] receivedSCs = new C[nSC],
-        referenceSCs = new C[nSC];
-    Bit[] receivedBits, referenceBits;
 
     File receivedSCOutput, referenceSCOutput;
     if(resultDir !is null) {
@@ -624,26 +655,23 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
         foreach(i; 0 .. nSC)
             receivedSCs[i] /= channelFreqResp[i];
 
-        if(totalSymbols < 300 && resultDir !is null) {
+        if(totalOFDMSymbols < 300 && resultDir !is null) {
             receivedSCOutput.writefln("%(%s,%)", receivedSCs.map!"[a.re,a.im]".joiner);
             referenceSCOutput.writefln("%(%s,%)", referenceSCs.map!"[a.re,a.im]".joiner);
         }
 
         // QAMの復調をする
-        qamMod.demodulate(receivedSCs, receivedBits);
-        qamMod.demodulate(referenceSCs, referenceBits);
+        qamMod.demodulate_symbol(receivedSCs, receivedQAMSyms);
+        qamMod.demodulate_symbol(referenceSCs, referenceQAMSyms);
 
-        totalBits += receivedBits.length;
-        foreach(i; 0 .. receivedBits.length)
-            if(receivedBits[i] != referenceBits[i])
-                errorBits += 1;
+        counter.count(receivedQAMSyms, referenceQAMSyms);
 
         foreach(i; 0 .. nSC){
             diffPs[i] += (receivedSCs[i] - referenceSCs[i]).sqAbs;
             sumPs[i] += referenceSCs[i].sqAbs;
         }
 
-        totalSymbols += 1;
+        totalOFDMSymbols += 1;
     }
 
     auto rcvAfterSICPSD = makeSpectrumAnalyzer!(Complex!float)("psd_rcv_afterSIC.csv", resultDir, 0, model);
@@ -663,18 +691,24 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
         else
             canceledSymbol[] = receivedSymbol[];
 
-        // 最初の20シンボルは飛ばす
+        // 最初の10シンボルは飛ばす
         ++loopcount;
-        if(loopcount <= 20)
+        if(loopcount <= 10)
             continue;
 
-        checkBERAndEVMForEachSymbol(canceledSymbol, desiredReferenceSymbol);
+        if(channelFreqResp is null)
+            trainingDesiredChannelFreqResp(canceledSymbol, desiredReferenceSymbol);
+        else
+            checkBERAndEVMForEachSymbol(canceledSymbol, desiredReferenceSymbol);
 
-        if(totalBits >= model.berCounter.totalBits
-        && totalSymbols >= model.berCounter.evmSymbols)
+        if(counter.totalBits >= model.berCounter.totalBits
+        && totalOFDMSymbols >= model.berCounter.evmSymbols)
             break;
     }
 
-    infoResult["ber"] = errorBits * 1.0f / totalBits;
+    with(counter.result) {
+        infoResult["ber"] = ber;
+        infoResult["ser"] = ser;
+    }
     infoResult["evm"] = diffPs.zip(sumPs).map!"a[0] / a[1]".array();
 }

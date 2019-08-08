@@ -124,29 +124,41 @@ final class SimulatedSignals
 
         C[] txiqs = _tempbuf[3][0 .. len],
             txvgas = _tempbuf[4][0 .. len],
-            txpas = _tempbuf[5][0 .. len];
+            txpas = _tempbuf[5][0 .. len],
+            detxiqs = _tempbuf[6][0 .. len],
+            detxvgas = _tempbuf[7][0 .. len],
+            detxpas = _tempbuf[8][0 .. len];
 
         // 自端末の送信機のIQインバランス
         if(_model.useSTXIQ) _txIQMixer(xs, txiqs);
         else                txiqs[] = xs[];
+
+        // 相手端末の送信機のIQインバランス
+        if(_model.useDTXIQ) _detxIQMixer(ds, detxiqs);
+        else                detxiqs[] = ds[];
 
         // 自端末の送信機のPAの歪み
         _txPAVGA(txiqs, txvgas);
         if(_model.useSTXPA) _txPANonlin(txvgas, txpas);
         else                txpas[] = txvgas[];
 
-        C[] rxants = _tempbuf[6][0 .. len],
-            rxvgas = _tempbuf[7][0 .. len],
-            rxlnas = _tempbuf[8][0 .. len],
-            rxiqs = _tempbuf[9][0 .. len],
-            rxqzvgas = _tempbuf[10][0 .. len],
-            rxqzs = _tempbuf[11][0 .. len],
-            rxds = _tempbuf[12][0 .. len],
-            rxdsants = _tempbuf[13][0 .. len];
+        // 相手端末の送信機のPAの歪み
+        _detxPAVGA(detxiqs, detxvgas);
+        if(_model.useDTXPA) _detxPANonlin(detxvgas, detxpas);
+        else                detxpas[] = detxvgas[];
+
+        C[] rxants = _tempbuf[9][0 .. len],
+            rxvgas = _tempbuf[10][0 .. len],
+            rxlnas = _tempbuf[11][0 .. len],
+            rxiqs = _tempbuf[12][0 .. len],
+            rxqzvgas = _tempbuf[13][0 .. len],
+            rxqzs = _tempbuf[14][0 .. len],
+            rxds = _tempbuf[15][0 .. len],
+            rxdsants = _tempbuf[16][0 .. len];
 
         _channelSI(txpas, rxants);
         _rxLNAVGA(rxants, rxvgas);
-        _channelDesired(ds, rxdsants);
+        _channelDesired(detxpas, rxdsants);
         _rxDESVGA(rxdsants, rxds);
 
         if(_nowTrainingMode){
@@ -231,6 +243,10 @@ final class SimulatedSignals
         if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.dup;
         if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.dup;
         if(!this._txPANonlin.isNull)    dst._txPANonlin = this._txPANonlin.dup;
+
+        if(!this._detxIQMixer.isNull)     dst._detxIQMixer = this._detxIQMixer.dup;
+        if(!this._detxPAVGA.isNull)       dst._detxPAVGA = this._detxPAVGA.dup;
+        if(!this._detxPANonlin.isNull)    dst._detxPANonlin = this._detxPANonlin.dup;
         
         if(!this._channelSI.isNull)         dst._channelSI = this._channelSI.dup;
         if(!this._channelDesired.isNull)    dst._channelDesired = this._channelDesired.dup;
@@ -252,6 +268,9 @@ final class SimulatedSignals
         if(!_txIQMixer.isNull)  dst["txIQMixer"] = _txIQMixer.dumpInfoToJSON();
         if(!_txPAVGA.isNull)    dst["txPAVGA"] = _txPAVGA.dumpInfoToJSON();
         if(!_txPANonlin.isNull)   dst["txPANonlin"] = _txPANonlin.dumpInfoToJSON();
+        if(!_detxIQMixer.isNull)  dst["detxIQMixer"] = _detxIQMixer.dumpInfoToJSON();
+        if(!_detxPAVGA.isNull)    dst["detxPAVGA"] = _detxPAVGA.dumpInfoToJSON();
+        if(!_detxPANonlin.isNull)   dst["detxPANonlin"] = _detxPANonlin.dumpInfoToJSON();
         if(!_channelSI.isNull)    dst["channelSI"] = _channelSI.dumpInfoToJSON();
         if(!_channelDesired.isNull)    dst["channelDesired"] = _channelDesired.dumpInfoToJSON();
         if(!_rxLNAVGA.isNull)   dst["rxLNAVGA"] = _rxLNAVGA.dumpInfoToJSON();
@@ -292,15 +311,15 @@ final class SimulatedSignals
     }
 
 
-    Gain desiredSignalGain() @property
-    {
-        Gain g = Gain.fromPowerGain(1);
-        if(!_rxDESVGA.isNull)   g *= _rxDESVGA.gain;
-        if(!_rxLNANonlin.isNull)  g *= _rxLNANonlin.linearGain;
-        if(!_rxIQMixer.isNull)  g *= _rxIQMixer.gain;
-        if(!_rxQZVGA.isNull)    g *= _rxQZVGA.gain;
-        return g;
-    }
+    // Gain desiredSignalGain() @property
+    // {
+    //     Gain g = Gain.fromPowerGain(1);
+    //     if(!_rxDESVGA.isNull)       g *= _rxDESVGA.gain;
+    //     if(!_rxLNANonlin.isNull)    g *= _rxLNANonlin.linearGain;
+    //     if(!_rxIQMixer.isNull)      g *= _rxIQMixer.gain;
+    //     if(!_rxQZVGA.isNull)        g *= _rxQZVGA.gain;
+    //     return g;
+    // }
 
 
     C[] linearSIChannel() @property
@@ -332,7 +351,7 @@ final class SimulatedSignals
     Signal noise;
 
   private:
-    C[][14] _tempbuf;
+    C[][17] _tempbuf;
 
     bool _nowTrainingMode;
     bool* _useSWPOFDM;
@@ -344,6 +363,10 @@ final class SimulatedSignals
     Nullable!(IQImbalanceConverter!C) _txIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
     Nullable!(RappModelConverter!C) _txPANonlin;
+
+    Nullable!(IQImbalanceConverter!C) _detxIQMixer;
+    Nullable!(PowerControlAmplifierConverter!C) _detxPAVGA;
+    Nullable!(RappModelConverter!C) _detxPANonlin;
 
     Nullable!(FIRFilterConverter!C) _channelSI;
     Nullable!(FIRFilterConverter!C) _channelDesired;
@@ -386,6 +409,9 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     if(model.useSTXIQ)
         dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
 
+    if(model.useDTXIQ)
+        dst._detxIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
+
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
         dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, model.pa.smoothFactor, model.pa.IIP3.volt / 2);
@@ -393,6 +419,12 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
 
+    if(model.useDTXPA) {
+        dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
+        dst._detxPANonlin = RappModelConverter!C(model.pa.GAIN, model.pa.smoothFactor, model.pa.IIP3.volt / 2);
+    }else{
+        dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
+    }
 
     dst._channelSI = FIRFilterConverter!C(model.channelSI.impulseResponse[0 .. model.channelSI.taps]);
     dst._channelDesired = FIRFilterConverter!C(model.channelDesired.impulseResponse[0 .. model.channelDesired.taps]);
@@ -405,9 +437,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
         // dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
     }else{
         dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
-        dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, real.infinity);
-        //  dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, real.infinity);
-        // dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, real.infinity);
+        // dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, real.infinity);
     }
 
     if(model.useSRXIQ)
@@ -418,10 +448,10 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     if(model.useSRXQZ)
         dst._rxQZ = SimpleQuantizerConverter!C(model.quantizer.numOfBits);
 
-    immutable snScaleOFDM = Gain.fromPowerGain(1.0L * model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier);
-    immutable noisePowerPerSubcarrier = model.thermalNoise.power(model) * model.lna.NF / snScaleOFDM;
+    // immutable snScaleOFDM = Gain.fromPowerGain(1.0L * model.ofdm.numOfFFT * model.ofdm.scaleOfUpSampling / model.ofdm.numOfSubcarrier);
+    // immutable noisePowerPerSubcarrier = model.thermalNoise.power(model) * model.lna.NF / snScaleOFDM;
 
-    dst._rxDESVGA = PowerControlAmplifierConverter!C(noisePowerPerSubcarrier * model.SNR, 1e-2);
+    dst._rxDESVGA = PowerControlAmplifierConverter!C(model.thermalNoise.power(model) * model.lna.NF * model.SNR, 1e-2);
 
     return dst;
 }

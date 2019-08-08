@@ -9,6 +9,7 @@ import std.format;
 import std.json;
 import std.math;
 import std.meta;
+import std.parallelism;
 import std.path;
 import std.random;
 import std.range;
@@ -22,9 +23,27 @@ import dffdd.blockdiagram.noise;
 import models;
 import simmain;
 
+import msgpack;
 
 extern(C) void openblas_set_num_threads(int num_threads);
 extern(C) int openblas_get_num_threads();
+
+
+enum NO_NEED_CSV_FILES = true;
+immutable string ALL_RESULT_FILENAME = "all_result.bin";
+immutable string DUMPED_RESULT_LIST_FILENAME = "dumped_results.bin";
+
+void writeJSONData(string path, JSONValue jv)
+{
+    std.file.write(path, msgpack.pack(msgpack.fromJSONValue(jv)));
+}
+
+
+JSONValue readJSONData(string path)
+{
+    return msgpack.toJSONValue(msgpack.unpack(cast(ubyte[]) std.file.read(path)));
+}
+
 
 
 shared static this()
@@ -48,6 +67,8 @@ struct ModelSeed
 {
     string cancellerType;
 
+    bool linearMode = false;
+
     /* IQ Mixer */
     Gain txIRR = 25.dB;
     Gain rxIRR = 25.dB;
@@ -62,13 +83,14 @@ struct ModelSeed
     Voltage txPower = txPower_dBm.dBm;
     Voltage paIIP3 = (txPower_dBm - paGain_dB + 6 + txBackoff_dB).dBm;
     Gain paGain = paGain_dB.dB;
-    uint paSmoothFactor = 2;
+    double paSmoothFactor = 3;
 
     /* LNA */
-    uint lnaSmoothFactor = 2;
+    double lnaSmoothFactor = 3;
 
     /* Other */
-    Gain SNR = 11.dB;
+    Nullable!Gain SNR;
+    Nullable!Gain DesiredLOSS;
     Nullable!Gain INR;
     Nullable!Gain TXRXISO;
     uint numOfTrainingSymbols = 20;
@@ -93,7 +115,8 @@ struct ModelSeed
     /* measure only desired signal */
     bool onlyDesired = false;
 
-    size_t numOfTapsOfDesiredChannel = 48;
+    size_t numofTapsOfSIChannel = 64;
+    size_t numOfTapsOfDesiredChannel = 64;
 
     bool outputBER = false;
 }
@@ -105,8 +128,8 @@ void mainJob()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    auto taskListShort = new MultiTaskList();
-    auto taskListLong = new MultiTaskList();
+    auto taskListShort = new MultiTaskList!void();
+    auto taskListLong = new MultiTaskList!void();
 
     auto setRLSLMSParam(ref ModelSeed model)
     {
@@ -122,7 +145,7 @@ void mainJob()
     }
 
 
-    enum bool isProgressChecker = false;
+    enum bool isProgressChecker = true;
     enum bool isDumpedFileCheck = true;
 
 
@@ -130,12 +153,18 @@ void mainJob()
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
-    foreach(sfPair; [[3, 3]])
+
+    foreach(numChTaps; [64])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
-                                    // "OPHPAOnly3_LS",
-                                    // "OPHPAOnly5_LS",
+                                    "OPHPAOnly3_LS",
+                                    "OPHPAOnly5_LS",
                                     "OPHPAOnly7_LS",
+                                    // "OPHPAOnly5_LS",
+                                    // "OPHPAOnly3_LS",
+                                    // "Nop_X",
+
+                                    "L_LS",
             ))
     {
         bool[string] dirset;
@@ -149,16 +178,18 @@ void mainJob()
             static if(isProgressChecker)
             {
                 foreach(dir, _; dirset) {
-                    if(!exists(buildPath(dir, "allResult.json"))){
+                    if(!exists(buildPath(dir, ALL_RESULT_FILENAME))){
                         sumOfTaskNums += 1;
                         // writeln(dir);
 
                         sumOfTrials += numOfTrials;
 
-                        string resListDumpFilePath = buildPath(dir, "resList_dumped.json");
+                        string resListDumpFilePath = buildPath(dir, DUMPED_RESULT_LIST_FILENAME);
                         if(isDumpedFileCheck && exists(resListDumpFilePath)) {
-                            size_t compls = std.file.readText(resListDumpFilePath)
-                                            .parseJSON(JSONOptions.specialFloatLiterals).array.length;
+                            // size_t compls = std.file.readText(resListDumpFilePath)
+                            //                 .parseJSON(JSONOptions.specialFloatLiterals).array.length;
+                            // size_t compls = msgpack.toJSONValue(msgpack.unpack(cast(ubyte[]) std.file.read(resListDumpFilePath))).array.length;
+                            size_t compls = readJSONData(resListDumpFilePath).array.length;
                             sumOfTrials -= compls;
                             writefln!"%s: %s complete"(dir, compls);
                         }
@@ -168,45 +199,67 @@ void mainJob()
         }
 
 
-        immutable uint paSF = sfPair[0],
-                       lnaSF = sfPair[1];
-        string parentDir = format("PA%s_LNA%s", paSF, lnaSF);
+        string parentDir = format("results_Taps%s", numChTaps);
 
 
         // only desired signal on AWGN or Rayleigh
-        static if(methodName == "OPHPAOnly7_LS")
-        foreach(dtaps; [1, 48])
-        foreach(snr; iota(0, 22, 3))
+        static if(methodName == "Nop_X")
+        foreach(snr; iota(0, (numChTaps == 1 ? 22 : 52), 3))
         {
             ModelSeed modelSeed;
-            modelSeed.paSmoothFactor = paSF;
-            modelSeed.lnaSmoothFactor = lnaSF;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = 20.dB;
             modelSeed.SNR = snr.dB;
             modelSeed.onlyDesired = true;
             modelSeed.outputBER = true;
-            modelSeed.numOfTapsOfDesiredChannel = dtaps;
+            modelSeed.linearMode = true;
+            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_ber", dir ~ "_onlyDesired_%s".format(dtaps));
+            dir = buildPath(parentDir, "results_ber", dir ~ "_onlyDesired");
             dirset[dir] = true;
-            appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-        /+
+        // // static if(methodName == "Nop_X" || methodName == "L_LS")
+        // foreach(inr_dB; iota(0, 52, 3))
+        // {
+        //     ModelSeed modelSeed;
+        //     // modelSeed.linearMode = true;
+        //     modelSeed.paSmoothFactor = paSF;
+        //     modelSeed.lnaSmoothFactor = lnaSF;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = 100;
+        //     modelSeed.INR = inr_dB.dB;
+        //     modelSeed.SNR = 50.dB;
+        //     modelSeed.outputBER = true;
+        //     modelSeed.numOfTapsOfDesiredChannel = 64;
+
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath(parentDir, "results_ber", dir);
+        //     dirset[dir] = true;
+        //     appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
+
+
         // INR vs (EVM / SIC / BER)
-        foreach(learningSymbols; [100])
-        foreach(inr; iota(20, 72, 5))
+        foreach(learningSymbols; [50])
+        foreach(inr; iota(0, 82, 3))
+        foreach(loss; [70])
         {
             ModelSeed modelSeed;
-            modelSeed.paSmoothFactor = paSF;
-            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.paSmoothFactor = 3;
+            modelSeed.lnaSmoothFactor = 3;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
             modelSeed.INR = inr.dB;
+            // modelSeed.SNR = 50.dB;
+            modelSeed.DesiredLOSS = loss.dB;
+            modelSeed.onlyDesired = methodName == "Nop_X";
             modelSeed.outputBER = true;
+            modelSeed.numofTapsOfSIChannel = numChTaps;
+            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_inr_vs_sic", dir);
@@ -214,27 +267,58 @@ void mainJob()
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-
-        // TXP vs (EVM. SIC /  BER)
-        foreach(isoRF; [50, 60, 70])
-        foreach(learningSymbols; [100])
-        foreach(txp; iota(10, 32, 3)) {
+        // TXP vs (EVM / SIC /  BER)
+        foreach(isoRF; [50, 70])
+        foreach(desiredLoss; [70])
+        foreach(learningSymbols; [50])
+        foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
-            modelSeed.paSmoothFactor = paSF;
-            modelSeed.lnaSmoothFactor = lnaSF;
+            modelSeed.paSmoothFactor = 3;
+            modelSeed.lnaSmoothFactor = 3;
             modelSeed.txPower = txp.dBm;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
             // modelSeed.INR = (txp-23+inr).dB;
             modelSeed.TXRXISO = isoRF.dB;
+            modelSeed.DesiredLOSS = desiredLoss.dB;
             modelSeed.txPower = txp.dBm;
+            modelSeed.onlyDesired = methodName == "Nop_X";
             modelSeed.outputBER = true;
+            modelSeed.numofTapsOfSIChannel = numChTaps;
+            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_txp_vs_sic", dir);
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }+/
+        }
+
+
+        // SF vs (EVM / SIC / BER)
+        foreach(txp; [23])
+        foreach(isoRF; [50, 70])
+        foreach(desiredLoss; [70])
+        foreach(learningSymbols; [50])
+        foreach(sf_10; iota(2, 51, 2)) {
+            ModelSeed modelSeed;
+            modelSeed.paSmoothFactor = sf_10/10.0;
+            modelSeed.lnaSmoothFactor = sf_10/10.0;
+            modelSeed.txPower = txp.dBm;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            // modelSeed.INR = (txp-23+inr).dB;
+            modelSeed.TXRXISO = isoRF.dB;
+            modelSeed.DesiredLOSS = desiredLoss.dB;
+            modelSeed.onlyDesired = methodName == "Nop_X";
+            modelSeed.outputBER = true;
+            modelSeed.numofTapsOfSIChannel = numChTaps;
+            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
     }
 
     import std.stdio;
@@ -254,7 +338,7 @@ void mainJob()
     else
     {
         JobEnvironment env = defaultJobEnvironment();
-        env.pmem = 5;
+        env.pmem = 3;
         env.mem = env.pmem * env.taskGroupSize;
         // env.scriptPath = "jobscript.sh";
 
@@ -293,7 +377,12 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
 
         model.uniqueId = format("%s_%s", hashOfModelSeed, iTrial.to!string);
         model.rndSeed = cast(uint)hashOf(iTrial);
-        model.SNR = modelSeed.SNR;
+        // model.SNR = modelSeed.SNR;
+
+        if(modelSeed.SNR.isNull)
+            model.SNR = modelSeed.txPower / NP / modelSeed.DesiredLOSS;
+        else
+            model.SNR = modelSeed.SNR;
 
         if(modelSeed.INR.isNull)
             model.INR = modelSeed.txPower / NP / modelSeed.TXRXISO;
@@ -314,11 +403,11 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         // 再現する非線形性の選択
         model.useDTXIQ = false;
         model.useDTXPN = false;
-        model.useDTXPA = false;
+        model.useDTXPA = ! modelSeed.linearMode;
         model.useSTXIQ = false;
         model.useSTXPN = false;
-        model.useSTXPA = true;
-        model.useSRXLN = true;
+        model.useSTXPA = ! modelSeed.linearMode;
+        model.useSRXLN = ! modelSeed.linearMode;
         model.useSRXIQ = false;
         model.useSRXQZ = false;
 
@@ -346,7 +435,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channelSI.taps = 48;
+            model.channelSI.taps = 64;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
@@ -365,9 +454,9 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!real[] coefs;
-            foreach(i; 0 .. model.channelDesired.taps){
+            foreach(i; 0 .. model.channelDesired.taps) {
                 // tapsのタップ数で40dB減衰
-                auto db = -1 * (40.0 / model.channelDesired.taps) * i;
+                auto db = -1 * (40 / (model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling)) * i;
                 coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
                 gGen.popFront();
             }
@@ -425,6 +514,12 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     else
         strINRorISO = format("inr%s", modelSeed.INR.get);
 
+    string strSNRorISO;
+    if(modelSeed.SNR.isNull)
+        strSNRorISO = format("loss%s", modelSeed.DesiredLOSS.get);
+    else
+        strSNRorISO = format("snr%s", modelSeed.SNR.get);
+
     string cancellerName = modelSeed.cancellerType;
     if(cancellerName.canFind("Sidelobe"))
         cancellerName ~= "_" ~ modelSeed.iterEstOrder;
@@ -432,10 +527,10 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     string dir;
     if(modelSeed.cancellerType.split("_")[0].endsWith("FHF"))
     {
-        dir = "TXP%s_%s_snr%s_%s_G%s_IRR%s_%s"
+        dir = "TXP%s_%s_%s_%s_G%s_IRR%s_%s"
             .format(modelSeed.txPower,
                     strINRorISO,
-                    modelSeed.SNR,
+                    strSNRorISO,
                     cancellerName,
                     modelSeed.bfsNoiseMargin,
                     modelSeed.txIRR,
@@ -443,10 +538,10 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     }
     else
     {
-        dir = "TXP%s_%s_snr%s_%s_IRR%s_%s"
+        dir = "TXP%s_%s_%s_%s_IRR%s_%s"
             .format(modelSeed.txPower,
                     strINRorISO,
-                    modelSeed.SNR,
+                    strSNRorISO,
                     cancellerName,
                     modelSeed.txIRR,
                     modelSeed.numOfTrainingSymbols);
@@ -472,22 +567,26 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
 {
     Model[] models = makeModels!methodName(nTrials, modelSeed, dir);
 
-    if(exists(buildPath(dir, "allResult.json"))) return;
+    if(exists(buildPath(dir, ALL_RESULT_FILENAME))) return;
 
     writeln(dir);
+    mkdirRecurse(dir);
+
     // 前回異常終了等で死んでいれば，このファイルがあるはず
     // 中間状態のダンプファイル
-    immutable resListDumpFilePath = buildPath(dir, "resList_dumped.json");
+    immutable resListDumpFilePath = buildPath(dir, DUMPED_RESULT_LIST_FILENAME);
     JSONValue[] lastDumpedList;
     if(exists(resListDumpFilePath))
     {
-        lastDumpedList = std.file.readText(resListDumpFilePath)
-            .parseJSON(JSONOptions.specialFloatLiterals).array;
+        // lastDumpedList = std.file.readText(resListDumpFilePath)
+        //     .parseJSON(JSONOptions.specialFloatLiterals).array;
+        // lastDumpedList = msgpack.toJSONValue(msgpack.unpack(cast(ubyte[]) std.file.read(resListDumpFilePath))).array;
+        lastDumpedList = readJSONData(resListDumpFilePath).array;
     }
     scope(success) {
         // このプロセスが正常終了すれば中間状態のダンプファイルは不要
         if(exists(resListDumpFilePath))
-            std.file.remove(buildPath(dir, "resList_dumped.json"));
+            std.file.remove(buildPath(dir, DUMPED_RESULT_LIST_FILENAME));
     }
 
     import std.datetime;
@@ -514,7 +613,12 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
             if(resList.length > lastDumpedList.length
                 && (ct - lastUpdateTime) > 60.seconds )
             {
-                std.file.write(resListDumpFilePath, JSONValue(resList).toString(JSONOptions.specialFloatLiterals));
+                // std.file.write(resListDumpFilePath, JSONValue(resList).toString(JSONOptions.specialFloatLiterals));
+                // File outputFile = File(resListDumpFilePath, "w");
+                // auto packer = msgpack.Packer(outputFile.lockingTextWriter, false);
+                // packer.pack(msgpack.fromJSONValue(JSONValue(resList)));
+                // std.file.write(resListDumpFilePath, msgpack.pack(msgpack.fromJSONValue(JSONValue(resList))));
+                writeJSONData(resListDumpFilePath, JSONValue(resList));
                 lastUpdateTime = ct;
             }
         }
@@ -526,7 +630,10 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
         }
         else {
             // まだ未計算なので計算する
-            res = mainImpl!(methodName)(m, i == 0 ? dir : null);
+            if(i == 0 && !NO_NEED_CSV_FILES)
+                res = mainImpl!(methodName)(m,  dir);
+            else
+                res = mainImpl!(methodName)(m,  null);
         }
 
         if(saveAllRAWData) {
@@ -542,12 +649,6 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
                 return jv;
             }();
         }
-
-        if(methodName.startsWith("SFHF") || methodName.startsWith("S1FHF") || methodName.startsWith("S2FHF")){
-            auto cnt = res["filterSpec"]["selectingIsSuccess"].array.map!(a => a.type == JSON_TYPE.TRUE ? 1 : 0).sum();
-            sumOfSuccFreq += cnt;
-            selectingRatioList ~= JSONValue(cnt / cast(float)(m.ofdm.numOfFFT * m.ofdm.scaleOfUpSampling));
-        }
     }
 
     JSONValue jv = cast(JSONValue[string])null;
@@ -557,14 +658,22 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     if(modelSeed.outputBER){
         jv["bers"] = resList.map!(a => a["ber"]).array();
         jv["evms"] = resList.map!(a => a["evm"]).array();
+        jv["sers"] = resList.map!(a => a["ser"]).array();
     }
 
-    auto file = File(buildPath(dir, "allResult.json"), "w");
-    file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
+    // auto file = File(buildPath(dir, "allResult.json"), "w");
+    // file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
+    {
+        // auto file = File(buildPath(dir, ALL_RESULT_FILENAME), "w");
+        // file.rawWrite(msgpack.pack(msgpack.fromJSONValue(jv)));
+        writeJSONData(buildPath(dir, ALL_RESULT_FILENAME), jv);
+    }
 
     if(saveAllRAWData){
-        file = File(buildPath(dir, "rawAllResult.json"), "w");
-        file.write(JSONValue(resList).toPrettyString(JSONOptions.specialFloatLiterals));
+        // auto file = File(buildPath(dir, "rawAllResult.bin"), "w");
+        // file.write(JSONValue(resList).toPrettyString(JSONOptions.specialFloatLiterals));
+        // file.rawWrite(msgpack.pack(msgpack.fromJSONValue(JSONValue(resList))));
+        writeJSONData(buildPath(dir, "rawAllResult.bin"), JSONValue(resList));
     }
 
     if(methodName.startsWith("Log_")){

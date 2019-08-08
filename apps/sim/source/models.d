@@ -61,8 +61,8 @@ alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Comple
 
 struct Model
 {
-    size_t numOfModelTrainingSymbols = 300;
-    size_t numOfFilterTrainingSymbols = 200;
+    // size_t numOfModelTrainingSymbols = 100;
+    size_t numOfFilterTrainingSymbols = 100;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     real carrFreq = 2.45e9;
@@ -151,7 +151,7 @@ struct Model
     struct BERCounter
     {
         ulong totalBits = 1_000_000;
-        ulong evmSymbols = 1000;
+        ulong evmSymbols = 300;
     }
     BERCounter berCounter;
 
@@ -195,7 +195,7 @@ struct Model
         Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
         Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
         Gain MAX_VAR_GAIN = 0.dB;       // 利得の最大変異，dB単位で一様分布
-        uint smoothFactor = 3;
+        double smoothFactor = 3;
     }
     PA pa;
 
@@ -206,7 +206,7 @@ struct Model
         uint noiseSeedOffset = 123;
         Gain DR = 70.dB;        // Dynamic Range
         Voltage IIP3 = (0).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
-        uint smoothFactor = 3;
+        double smoothFactor = 3;
     }
     LNA lna;
 
