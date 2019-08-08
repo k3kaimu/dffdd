@@ -7,8 +7,6 @@ import std.stdio;
 
 import mir.ndslice;
 
-import carbon.math : complexZero;
-
 import dffdd.utils.fft;
 import dffdd.filter.state;
 
@@ -24,7 +22,7 @@ final class OverlapSaveRegenerator(C)
         _fftw = makeFFTWObject!Complex(freqResponse.length!0);
         _buffer = new C[](freqResponse.length!0);
         _inputs = new C[][](freqResponse.length!1, freqResponse.length!0);
-        foreach(ref es; _inputs) foreach(ref e; es) e = complexZero!C;
+        foreach(ref es; _inputs) foreach(ref e; es) e = C(0);
     }
 
 
@@ -83,10 +81,10 @@ final class OverlapSaveRegenerator(C)
     }
     body{
         immutable size_t size = tx.length;
-        output[] = complexZero!C;
+        output[] = C(0);
 
         // _bufferをゼロ初期化
-        foreach(ref e; _buffer) e = complexZero!C;
+        foreach(ref e; _buffer) e = C(0);
 
         foreach(p; 0 .. _freqResponse.length!1)
         {

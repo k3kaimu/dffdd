@@ -41,6 +41,19 @@ struct BPSK(C)
 
         return outputs;
     }
+
+
+    static
+    ref ushort[] demodulate_symbol(OutputElementType[] inputs, return ref ushort[] symbols)
+    {
+        if(symbols.length != inputs.length)
+            symbols.length = inputs.length;
+
+        foreach(i; 0 .. inputs.length)
+            symbols[i] = inputs[i].re > 0 ? 0 : 1;
+
+        return symbols;
+    }
 }
 
 

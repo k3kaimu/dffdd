@@ -5,7 +5,7 @@ import std.mathspecial;
 import std.math;
 import std.numeric;
 
-import dffdd.mod.primitives : Bit;
+import dffdd.mod.primitives;
 import dffdd.mod.bpsk;
 import dffdd.mod.qpsk;
 import dffdd.utils.unit;
@@ -84,32 +84,35 @@ struct QAM(C)
 
     ref Bit[] demodulate(in C[] inputs, return ref Bit[] outputs)
     {
-        outputs.length = inputs.length * _k;
+        if(outputs.length != inputs.length * _k)
+            outputs.length = inputs.length * _k;
 
         foreach(i; 0 .. inputs.length){
-            R inpRe = inputs[i].re,
-              inpIm = inputs[i].im;
+            ushort sym = demodulate_symbol_impl(inputs[i]);
 
-            inpRe = round((_L - 1) - (inpRe * _scale + (_L - 1))/2.0);
-            inpIm = round((_L - 1) - (inpIm * _scale + (_L - 1))/2.0);
-
-            if(inpRe <= 0) inpRe = 0;
-            if(inpRe > _L-1) inpRe = _L-1;
-            if(inpIm <= 0) inpIm = 0;
-            if(inpIm > _L-1) inpIm = _L-1;
-
-            import std.algorithm : min, max;
-            immutable ptrdiff_t rIdx = min(max(0, cast(ptrdiff_t)inpRe), _L-1);
-            immutable ptrdiff_t iIdx = min(max(0, cast(ptrdiff_t)inpIm), _L-1);
-
-            //import std.stdio;
-            //writeln(inpRe, ", ", inpIm);
-
-            outputs[i*_k .. i*_k + _k/2] = _grayCode[rIdx];
-            outputs[i*_k + _k/2 .. (i+1)*_k] = _grayCode[iIdx];
+            foreach(j; 0 .. _k/2) {
+                outputs[(i+1)*_k - 1 - j] = sym & 1;
+                sym >>= 1;
+            }
+            foreach(j; 0 .. _k/2) {
+                outputs[(i+1)*_k - _k/2 - 1 - j] = sym & 1;
+                sym >>= 1;
+            }
         }
 
         return outputs;
+    }
+
+
+    ref ushort[] demodulate_symbol(in C[] inputs, ref return ushort[] symbols)
+    {
+        if(symbols.length != inputs.length)
+            symbols.length = inputs.length;
+
+        foreach(i; 0 .. inputs.length)
+            symbols[i] = demodulate_symbol_impl(inputs[i]);
+
+        return symbols;
     }
 
 
@@ -137,6 +140,40 @@ struct QAM(C)
             dst = (dst << 1) + (e ? 1 : 0);
 
         return dst;
+    }
+
+
+    ushort demodulate_symbol_impl(C input)
+    {
+        R inpRe = input.re,
+          inpIm = input.im;
+
+        inpRe = round((_L - 1) - (inpRe * _scale + (_L - 1))/2.0);
+        inpIm = round((_L - 1) - (inpIm * _scale + (_L - 1))/2.0);
+
+        if(inpRe <= 0) inpRe = 0;
+        if(inpRe > _L-1) inpRe = _L-1;
+        if(inpIm <= 0) inpIm = 0;
+        if(inpIm > _L-1) inpIm = _L-1;
+
+        import std.algorithm : min, max;
+        immutable ptrdiff_t rIdx = min(max(0, cast(ptrdiff_t)inpRe), _L-1);
+        immutable ptrdiff_t iIdx = min(max(0, cast(ptrdiff_t)inpIm), _L-1);
+
+        auto upper = _grayCode[rIdx];
+        auto lower = _grayCode[iIdx];
+
+        ushort sym;
+        foreach(i; 0 .. _k/2) {
+            sym <<= 1;
+            sym += upper[i].value & 1;
+        }
+        foreach(i; 0 .. _k/2) {
+            sym <<= 1;
+            sym += lower[i].value & 1;
+        }
+
+        return sym;
     }
 }
 
@@ -253,17 +290,28 @@ unittest
             {
                 mod.modulate(inbits, dst);
 
+                ushort[] refSyms;
+                mod.demodulate_symbol(dst, refSyms);
+
                 foreach(ref e; dst){
                     e += noiseGen.front * gain;
                     noiseGen.popFront();
                 }
 
                 Bit[] bs;
+                ushort[] decSyms;
                 mod.demodulate(dst, bs);
+                mod.demodulate_symbol(dst, decSyms);
 
                 total += inbits.length;
+
+                size_t partcnt = 0;
                 foreach(j; 0 .. inbits.length)
-                    cnt += inbits[j] == bs[j] ? 0 : 1;
+                    partcnt += inbits[j] == bs[j] ? 0 : 1;
+
+                assert(partcnt == countBitError(refSyms, decSyms));
+
+                cnt += partcnt;
 
                 if(cnt > 10000) break;
             }

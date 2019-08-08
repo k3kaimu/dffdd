@@ -164,3 +164,105 @@ unittest
     // 復調結果のチェック
     assert(decoded == inps);
 }
+
+
+
+size_t countBitError(in ushort[] symAs, in ushort[] symBs)
+in(symAs.length == symBs.length)
+{
+    import core.bitop;
+
+    size_t cnt = 0;
+    foreach(i; 0 .. symAs.length)
+        cnt += popcnt(symAs[i] ^ symBs[i]);
+
+    return cnt;
+}
+
+///
+unittest 
+{
+    ushort[] as = [0b0011, 0b1100, 0b0101, 0b1111];
+    ushort[] bs = [0b0011, 0b1111, 0b1010, 0b1110];
+
+    assert(countBitError(as, as) == 0);
+    assert(countBitError(as, bs) == 7);
+}
+
+
+
+struct BERCounter
+{
+    this(size_t k)
+    {
+        _k = k;
+    }
+
+
+    void count(in ushort[] symAs, in ushort[] symBs)
+    in(symAs.length == symBs.length)
+    {
+        _totalSym += symAs.length;
+        _errBit += countBitError(symAs, symBs);
+        foreach(i; 0 .. symAs.length)
+            _errSym += (symAs[i] != symBs[i] ? 1 : 0);
+    }
+
+
+    struct BERCounterResult
+    {
+        size_t totalBits;
+        size_t totalSyms;
+        size_t errBits;
+        size_t errSyms;
+        double ber;
+        double ser;
+    }
+
+
+    BERCounterResult result() const
+    {
+        BERCounterResult res;
+
+        res.totalBits = _totalSym * _k;
+        res.totalSyms = _totalSym;
+        res.errBits = _errBit;
+        res.errSyms = _errSym;
+        res.ber = 1.0 * _errBit / (_totalSym * _k);
+        res.ser = 1.0 * _errSym / _totalSym;
+
+        return res;
+    }
+
+
+    size_t totalSyms() const { return _totalSym; }
+    size_t totalBits() const { return _totalSym * _k; }
+    size_t errBits() const { return _errBit; }
+    size_t errSyms() const { return _errSym; }
+
+
+  private:
+    size_t _k;
+    size_t _totalSym;
+    size_t _errSym;
+    size_t _errBit;
+}
+
+unittest
+{
+    ushort[] as = [0b0011, 0b1100, 0b0101, 0b1111];
+    ushort[] bs = [0b0011, 0b1111, 0b1010, 0b1110];
+
+    BERCounter counter = BERCounter(4); // one symbol consists of four bits.
+
+    counter.count(as, bs);
+
+    with(counter.result) {
+        assert(totalBits == 16);
+        assert(totalSyms == 4);
+        assert(errBits == 7);
+        assert(errSyms == 3);
+        assert(ber == 7.0 / 16);
+        assert(ser == 3.0 / 4);
+    }
+}

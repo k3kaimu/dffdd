@@ -9,5 +9,4 @@ __dummy.html
 *.xlsx
 *.exe
 *.txt
-apps/sim/results_20170306
-apps/sim/results
+apps/sim/result*

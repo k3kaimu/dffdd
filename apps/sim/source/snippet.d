@@ -58,7 +58,7 @@ real measureBER(R1, R2)(ref R1 r1, ref R2 r2, ulong totalBits)
 }
 
 
-auto connectToSwitch(R)(R r, const(bool)* sw, ElementType!R zero = complexZero!(ElementType!R))
+auto connectToSwitch(R)(R r, const(bool)* sw, ElementType!R zero = ElementType!R(0))
 {
     static struct Result 
     {
