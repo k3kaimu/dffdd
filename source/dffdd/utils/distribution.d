@@ -1,5 +1,6 @@
 module dffdd.utils.distribution;
 
+import std.complex;
 import std.math;
 import std.random;
 
@@ -24,7 +25,9 @@ Complex!F complexGaussian01(F = real, Rnd)(ref Rnd rnd)
     F x = uniform01(rnd),
       y = uniform01(rnd);
 
-    return sqrt(-2 * log(x)) * std.complex.expi(2 * PI * y);
+    typeof(return) dst = sqrt(-1 * log(x)) * std.complex.expi(2 * PI * y);
+
+    return dst;
 }
 
 
