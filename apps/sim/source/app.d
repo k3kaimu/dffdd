@@ -104,8 +104,8 @@ void mainJob()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    auto taskListShort = new MultiTaskList();
-    auto taskListLong = new MultiTaskList();
+    auto taskListShort = new MultiTaskList!void();
+    auto taskListLong = new MultiTaskList!void();
 
     auto setRLSLMSParam(ref ModelSeed model)
     {
@@ -132,68 +132,10 @@ void mainJob()
     foreach(sfPair; [[3, 1], [2, 2]])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
-                                    // "S2FHF_LS",
-                                    // "S2FHF_RLS",
-                                    // "S2FHF_LMS",
-                                    // //
-                                    // "FHF_LS",
-                                    // "FHF_RLS",
-                                    // "FHF_LMS",
-                                    // //
-                                    // "OPH_RLS",
-                                    // "PH_RLS",
-                                    // "PH_RLS",
-                                    // "OPH_LMS",
-                                    
-                                    // "WL_LS",
-                                    // "L_LS",
-                                    
-                                    // "IterativeFreqSIC_X",
-                                    // "SidelobeFwd_X",
-                                    // "SidelobeInv_X",
-
-                                    // "PH3_LS",
-                                    // "PH5_LS",
-                                    // "PH7_LS",
-                                    // "OPH3_LS",
-                                    // "OPH5_LS",
                                     "OPH7_LS",
-                                    // "SubPH3_LS",
-                                    // "SubPH5_LS",
-                                    // "SubPH7_LS",
-                                    // "OSubPH3_LS",
-                                    // "OSubPH5_LS",
-                                    // "OSubPH7_LS",
-
-                                    // "Sidelobe3_X",
-                                    // "Sidelobe5_X",
                                     "Sidelobe7_X",
-
-                                    // "FHF3_LS",
-                                    // "FHF5_LS",
-                                    // "FHF7_LS",
-                                    // "S2FHF3_LS",
-                                    // "S2FHF5_LS",
-                                    // "S2FHF7_LS",
-                                    // "SubFHF3_LS",
-                                    // "SubFHF5_LS",
-                                    // "SubFHF7_LS",
-                                    // "SubS2FHF3_LS",
-                                    // "SubS2FHF5_LS",
-                                    // "SubS2FHF7_LS",
-
-                                    // "FHF3_RLS",
-                                    // "FHF5_RLS",
-                                    // "FHF7_RLS",
-                                    // "S2FHF3_RLS",
-                                    // "S2FHF5_RLS",
-                                    // "S2FHF7_RLS",
-                                    // "SubFHF3_RLS",
-                                    // "SubFHF5_RLS",
-                                    // "SubFHF7_RLS",
-                                    // "SubS2FHF3_RLS",
-                                    // "SubS2FHF5_RLS",
-                                    // "SubS2FHF7_RLS",
+                                    "OTxPHwithRxNL77_LS",
+                                    "OTxPHwithRxNL17_LS",
             ))
     {
         bool[string] dirset;
@@ -230,7 +172,6 @@ void mainJob()
                        lnaSF = sfPair[1];
         string parentDir = format("PA%s_LNA%s", paSF, lnaSF);
 
-        /+
         /* change the number of iterations */
         static if(methodName == "Sidelobe7_X")
         foreach(nIters; iota(1, 6))
@@ -275,7 +216,7 @@ void mainJob()
             dir = buildPath(parentDir, "results_newton_iters", dir ~ format("_%s", newtonIters));
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }+/
+        }
 
 
         static if(methodName == "Sidelobe7_X")
@@ -344,7 +285,6 @@ void mainJob()
         }
         +/
 
-        /+
         // learning symbols vs (EVM / SIC / BER)
         foreach(inr; [50])
         foreach(learningSymbols; iota(2, 21).chain(iota(25, 105, 5)))
@@ -406,7 +346,7 @@ void mainJob()
             dir = buildPath(parentDir, "results_txp_vs_sic", dir);
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }+/
+        }
     }
 
     import std.stdio;

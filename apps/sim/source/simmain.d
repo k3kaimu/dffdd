@@ -23,6 +23,7 @@ import dffdd.dsp.statistics;
 import dffdd.utils.fft;
 import dffdd.utils.unit;
 import dffdd.filter.primitives;
+import dffdd.filter.rxnonlincanc;
 
 import models;
 import snippet;
@@ -221,6 +222,19 @@ auto makeFilter(string filterType)(Model model)
   {
     enum size_t POrder = filterStructure[$-1 .. $].to!int;
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, SubSetOfPADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
+  }
+  else static if(filterStructure[0 .. $-2].endsWith("TxPHwithRxNL"))
+  {
+    enum size_t POrderTx = filterStructure[$-2 .. $-1].to!int;
+    enum size_t POrderRx = filterStructure[$-1 .. $].to!int;
+    auto txfilter = makeParallelHammersteinFilter!(filterOptimizer, PADistorter!(Complex!float, POrderTx), isOrthogonalized)(modOFDM(model), model);
+
+    auto ntaps = model.firFilter.taps;
+    model.firFilter.taps = 1;
+    auto rxfilter = makeParallelHammersteinFilter!(filterOptimizer, SubSetOfPADistorter!(Complex!float, POrderRx), false)(modOFDM(model), model);
+    model.firFilter.taps = ntaps;
+
+    auto filter = new TxRxSeparateCanceller!(Complex!float, typeof(txfilter), typeof(rxfilter))(txfilter, rxfilter);
   }
   else static if(filterStructure[0 .. $-1].endsWith("PH"))
   {
