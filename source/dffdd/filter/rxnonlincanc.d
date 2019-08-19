@@ -14,7 +14,7 @@ final class TxRxSeparateCanceller(C, TxCanceller, RxCanceller)
 
     size_t inputBlockLength() @property
     {
-        return gcd(_txCanceller.inputBlockLength, _rxCanceller.inputBlockLength);
+        return _txCanceller.inputBlockLength * (_rxCanceller.inputBlockLength / gcd(_txCanceller.inputBlockLength, _rxCanceller.inputBlockLength));
     }
 
 
@@ -33,29 +33,34 @@ final class TxRxSeparateCanceller(C, TxCanceller, RxCanceller)
         } else {
             if(_savedTrainTxSamples.length != 0)
             {
-                _txCanceller.apply!(Yes.learning)(transmit, received, errors);
-                _txCanceller.apply!(No.learning)(transmit, received, errors);
+                _bufferTxRegen.length = _savedTrainTxSamples.length;
+                _bufferTxError.length = _savedTrainTxSamples.length;
+                _txCanceller.apply!(Yes.learning)(_savedTrainTxSamples, _savedTrainRxSamples, _bufferTxError);
+                _txCanceller.apply!(No.learning)(_savedTrainTxSamples, _savedTrainRxSamples, _bufferTxError);
 
                 // _txCancellerが再現した信号を得る
-                _bufferTxRegen.length = transmit.length;
-                foreach(i; 0 .. transmit.length)
-                    _bufferTxRegen[i] = received[i] - errors[i];
+                foreach(i; 0 .. _savedTrainTxSamples.length) {
+                    _bufferTxRegen[i] = _savedTrainRxSamples[i] - _bufferTxError[i];
+                }
                 
-                _bufferRxCancelled.length = transmit.length;
-                _rxCanceller.apply!(Yes.learning)(_bufferTxRegen, errors, _bufferRxCancelled);
+                _bufferRxCancelled.length = _savedTrainTxSamples.length;
+                _rxCanceller.apply!(Yes.learning)(_bufferTxRegen, _bufferTxError, _bufferRxCancelled);
 
                 _savedTrainTxSamples = null;
                 _savedTrainRxSamples = null;
             }
 
-            _txCanceller.apply!(No.learning)(transmit, received, errors);
+            _bufferTxRegen.length = transmit.length;
+            _bufferTxError.length = transmit.length;
+            _txCanceller.apply!(No.learning)(transmit, received, _bufferTxError);
+
             // _txCancellerが再現した信号を得る
             _bufferTxRegen.length = transmit.length;
             foreach(i; 0 .. transmit.length)
-                _bufferTxRegen[i] = received[i] - errors[i];
+                _bufferTxRegen[i] = received[i] - _bufferTxError[i];
 
             _bufferRxCancelled.length = transmit.length;
-            _rxCanceller.apply!(No.learning)(_bufferTxRegen, errors, _bufferRxCancelled);
+            _rxCanceller.apply!(No.learning)(_bufferTxRegen, _bufferTxError, _bufferRxCancelled);
             errors[] = _bufferRxCancelled[];
         }
     }
@@ -72,5 +77,6 @@ final class TxRxSeparateCanceller(C, TxCanceller, RxCanceller)
     RxCanceller _rxCanceller;
     immutable(C)[] _savedTrainTxSamples, _savedTrainRxSamples;
     C[] _bufferTxRegen;
+    C[] _bufferTxError;
     C[] _bufferRxCancelled;
 }
