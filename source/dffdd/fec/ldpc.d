@@ -30,6 +30,7 @@ class LdpcSpDecoder
         _row_mat = ldpc.colIndexAtRow;
         _maxIter = maxIter;
 
+        _sp_ws_one = typeof(_sp_ws_one)(ldpc.outputLength, _row_mat);
         _sp_ws_sse = typeof(_sp_ws_sse)(ldpc.outputLength, _row_mat);
         _sp_ws_avx = typeof(_sp_ws_avx)(ldpc.outputLength, _row_mat);
     }
@@ -70,10 +71,10 @@ class LdpcSpDecoder
         }
 
         while(remainBlock >= 1) {
-            sumProductDecodeP0P1SIMD!float(_sp_ws_one, _row_mat,  remainP0p1[0 .. _N*4], _maxIter);
+            sumProductDecodeP0P1SIMD!float(_sp_ws_one, _row_mat,  remainP0p1[0 .. _N], _maxIter);
 
             foreach(i; 0 .. _K)
-                    remainDecoded[i] = _sp_ws_sse.decoded_cw[i];
+                    remainDecoded[i] = _sp_ws_one.decoded_cw[i];
 
             remainP0p1 = remainP0p1[_N .. $];
             remainDecoded = remainDecoded[_K .. $];
@@ -229,6 +230,12 @@ if(isFloatingPoint!F)
     }
 
 
+    bool checkParity(Bit[] codeword)
+    {
+        return checkCodeword(_colIndexAtRow, codeword);
+    }
+
+
     override
     size_t inputLength() const { return _K; }
 
@@ -293,7 +300,6 @@ if(isFloatingPoint!F)
 
 unittest
 {
-    foreach(iter; 0 .. 100) {
     import std.complex;
     import std.math;
     import std.random;
@@ -331,7 +337,7 @@ unittest
     assert(codeword.length == 648);
 
     assert(rndbits[0 .. 324] == codeword[0 .. 324]);
-    assert(code.checkLDPCParity(codeword));
+    assert(code.checkParity(codeword));
     assert(codeword == [
         0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1,
         0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0,
@@ -382,7 +388,7 @@ unittest
         auto x = uniform01(rnd),
              y = uniform01(rnd);
 
-        // e += sqrt(-log(x)) * std.complex.expi(2*PI*y) * sqrt(N0);
+        e += sqrt(-log(x)) * std.complex.expi(2*PI*y) * sqrt(N0);
     }
 
     auto p0p1calc = p0p1Calculator!F(mod);
@@ -390,14 +396,9 @@ unittest
     F[] p0p1;
     p0p1calc.computeP0P1(syms, p0p1, N0);
 
-    import std.stdio;
-    // writeln(N0);
-    // writeln(codeword[0 .. 100]);
-    // writeln(p0p1[0 .. 100]);
     Bit[] decoded;
     code.decode(p0p1, decoded);
     assert(decoded == rndbits);
-    }
 }
 
 

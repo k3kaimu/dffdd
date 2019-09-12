@@ -83,6 +83,7 @@ struct SpDecoderWorkspace(T)
         _deallocate(updated_p0p1);
         _deallocate(input_p0p1_copy);
         _deallocate(prob1m2p);
+        _deallocate(decoded_cw);
     }
 
 
@@ -116,7 +117,7 @@ struct SpDecoderWorkspace(T)
     }
 
 
-    void _deallocate(ref E[] v) @trusted
+    void _deallocate(U)(ref U[] v) @trusted
     {
         _allocator.deallocate(v);
         v = null;
@@ -241,7 +242,8 @@ void sumProductDecodeP0P1SIMD(V, F)(ref SpDecoderWorkspace!V ws, in uint[][] _ro
 }
 
 
-bool checkCodeword(in uint[][] _row_mat, in ubyte[] decoded_cw) @safe
+bool checkCodeword(T)(in uint[][] _row_mat, in T[] decoded_cw) @safe
+if(is(T: ubyte))
 {
     immutable _M = _row_mat.length;
 
