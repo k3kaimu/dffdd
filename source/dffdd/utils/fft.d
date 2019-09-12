@@ -896,6 +896,74 @@ auto globalBankOf(alias makeFFTObj)() @property
 
 
 /**
+FFTを用いた離散ハートレー変換
+*/
+template hartleyTransform(F)
+{
+    void hartleyTransform(FFTObj)(ref FFTObj fftobj)
+    {
+        fftobj.fft!F();
+        auto xs = fftobj.outputs!F;
+        immutable N = xs.length;
+        alias C = typeof(xs[0]);
+
+        foreach(i; 1 .. N/2) {
+            auto a = xs[i];
+            auto b = xs[N-i];
+            auto c = (a + b)/2;
+            auto d = (a - b)/2;
+            auto e = C(-d.im, d.re);
+
+            xs[i] = c + e;
+            xs[N-i] = c - e;
+        }
+
+        immutable sqrtN = sqrt(F(N));
+        foreach(i; 0 .. N)
+            xs[i] /= sqrtN;
+    }
+}
+
+unittest
+{
+    float cas4(size_t i)
+    {
+        return cos(i*PI/2) + sin(i*PI/2);
+    }
+
+    import std.stdio;
+    alias C = Complex!float;
+    auto fftw = makeFFTWObject!Complex(4);
+    fftw.inputs!float[0] = C(0, 0);
+    fftw.inputs!float[1] = C(0, 1);
+    fftw.inputs!float[2] = C(1, 0);
+    fftw.inputs!float[3] = C(1, 1);
+    fftw.hartleyTransform!float();
+    assert(fftw.outputs!float[0].re.approxEqual((0 * cas4(0*0) + 0 * cas4(1*0) + 1 * cas4(2*0) + 1 * cas4(3*0))/2));
+    assert(fftw.outputs!float[1].re.approxEqual((0 * cas4(0*1) + 0 * cas4(1*1) + 1 * cas4(2*1) + 1 * cas4(3*1))/2));
+    assert(fftw.outputs!float[2].re.approxEqual((0 * cas4(0*2) + 0 * cas4(1*2) + 1 * cas4(2*2) + 1 * cas4(3*2))/2));
+    assert(fftw.outputs!float[3].re.approxEqual((0 * cas4(0*3) + 0 * cas4(1*3) + 1 * cas4(2*3) + 1 * cas4(3*3))/2));
+
+    assert(fftw.outputs!float[0].im.approxEqual((0 * cas4(0*0) + 1 * cas4(1*0) + 0 * cas4(2*0) + 1 * cas4(3*0))/2));
+    assert(fftw.outputs!float[1].im.approxEqual((0 * cas4(0*1) + 1 * cas4(1*1) + 0 * cas4(2*1) + 1 * cas4(3*1))/2));
+    assert(fftw.outputs!float[2].im.approxEqual((0 * cas4(0*2) + 1 * cas4(1*2) + 0 * cas4(2*2) + 1 * cas4(3*2))/2));
+    assert(fftw.outputs!float[3].im.approxEqual((0 * cas4(0*3) + 1 * cas4(1*3) + 0 * cas4(2*3) + 1 * cas4(3*3))/2));
+
+    fftw.inputs!float[] = fftw.outputs!float[];
+    fftw.hartleyTransform!float();
+    assert(fftw.outputs!float[0].re.approxEqual(0));
+    assert(fftw.outputs!float[1].re.approxEqual(0));
+    assert(fftw.outputs!float[2].re.approxEqual(1));
+    assert(fftw.outputs!float[3].re.approxEqual(1));
+
+    assert(fftw.outputs!float[0].im.approxEqual(0));
+    assert(fftw.outputs!float[1].im.approxEqual(1));
+    assert(fftw.outputs!float[2].im.approxEqual(0));
+    assert(fftw.outputs!float[3].im.approxEqual(1));
+}
+
+
+/**
 配列の前半分と後半分を入れ替えます．
 この操作をFFT後の配列に適用することで，等価低域系での周波数スペクトルが得られます．
 */
