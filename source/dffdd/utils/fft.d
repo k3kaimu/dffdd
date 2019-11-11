@@ -964,6 +964,56 @@ unittest
 
 
 /**
+FFTを用いた離散ヒルベルト変換により解析信号を得ます．
+fftobj.inputs!F に与えられた実数の入力信号は出力 fftobj.outputs!F の実部に保存され，出力の虚部には入力信号をヒルベルト変換した値が格納されます．
+See also: https://jp.mathworks.com/help/signal/ref/hilbert.html
+See also: https://ieeexplore.ieee.org/document/782222
+*/
+template hilbertTransform(F)
+{
+    void hilbertTransform(FFTObject)(ref FFTObject fftobj)
+    {
+        alias C = typeof(fftobj.inputs!F[0]);
+        auto xs = fftobj.inputs!F;
+        auto ys = fftobj.outputs!F;
+        immutable N = xs.length;
+
+        fftobj.fft!F();
+        xs[0] = ys[0];
+        foreach(k; 1 .. N/2) {
+            xs[k] = 2 * ys[k];
+        }
+        xs[N/2] = ys[N/2];
+        xs[N/2 + 1 .. $] = C(0);
+
+        fftobj.ifft!F();
+    }
+}
+
+unittest
+{
+    import std.stdio;
+    alias C = Complex!float;
+    auto fftw = makeFFTWObject!Complex(4);
+    fftw.inputs!float[0] = C(1, 0);
+    fftw.inputs!float[1] = C(2, 0);
+    fftw.inputs!float[2] = C(3, 0);
+    fftw.inputs!float[3] = C(4, 0);
+    fftw.hilbertTransform!float();
+
+    assert(fftw.outputs!float[0].re.approxEqual(1));
+    assert(fftw.outputs!float[1].re.approxEqual(2));
+    assert(fftw.outputs!float[2].re.approxEqual(3));
+    assert(fftw.outputs!float[3].re.approxEqual(4));
+
+    assert(fftw.outputs!float[0].im.approxEqual(1));
+    assert(fftw.outputs!float[1].im.approxEqual(-1));
+    assert(fftw.outputs!float[2].im.approxEqual(-1));
+    assert(fftw.outputs!float[3].im.approxEqual(1));
+}
+
+
+/**
 配列の前半分と後半分を入れ替えます．
 この操作をFFT後の配列に適用することで，等価低域系での周波数スペクトルが得られます．
 */
