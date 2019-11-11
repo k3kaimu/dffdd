@@ -145,7 +145,7 @@ void mainJob()
     }
 
 
-    enum bool isProgressChecker = true;
+    enum bool isProgressChecker = false;
     enum bool isDumpedFileCheck = true;
 
 
@@ -380,14 +380,14 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         // model.SNR = modelSeed.SNR;
 
         if(modelSeed.SNR.isNull)
-            model.SNR = modelSeed.txPower / NP / modelSeed.DesiredLOSS;
+            model.SNR = modelSeed.txPower / NP / modelSeed.DesiredLOSS.get;
         else
-            model.SNR = modelSeed.SNR;
+            model.SNR = modelSeed.SNR.get;
 
         if(modelSeed.INR.isNull)
-            model.INR = modelSeed.txPower / NP / modelSeed.TXRXISO;
+            model.INR = modelSeed.txPower / NP / modelSeed.TXRXISO.get;
         else
-            model.INR = modelSeed.INR;
+            model.INR = modelSeed.INR.get;
 
         // model.pa.TX_POWER = modelSeed.txPower;
         // model.txIQMixer.IRR = modelSeed.txIRR;
