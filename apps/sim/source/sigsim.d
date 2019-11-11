@@ -73,7 +73,7 @@ final class SimulatedSignals
         import std.meta : AliasSeq;
         foreach(obj; AliasSeq!(_txPAVGA, _rxLNAVGA, _rxQZVGA))
             if(!obj.isNull)
-                assert(obj.isConverged);
+                assert(obj.get.isConverged);
     }
     do {
         _nowTrainingMode = true;
@@ -130,21 +130,21 @@ final class SimulatedSignals
             detxpas = _tempbuf[8][0 .. len];
 
         // 自端末の送信機のIQインバランス
-        if(_model.useSTXIQ) _txIQMixer(xs, txiqs);
+        if(_model.useSTXIQ) _txIQMixer.get()(xs, txiqs);
         else                txiqs[] = xs[];
 
         // 相手端末の送信機のIQインバランス
-        if(_model.useDTXIQ) _detxIQMixer(ds, detxiqs);
+        if(_model.useDTXIQ) _detxIQMixer.get()(ds, detxiqs);
         else                detxiqs[] = ds[];
 
         // 自端末の送信機のPAの歪み
-        _txPAVGA(txiqs, txvgas);
-        if(_model.useSTXPA) _txPANonlin(txvgas, txpas);
+        _txPAVGA.get()(txiqs, txvgas);
+        if(_model.useSTXPA) _txPANonlin.get()(txvgas, txpas);
         else                txpas[] = txvgas[];
 
         // 相手端末の送信機のPAの歪み
-        _detxPAVGA(detxiqs, detxvgas);
-        if(_model.useDTXPA) _detxPANonlin(detxvgas, detxpas);
+        _detxPAVGA.get()(detxiqs, detxvgas);
+        if(_model.useDTXPA) _detxPANonlin.get()(detxvgas, detxpas);
         else                detxpas[] = detxvgas[];
 
         C[] rxants = _tempbuf[9][0 .. len],
@@ -156,10 +156,10 @@ final class SimulatedSignals
             rxds = _tempbuf[15][0 .. len],
             rxdsants = _tempbuf[16][0 .. len];
 
-        _channelSI(txpas, rxants);
-        _rxLNAVGA(rxants, rxvgas);
-        _channelDesired(detxpas, rxdsants);
-        _rxDESVGA(rxdsants, rxds);
+        _channelSI.get()(txpas, rxants);
+        _rxLNAVGA.get()(rxants, rxvgas);
+        _channelDesired.get()(detxpas, rxdsants);
+        _rxDESVGA.get()(rxdsants, rxds);
 
         if(_nowTrainingMode){
             foreach(i; 0 .. len)
@@ -170,17 +170,17 @@ final class SimulatedSignals
         }
 
         // 自端末の受信機のLNAの歪み
-        if(_model.useSRXLN) _rxLNANonlin(rxvgas, rxlnas);
+        if(_model.useSRXLN) _rxLNANonlin.get()(rxvgas, rxlnas);
         else                rxlnas[] = rxvgas[];
 
         // 自端末の受信機のIQインバランス
-        if(_model.useSRXIQ) _rxIQMixer(rxlnas, rxiqs);
+        if(_model.useSRXIQ) _rxIQMixer.get()(rxlnas, rxiqs);
         else                rxiqs[] = rxlnas[];
 
-        _rxQZVGA(rxiqs, rxqzvgas);
+        _rxQZVGA.get()(rxiqs, rxqzvgas);
 
         // 自端末の受信機のAD変換器の量子化誤差
-        if(_model.useSRXQZ) _rxQZ(rxqzvgas, rxqzs);
+        if(_model.useSRXQZ) _rxQZ.get()(rxqzvgas, rxqzs);
         else                rxqzs[] = rxqzvgas[];
 
         static foreach(i, m; aliasSeqOf!ms) {
@@ -240,23 +240,23 @@ final class SimulatedSignals
         dst._selfInterferenceCoef = this._selfInterferenceCoef;
         dst._noiseCoef = this._noiseCoef;
 
-        if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.dup;
-        if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.dup;
-        if(!this._txPANonlin.isNull)    dst._txPANonlin = this._txPANonlin.dup;
+        if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.get.dup;
+        if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.get.dup;
+        if(!this._txPANonlin.isNull)    dst._txPANonlin = this._txPANonlin.get.dup;
 
-        if(!this._detxIQMixer.isNull)     dst._detxIQMixer = this._detxIQMixer.dup;
-        if(!this._detxPAVGA.isNull)       dst._detxPAVGA = this._detxPAVGA.dup;
-        if(!this._detxPANonlin.isNull)    dst._detxPANonlin = this._detxPANonlin.dup;
+        if(!this._detxIQMixer.isNull)     dst._detxIQMixer = this._detxIQMixer.get.dup;
+        if(!this._detxPAVGA.isNull)       dst._detxPAVGA = this._detxPAVGA.get.dup;
+        if(!this._detxPANonlin.isNull)    dst._detxPANonlin = this._detxPANonlin.get.dup;
         
-        if(!this._channelSI.isNull)         dst._channelSI = this._channelSI.dup;
-        if(!this._channelDesired.isNull)    dst._channelDesired = this._channelDesired.dup;
+        if(!this._channelSI.isNull)         dst._channelSI = this._channelSI.get.dup;
+        if(!this._channelDesired.isNull)    dst._channelDesired = this._channelDesired.get.dup;
 
-        if(!this._rxDESVGA.isNull)      dst._rxDESVGA = this._rxDESVGA.dup;
-        if(!this._rxLNAVGA.isNull)      dst._rxLNAVGA = this._rxLNAVGA.dup;
-        if(!this._rxLNANonlin.isNull)   dst._rxLNANonlin = this._rxLNANonlin.dup;
-        if(!this._rxIQMixer.isNull)     dst._rxIQMixer = this._rxIQMixer.dup;
-        if(!this._rxQZVGA.isNull)       dst._rxQZVGA = this._rxQZVGA.dup;
-        if(!this._rxQZ.isNull)          dst._rxQZ = this._rxQZ.dup;
+        if(!this._rxDESVGA.isNull)      dst._rxDESVGA = this._rxDESVGA.get.dup;
+        if(!this._rxLNAVGA.isNull)      dst._rxLNAVGA = this._rxLNAVGA.get.dup;
+        if(!this._rxLNANonlin.isNull)   dst._rxLNANonlin = this._rxLNANonlin.get.dup;
+        if(!this._rxIQMixer.isNull)     dst._rxIQMixer = this._rxIQMixer.get.dup;
+        if(!this._rxQZVGA.isNull)       dst._rxQZVGA = this._rxQZVGA.get.dup;
+        if(!this._rxQZ.isNull)          dst._rxQZ = this._rxQZ.get.dup;
 
         return dst;
     }
@@ -265,19 +265,19 @@ final class SimulatedSignals
     JSONValue info()
     {
         JSONValue dst = JSONValue(string[string].init);
-        if(!_txIQMixer.isNull)  dst["txIQMixer"] = _txIQMixer.dumpInfoToJSON();
-        if(!_txPAVGA.isNull)    dst["txPAVGA"] = _txPAVGA.dumpInfoToJSON();
-        if(!_txPANonlin.isNull)   dst["txPANonlin"] = _txPANonlin.dumpInfoToJSON();
-        if(!_detxIQMixer.isNull)  dst["detxIQMixer"] = _detxIQMixer.dumpInfoToJSON();
-        if(!_detxPAVGA.isNull)    dst["detxPAVGA"] = _detxPAVGA.dumpInfoToJSON();
-        if(!_detxPANonlin.isNull)   dst["detxPANonlin"] = _detxPANonlin.dumpInfoToJSON();
-        if(!_channelSI.isNull)    dst["channelSI"] = _channelSI.dumpInfoToJSON();
-        if(!_channelDesired.isNull)    dst["channelDesired"] = _channelDesired.dumpInfoToJSON();
-        if(!_rxLNAVGA.isNull)   dst["rxLNAVGA"] = _rxLNAVGA.dumpInfoToJSON();
-        if(!_rxLNANonlin.isNull)  dst["rxLNARapp"] = _rxLNANonlin.dumpInfoToJSON();
-        if(!_rxIQMixer.isNull)  dst["rxIQMixer"] = _rxIQMixer.dumpInfoToJSON();
-        if(!_rxQZVGA.isNull)    dst["rxQZVGA"] = _rxQZVGA.dumpInfoToJSON();
-        if(!_rxQZ.isNull)       dst["rxQZ"] = _rxQZ.dumpInfoToJSON();
+        if(!_txIQMixer.isNull)  dst["txIQMixer"] = _txIQMixer.get.dumpInfoToJSON();
+        if(!_txPAVGA.isNull)    dst["txPAVGA"] = _txPAVGA.get.dumpInfoToJSON();
+        if(!_txPANonlin.isNull)   dst["txPANonlin"] = _txPANonlin.get.dumpInfoToJSON();
+        if(!_detxIQMixer.isNull)  dst["detxIQMixer"] = _detxIQMixer.get.dumpInfoToJSON();
+        if(!_detxPAVGA.isNull)    dst["detxPAVGA"] = _detxPAVGA.get.dumpInfoToJSON();
+        if(!_detxPANonlin.isNull)   dst["detxPANonlin"] = _detxPANonlin.get.dumpInfoToJSON();
+        if(!_channelSI.isNull)    dst["channelSI"] = _channelSI.get.dumpInfoToJSON();
+        if(!_channelDesired.isNull)    dst["channelDesired"] = _channelDesired.get.dumpInfoToJSON();
+        if(!_rxLNAVGA.isNull)   dst["rxLNAVGA"] = _rxLNAVGA.get.dumpInfoToJSON();
+        if(!_rxLNANonlin.isNull)  dst["rxLNARapp"] = _rxLNANonlin.get.dumpInfoToJSON();
+        if(!_rxIQMixer.isNull)  dst["rxIQMixer"] = _rxIQMixer.get.dumpInfoToJSON();
+        if(!_rxQZVGA.isNull)    dst["rxQZVGA"] = _rxQZVGA.get.dumpInfoToJSON();
+        if(!_rxQZ.isNull)       dst["rxQZ"] = _rxQZ.get.dumpInfoToJSON();
         return dst;
     }
 
@@ -324,16 +324,16 @@ final class SimulatedSignals
 
     C[] linearSIChannel() @property
     {
-        C[] channel = _channelSI.coefficients.dup;
+        C[] channel = _channelSI.get.coefficients.dup;
 
         Gain g = Gain.fromPowerGain(1);
-        if(!_txIQMixer.isNull)  g *= _txIQMixer.gain;
-        if(!_txPAVGA.isNull)    g *= _txPAVGA.gain;
-        if(!_txPANonlin.isNull)   g *= _txPANonlin.linearGain;
-        if(!_rxLNAVGA.isNull)   g *= _rxLNAVGA.gain;
-        if(!_rxLNANonlin.isNull)  g *= _rxLNANonlin.linearGain;
-        if(!_rxIQMixer.isNull)  g *= _rxIQMixer.gain;
-        if(!_rxQZVGA.isNull)    g *= _rxQZVGA.gain;
+        if(!_txIQMixer.isNull)  g *= _txIQMixer.get.gain;
+        if(!_txPAVGA.isNull)    g *= _txPAVGA.get.gain;
+        if(!_txPANonlin.isNull)   g *= _txPANonlin.get.linearGain;
+        if(!_rxLNAVGA.isNull)   g *= _rxLNAVGA.get.gain;
+        if(!_rxLNANonlin.isNull)  g *= _rxLNANonlin.get.linearGain;
+        if(!_rxIQMixer.isNull)  g *= _rxIQMixer.get.gain;
+        if(!_rxQZVGA.isNull)    g *= _rxQZVGA.get.gain;
 
         foreach(ref e; channel)
             e *= g.asV;
