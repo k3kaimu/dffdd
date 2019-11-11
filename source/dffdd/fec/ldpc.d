@@ -45,6 +45,8 @@ class LdpcSpDecoder
         const(F)[] remainP0p1 = inputP0P1;
         Bit[] remainDecoded = decoded;
 
+        // DMD does not support AVX version well.
+        version(LDC) {
         while(remainBlock >= 8) {
             sumProductDecodeP0P1SIMD!(float[8])(_sp_ws_avx, _row_mat,  remainP0p1[0 .. _N*8], _maxIter);
 
@@ -55,6 +57,7 @@ class LdpcSpDecoder
             remainP0p1 = remainP0p1[_N*8 .. $];
             remainDecoded = remainDecoded[_K*8 .. $];
             remainBlock -= 8;
+        }
         }
 
         while(remainBlock >= 4) {

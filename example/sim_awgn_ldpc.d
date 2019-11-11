@@ -6,24 +6,8 @@
     }
 }
 +/
-import dffdd.fec.fec;
-import dffdd.fec.ldpc;
-import dffdd.mod.bpsk;
-import dffdd.mod.qpsk;
-import dffdd.mod.qam;
-import dffdd.mod.primitives;
-
-import std.algorithm;
-import std.array;
-import std.complex;
-import std.datetime;
-import std.math;
-import std.parallelism;
-import std.random;
-import std.range;
-import std.stdio;
-
-
+import dffdd;
+import std;
 
 void main()
 {
@@ -58,7 +42,7 @@ void main()
         auto decoder = ldpc.makeDecoder();
 
         Bit[] info = new Bit[K];
-        C[] noise = new C[N / Nc];
+        // C[] noise = new C[N / Nc];
         C[] received = new C[N / Nc];
 
         size_t totalBlocks = 0,
@@ -85,10 +69,9 @@ void main()
 
                 C[] sym;
                 mod.modulate(coded_part, sym);
-                rnd.makeNoise(noise);
 
-                foreach(j; 0 .. sym.length)
-                    sym[j] += noise[j] * noiseAmp;
+                foreach(ref e; sym)
+                    e += complexGaussian(C(0), noiseAmp, rnd);
 
                 float[] p0p1_part;
                 p0p1calc.computeP0P1(sym, p0p1_part, N0);
@@ -122,19 +105,6 @@ void main()
 
     foreach(i, e; ebn0_dBList) {
         writefln!"EbN0 = %s [dB], BER = %s, BLER = %s"(e, berList[i], blerList[i]);
-    }
-}
-
-
-void makeNoise(C)(ref Random rnd, C[] dst)
-{
-    foreach(i; 0 .. dst.length) {
-        immutable 
-            x = uniform01(rnd),
-            y = uniform01(rnd);
-
-        immutable r = sqrt(-log(x));
-        dst[i] = r * std.complex.expi(2*PI*y);
     }
 }
 
