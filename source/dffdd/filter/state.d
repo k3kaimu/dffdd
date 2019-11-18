@@ -6,37 +6,42 @@ import mir.ndslice;
 import carbon.math;
 
 
-struct MultiFIRState(C)
+struct MultiFIRState(C, SliceKind kind = Contiguous)
+if(kind == Contiguous || kind == Canonical)
 {
     alias StateElementType = C;
     alias R = typeof(C.init.re);
 
-    Slice!(C*, 2, Universal) state, weight;
-    // Slice!(Universal, [1], R*) power;
+    Slice!(C*, 2, kind) state, weight;
 
     this(size_t numOfFIR, size_t nTaps)
     {
-        this(numOfFIR, nTaps, 
-            new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR).universal,
-            new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR).universal,
-            /*new R[numOfFIR].sliced(numOfFIR).universal*/);
+        static if(kind == Contiguous)
+        {
+            this(numOfFIR, nTaps, 
+                new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR),
+                new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR));
+        }
+        else
+        {
+            this(numOfFIR, nTaps, 
+                new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR).canonical,
+                new C[nTaps * numOfFIR].sliced(nTaps, numOfFIR).canonical);
+        }
 
         this.state[] = C(0);
         this.weight[] = C(0);
-        // this.power[] = 1;
     }
 
 
-    this(size_t numOfFIR, size_t nTaps, Slice!(C*, 2, Universal) state, Slice!(C*, 2, Universal) weight/*, Slice!(Universal,[1], R*) power*/)
+    this(size_t numOfFIR, size_t nTaps, Slice!(C*, 2, kind) state, Slice!(C*, 2, kind) weight)
     in{
         assert(state.length!0 == nTaps && weight.length!0 == nTaps);
-        // assert(state.length!1 == numOfFIR && weight.length!1 == numOfFIR && power.length == numOfFIR);
     }
     body
     {
         this.state = state;
         this.weight = weight;
-        // this.power = power;
     }
 
 
@@ -53,32 +58,37 @@ struct MultiFIRState(C)
             state[i][] = state[i-1][];
 
         state[0][] = x[];
-        // foreach(i; 0 .. state.length!1)
-            // power[i] = x[i].re ^^2 + x[i].im ^^ 2;
     }
 
 
     C output() @property
     {
+        import dffdd.utils.linalg : dot;
         C dst = C(0);
 
-        foreach(i; 0 .. this.numOfTaps)
-            foreach(j; 0 .. this.numOfFIR)
-                dst += state[i, j] * weight[i, j];
+        static if(kind == Contiguous)
+        {
+            dst += dot(state.flattened, weight.flattened);
+        }
+        else
+        {
+            foreach(i; 0 .. this.numOfTaps)
+                dst += dot(state[i], weight[i]);
+        }
 
         return dst;
     }
 
 
-    MultiFIRState!C subFIRState(size_t i)
+    MultiFIRState!(C, Canonical) subFIRState(size_t i)
     {
-        return MultiFIRState!C(1, this.numOfTaps, state[0 .. $, i .. i+1], weight[0 .. $, i .. i+1]/*, power[i .. i+1]*/);
+        return MultiFIRState!(C, Canonical)(1, this.numOfTaps, state[0 .. $, i .. i+1], weight[0 .. $, i .. i+1]);
     }
 
 
-    MultiFIRState!C subFIRStates(size_t i, size_t j)
+    MultiFIRState!(C, Canonical) subFIRStates(size_t i, size_t j)
     {
-        return MultiFIRState!C(1, this.numOfTaps, state[0 .. $, i .. j], weight[0 .. $, i .. j]/*, power[i .. j]*/);
+        return MultiFIRState!(C, Canonical)(1, this.numOfTaps, state[0 .. $, i .. j], weight[0 .. $, i .. j]);
     }
 }
 

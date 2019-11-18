@@ -25,7 +25,7 @@ struct FIRFilterConverter(C)
 
     this(in C[] coefs)
     {
-        _coefs = coefs;
+        _coefs = coefs.dup;
         _inputs.length = coefs.length;
 
         foreach(ref e; _inputs)
@@ -34,7 +34,12 @@ struct FIRFilterConverter(C)
         immutable size = nextPowOf2(_coefs.length) * 4;
 
         _fftw = makeFFTWObject!Complex(size);
-        _tempbuffer = new C[size];
+
+        // 係数をFFT
+        _fftw.inputs!F[0 .. _coefs.length] = _coefs[];
+        _fftw.inputs!F[_coefs.length .. size] = C(0);
+        _fftw.fft!F();
+        _freqCoefs = _fftw.outputs!F.dup;
     }
 
 
@@ -56,51 +61,37 @@ struct FIRFilterConverter(C)
         assert(input.length == output.length);
     }
     do {
-        import std.stdio : writeln;
-
         immutable clen = _coefs.length;
-        immutable size = _tempbuffer.length;
-
-        // 係数をFFT
-        _fftw.inputs!F[0 .. clen] = _coefs[];
-        _fftw.inputs!F[clen .. size] = C(0);
-        _fftw.fft!F();
-        _tempbuffer[] = _fftw.outputs!F[];
+        immutable size = _freqCoefs.length;
 
         auto dst = output;
 
         while(input.length != 0){
             immutable ss = min(size - (clen-1), input.length);
 
-            // writeln(__LINE__);
             _fftw.inputs!F[0 .. clen-1] = _inputs[1 .. $];
-            // writeln(__LINE__);
             _fftw.inputs!F[clen-1 .. clen-1 + ss] = input[0 .. ss];
-            // writeln(__LINE__);
             _fftw.inputs!F[clen-1 + ss .. $] = C(0);
             _fftw.fft!F();
 
             // 係数と入力信号の積
-            _fftw.inputs!F[] = _tempbuffer[] * _fftw.outputs!F[];
+            _fftw.inputs!F[] = _freqCoefs[] * _fftw.outputs!F[];
             _fftw.ifft!F();
 
-            // writeln(__LINE__);
             dst[0 .. ss] = _fftw.outputs!F[clen-1 .. clen-1 + ss];
             
             // 今回使用した入力信号の量がタップ数より多い場合
             if(ss >= clen){
                 // 後ろからclen分だけコピー
-                // writeln(__LINE__);
                 _inputs[] = input[ss - clen .. ss];
             }else{
                 // ss分だけ_inputを進める
                 foreach(i; 0 .. clen-ss)
                     _inputs[i] = _inputs[i+ss];
-                // writeln(__LINE__);
+
                 _inputs[$-ss .. $] = input[0 .. ss];
             }
 
-            // writeln(__LINE__);
             input = input[ss .. $];
             dst = dst[ss .. $];
         }
@@ -110,10 +101,10 @@ struct FIRFilterConverter(C)
     FIRFilterConverter dup() const @property
     {
         typeof(return) dst;
-        dst._coefs = this._coefs;
+        dst._coefs = this._coefs.dup;
         dst._inputs = this._inputs.dup;
-        dst._fftw = makeFFTWObject!Complex(this._tempbuffer.length);
-        dst._tempbuffer = this._tempbuffer.dup;
+        dst._fftw = makeFFTWObject!Complex(this._freqCoefs.length);
+        dst._freqCoefs = this._freqCoefs.dup;
 
         return dst;
     }
@@ -134,10 +125,10 @@ struct FIRFilterConverter(C)
 
 
   private:
-    const(C)[] _coefs;
+    immutable(C)[] _coefs;
     C[] _inputs;
     FFTWObject!Complex _fftw;
-    C[] _tempbuffer;
+    immutable(C)[] _freqCoefs;
 }
 
 unittest

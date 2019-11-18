@@ -183,7 +183,7 @@ body{
 }
 
 
-E dot(E)(Slice!(Contiguous, [1], E*) x, Slice!(Contiguous, [1], E*) y)
+E dot(E)(Slice!(E*, 1, Contiguous) x, Slice!(E*, 1, Contiguous) y)
 in{
     assert(x.length == y.length);
 }
@@ -194,7 +194,7 @@ body{
     return cblas_ddot(x.length, x.ptr, x._stride!0, y.ptr, y._stride!0);
   else static if(is(typeof(E.init.re) == float))
   {
-    auto ret = cblas_cdotu(x.length, x.ptr, cast(_cfloat)x._stride!0, y.ptr, cast(_cfloat)y._stride!0);
+    auto ret = cblas_cdotu(cast(int)x.length, cast(cfloat*)x.ptr, cast(int)x._stride!0, cast(cfloat*)y.ptr, cast(int)y._stride!0);
 
     static if(is(E == cfloat))
         return ret.re + ret.im*1.0fi;
@@ -203,9 +203,9 @@ body{
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    auto ret = cblas_cdotu(x.length, x.ptr, cast(_cdouble)x._stride!0, y.ptr, cast(_cdouble)y._stride!0);
+    auto ret = cblas_zdotu(cast(int)x.length, cast(cdouble*)x.ptr, cast(int)x._stride!0, cast(cdouble*)y.ptr, cast(int)y._stride!0);
 
-    static if(is(E == cfloat))
+    static if(is(E == cdouble))
         return ret.re + ret.im*1.0i;
     else
         return E(ret.re, ret.im);
