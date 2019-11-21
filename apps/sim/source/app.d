@@ -74,19 +74,15 @@ struct ModelSeed
     Gain rxIRR = 25.dB;
 
     /* PA */
-    // Voltage txPower = 23.dBm;
-    // Voltage paIIP3 = 20.dBm;
-    // Gain paGain = 27.dB;
-    enum real txBackoff_dB = 7;
-    enum real txPower_dBm = 23;
-    enum real paGain_dB = 30;
-    Voltage txPower = txPower_dBm.dBm;
-    Voltage paIIP3 = (txPower_dBm - paGain_dB + 6 + txBackoff_dB).dBm;
-    Gain paGain = paGain_dB.dB;
+    Voltage txPower = 23.dBm;       // 送信電力
+    Voltage paVsat = 30.dBm;        // 出力飽和電圧
+    Gain paGain = 30.dB;
     double paSmoothFactor = 3;
 
     /* LNA */
     double lnaSmoothFactor = 3;
+    Gain lnaGain = 20.dB;         // LNA利得 
+    Voltage lnaVsatIn = (-6).dBm; // 入力飽和電圧
 
     /* Other */
     Nullable!Gain SNR;
@@ -145,7 +141,7 @@ void mainJob()
     }
 
 
-    enum bool isProgressChecker = false;
+    enum bool isProgressChecker = true;
     enum bool isDumpedFileCheck = true;
 
 
@@ -415,9 +411,16 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         /* PAの設定 */
         {
             model.pa.TX_POWER = modelSeed.txPower;
-            model.pa.IIP3 = modelSeed.paIIP3;
             model.pa.GAIN = modelSeed.paGain;
+            model.pa.Vsat = modelSeed.paVsat;
             model.pa.smoothFactor = modelSeed.paSmoothFactor;
+        }
+
+        /* LNAの設定 */
+        {
+            model.lna.GAIN = modelSeed.lnaGain;
+            model.lna.Vsat = modelSeed.lnaVsatIn * modelSeed.lnaGain;   // 入力飽和電圧から出力飽和電圧への変換
+            model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
         }
 
         /* TX IQ Mixer の設定 */
@@ -438,11 +441,11 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             model.channelSI.taps = 64;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
-            Complex!real[] coefs;
+            Complex!double[] coefs;
             foreach(i; 0 .. model.channelSI.taps){
                 // tapsのタップ数で40dB減衰
                 auto db = -1 * (40.0 / model.channelSI.taps) * i;
-                coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
+                coefs ~= cast(Complex!double)(gGen.front * 10.0 ^^ (db/20));
                 gGen.popFront();
             }
 
@@ -453,11 +456,11 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             model.channelDesired.taps = modelSeed.numOfTapsOfDesiredChannel;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
-            Complex!real[] coefs;
+            Complex!double[] coefs;
             foreach(i; 0 .. model.channelDesired.taps) {
                 // tapsのタップ数で40dB減衰
                 auto db = -1 * (40 / (model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling)) * i;
-                coefs ~= cast(Complex!real)(gGen.front * 10.0L ^^ (db/20));
+                coefs ~= cast(Complex!double)(gGen.front * 10.0 ^^ (db/20));
                 gGen.popFront();
             }
 

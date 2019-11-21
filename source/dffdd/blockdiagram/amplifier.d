@@ -8,6 +8,7 @@ import std.json;
 
 import dffdd.utils.unit;
 import dffdd.utils.json;
+import dffdd.math.math;
 
 
 struct PowerAmplifier(R)
@@ -72,34 +73,64 @@ struct PowerAmplifier(R)
 
 
 /**
-o: input saturation value
-s: smooth factor
-u: |x[n]|
-g(u) = (G*u)/(1+(u/o)^^(2s))^^(1/(2*s))
+Rapp model
 */
 struct RappModelConverter(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
+    alias F = typeof(C.init.re);
 
-    this(Gain gain, real smoothFactor, real saturation)
+    /**
+    gain: 小信号ゲイン
+    smoothFactor: スムースネスファクタ
+    outputSatV: 出力飽和電圧（電力）
+    */
+    this(F smoothFactor, Gain gain, Voltage outputSatV)
     {
         _g = gain.asV;
         _s = smoothFactor;
-        _o = saturation;
+        _o = outputSatV.volt;
+
+        if(_s == cast(int)_s) {
+            _bInteger = true;
+            _int_s = cast(int)_s;
+        }
     }
 
 
     void opCall(InputElementType input, ref OutputElementType output)
     {
-        auto r = std.complex.abs(input),
+        auto r = fast_abs(input),
              u = input / r;         // unit vector
 
         // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
         if(r <= 1E-6){
-            output = input;
+            output = input * _g;
         }else{
-            r = (r * _g) / (( 1 + (r/_o)^^(2*_s) )^^(1/(2*_s)));
+            r *= _g;
+
+            F p;    // (r/_o)^^(2*s)
+            if(_bInteger) {
+                p = fast_powi!F(r / _o, 2 * _int_s);
+            } else {
+                p = fast_pow!F(r / _o, 2 * _s);
+            }
+
+            F q;    // (1 + p)^^(1/(2*s))
+            if(_bInteger && _int_s == 1) {
+                q = fast_sqrt!F(1 + p);
+            } else if(_bInteger && _int_s == 2) {
+                q = fast_sqrt!F(fast_sqrt!F(1 + p));
+            } else if(_bInteger && _int_s == 3) {
+                q = fast_cbrt!F(fast_sqrt!F(1 + p));
+            } else if(_bInteger && _int_s == 4) {
+                q = fast_sqrt!F(fast_sqrt!F(fast_sqrt!F(1 + p)));
+            } else {
+                q = fast_pow!F(1 + p, 1.0L / (2 * _s));
+            }
+
+            r /= q;
             output = r * u;
         }
     }
@@ -135,54 +166,69 @@ struct RappModelConverter(C)
         return JSONValue([
             "gain":         _g,
             "smoothness":   _s,
-            "saturation":   _o
+            "outputSaturationVoltage":   _o
         ]);
     }
 
 
   private:
-    real _g, _s, _o;
+    F _g, _s, _o;
+    bool _bInteger;
+    int _int_s;
 }
 
 
 struct RappModel
 {
     static
-    auto makeBlock(R)(R range, Gain gain, real smoothFactor, real saturation)
+    auto makeBlock(R)(R range, real smoothFactor, Gain gain, Voltage outputSatV)
     if(isInputRange!R)
     {
         import dffdd.blockdiagram.utils : connectTo;
         alias E = Unqual!(ElementType!R);
-        return range.connectTo!(RappModelConverter!E)(gain, smoothFactor, saturation);
+        return range.connectTo!(RappModelConverter!E)(smoothFactor, gain, outputSatV);
     }
 
 
     static
-    auto makeBlock(C)(BufferedOutputTerminal!C src, size_t len, Gain gain, real smoothFactor, real saturation)
+    auto makeBlock(C)(BufferedOutputTerminal!C src, size_t len, real smoothFactor, Gain gain, Voltage outputSatV)
     {
-        auto conv = RappModelConverter!C(gain, smoothFactor, saturation);
+        auto conv = RappModelConverter!C(smoothFactor, gain, outputSatV);
         return new ConverterBlock!RappModelConverter(len, src, conv);
     }
 }
 
 unittest
 {
-    auto r = RappModel.makeBlock(Complex!float[].init, 1.0.dB, 1, 1);
+    auto r = RappModel.makeBlock(Complex!float[].init, 1, 1.0.dB, 30.dBm);
 }
 
 
+
 /**
-o: input saturation value
+Salehモデルを構築します．
+Salehモデルは，4つのパラメータAa, Ba, Ap, Bpで以下のように表されます．
+
+f(x) = Aa x / (1 + Ba |x|^2) * expi ( Ap |x|^2 / (1 + Bp |x|^2) )
+
+この関数の振幅は，|x|^2 = 1/Ba で最大値である f(1 / sqrt{Ba}) = Aa/(2 sqrt(Ba)) になります．
+また，小信号ゲインは Aa です．
+
+この実装では，この振幅の最大値と小信号ゲインをユーザーが変更可能にしています．
 */
 struct SalehModelConverter(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
 
-    this(Gain gain, real saturation)
+    /**
+    gain: 小信号ゲイン
+    osatV: 出力飽和電圧
+    */
+    this(Gain gain, Voltage osatV)
     {
         _g = gain.asV;
-        _o = saturation * _g;
+        _o = osatV.volt;
     }
 
 
@@ -190,20 +236,14 @@ struct SalehModelConverter(C)
     {
         input *= _g;
 
-        auto r = std.complex.abs(input),
-             u = input / r;         // unit vector
+        immutable r = std.complex.abs(input),
+                  u = input / r;    // unit vector
 
         // rが小さすぎるときに，単位ベクトルが発散するのを防ぐ
-        if(r <= 1E-6){
-            output = input;
-        }else{
-            immutable aa = 2.1587,
-                ba = 1.1517,
-                ap = 4.033,
-                bp = 9.1040;
-
-            r /= _o;
-            output = aa * r / (1+ba*r^^2) * std.complex.expi(ap*r^^2/(1+bp*r^^2)) * input/r;
+        if(r <= 1E-6) {
+            output = input * _g;
+        } else {
+            output = _o * normalized_saleh(_g * r / _o) * u;
         }
     }
 
@@ -244,6 +284,21 @@ struct SalehModelConverter(C)
 
   private:
     real _g, _o;
+
+
+    /**
+    飽和電圧1，小信号ゲイン1のsalehモデル
+    */
+    C normalized_saleh(real r)
+    {
+        immutable aa = 2.1587,
+                  ba = aa^^2 / 4,   // = 1.16402521
+                  ap = 4.033,
+                  bp = 9.1040;
+
+        r /= aa;
+        return C(aa * r / (1+ba*r^^2) * std.complex.expi(ap*r^^2/(1+bp*r^^2)));
+    }
 }
 
 
@@ -255,22 +310,22 @@ struct SoftLimitConverter(C)
     alias InputElementType = C;
     alias OutputElementType = C;
 
-    this(Gain gain, real saturation)
+    this(Gain gain, Voltage osatV)
     {
         _g = gain.asV;
-        _o = saturation;
+        _o = osatV.volt;
     }
 
 
     void opCall(InputElementType input, ref OutputElementType output)
     {
-        auto r = std.complex.abs(input),
-             u = input / r;         // unit vector
+        immutable r = std.complex.abs(input),
+                  u = input / r;    // unit vector
 
-        if(r < _o){
+        if(_g * r < _o) {
             output = _g * input;
-        }else{
-            output = _g * _o * u;
+        } else {
+            output = _o * u;
         }
     }
 
@@ -533,4 +588,93 @@ struct PowerControlAmplifier
 unittest
 {
     auto pc = PowerControlAmplifier.makeBlock(repeat(Complex!real(0, 0)), 10.dBm);
+}
+
+
+/**
+与えられたAM/AM特性を線形補間する増幅器モデル
+*/
+struct LinearInterpolatedAMAMConverter(F)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    /**
+    入力信号の平均電力が1のときに最適であるとして設計されたAM/AM特性カーブ（xs, fs）を線形補間する増幅器を作成します．
+    また，このカーブに基づいて，小信号ゲインと飽和電圧をユーザーが変更可能にしています．
+    */
+    this(immutable(F)[] xs, immutable(F)[] fs, Gain gain, Voltage osatV)
+    {
+        _g = gain.asV;
+        _o = osatV.volt;
+        _xs = xs;
+        _fs = fs;
+        _interp = _makeInterpolationObject(xs, fs);
+        _x0 = xs[0];
+        _f0 = fs[0];
+        _xN = xs[$-1];
+        _fN = fs[$-1];
+        _maxf = fs.maxElement;
+
+        // 正規化前の小信号ゲインの計算
+        if(0.01 < _x0) {
+            _g0 = _f0 / _x0;
+        } else {
+            _g0 = _interp(0.01) / _x0;
+        }
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        F inputAmp = std.complex.abs(input);
+        if(inputAmp < _x0) {
+            output = input * (_f0 / _x0);
+        } else {
+            F outputAmp = _interp(inputAmp);
+            output = outputAmp * (input / inputAmp);
+        }
+    }
+
+
+    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    in{
+        assert(input.length == output.length);
+    }
+    do {
+        foreach(i, e; input)
+            this.opCall(e, output[i]);
+    }
+
+
+  private:
+    alias InterpT = typeof(ReturnType!_makeInterpolationObject);
+    InterpT _interp;
+    immutable(F)[] _xs, _fs;
+    immutable F _x0, _f0, _xN, _fN, _g0;
+    immutable F _maxf;
+
+    static
+    auto _makeInterpolationObject(in F[] xs, in F[] ys)
+    {
+        return mir.interpolate.linear!F(xs, fs);
+    }
+
+
+    /**
+    小信号ゲインを 1 ，出力飽和電圧を 1 にしたAM/AM特性
+    */
+    real normalized_AMAM(real r)
+    {
+        immutable r_normalized = r * _maxf / _g0;
+
+        if(r_normalized <= _x0) {
+            return r;
+        } else if(r_normalized >= _xN) {
+            return _fN / _maxf;
+        } else {
+            return _interp(r_normalized) / _maxf;
+        }
+    }
 }

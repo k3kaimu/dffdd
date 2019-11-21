@@ -5,6 +5,123 @@ import std.traits;
 
 
 /**
+compute x^^y
+*/
+F libm_pow(F)(F x, F y) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : powf, pow, powl;
+
+    static if(is(F == float))
+    {
+        return powf(x, y);
+    }
+    else static if(is(F == double))
+    {
+        return pow(x, y);
+    }
+    else
+    {
+        return powl(x, y);
+    }
+}
+
+
+/**
+compute sqrt(x)
+*/
+F libm_sqrt(F)(F x) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : sqrtf, sqrt, sqrtl;
+
+    static if(is(F == float))
+    {
+        return sqrtf(x);
+    }
+    else static if(is(F == double))
+    {
+        return sqrt(x);
+    }
+    else
+    {
+        return sqrtl(x);
+    }
+}
+
+
+/**
+compute cbrt(x)
+*/
+F libm_cbrt(F)(F x) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : cbrtf, cbrt, cbrtl;
+
+    static if(is(F == float))
+    {
+        return cbrtf(x);
+    }
+    else static if(is(F == double))
+    {
+        return cbrt(x);
+    }
+    else
+    {
+        return cbrtl(x);
+    }
+}
+
+
+version(LDC)
+{
+    pragma(LDC_intrinsic, "llvm.pow.f#")
+    F llvm_pow(F)(F x, F y) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.powi.f#")
+    F llvm_powi(F)(F x, int y) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.sqrt.f#")
+    F llvm_sqrt(F)(F x) pure nothrow @nogc;
+
+
+    alias fast_pow = llvm_pow;
+    alias fast_powi = llvm_powi;
+    alias fast_sqrt = llvm_sqrt;
+    alias fast_cbrt = libm_cbrt;
+}
+else
+{
+    alias fast_pow = libm_pow;
+    alias fast_sqrt = libm_sqrt;
+    alias fast_cbrt = libm_cbrt;
+
+    F fast_powi(F)(F x, int y) pure nothrow @nogc
+    {
+        return x^^y;
+    }
+}
+
+
+/**
+compute |x|
+*/
+auto fast_abs(C)(C x)
+{
+    static if(is(typeof(C.init.re)))
+    {
+        // for complex number
+        alias F = typeof(C.init.re);
+        F p = x.re*x.re + x.im*x.im;
+        return fast_sqrt!F(p);
+    }
+    else
+    {
+        // for real number
+        return cast(C)std.math.abs(x);
+    }
+}
+
+
+/**
 0次の変形ベッセル関数I_0(x)を計算します．
 */
 F besselI0(F)(F x) pure nothrow @safe @nogc

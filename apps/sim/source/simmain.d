@@ -30,7 +30,7 @@ import snippet;
 import sigsim;
 
 
-real qfunc(real x) { return 0.5 * erfc(x / SQRT2); }
+double qfunc(double x) { return 0.5 * erfc(x / SQRT2); }
 
 
 auto psdSaveTo(R)(R r, string filename, string resultDir, size_t dropSize, Model model, bool* endFlag = null)
@@ -463,8 +463,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         auto inbandSICValue = makeInBandCancellationProbe!(Complex!float)(null, "inband_cancellation_value.csv", resultDir, 0, model, endFlags[3]);
         auto syncSpecAnalyzer = makeSyncSpectrumAnalyzer!(Complex!float, 2, ["Y", "D"])("psd_sync.csv", resultDir, model, endFlags[4]);
 
-        real sumRemainPower = 0;
-        real sumSI = 0;
+        double sumRemainPower = 0;
+        double sumSI = 0;
         StopWatch sw;
         size_t cancCNT;
         foreach(blockIdxo; 0 .. 1024)
@@ -498,19 +498,19 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
 
         sumRemainPower /= cancCNT * model.blockSize;
         sumSI /= cancCNT * model.blockSize;
-        infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(real)sw.peek.total!"usecs") / 1_000_000);
+        infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(double)sw.peek.total!"usecs") / 1_000_000);
         // infoResult["cancellation_dB"] = sicv;
 
         // 雑音電力を測る
         signals.ignoreSI = true;
         scope(exit) signals.ignoreSI = false;
-        real sumNoisePower = 0;
+        double sumNoisePower = 0;
         foreach(i; 0 .. cancCNT) {
             signals.fillBuffer!(["received"])(refrs);
             sumNoisePower += refrs.map!(a => a.sqAbs).sum();
         }
         sumNoisePower /= cancCNT * model.blockSize;
-        real sumRemainSI = sumRemainPower - sumNoisePower;
+        double sumRemainSI = sumRemainPower - sumNoisePower;
         if(sumRemainSI < 0) sumRemainSI = 0;
         Gain RINR = Gain.fromPowerGain(sumRemainSI / sumNoisePower),
              INR = Gain.fromPowerGain(sumSI / sumNoisePower),

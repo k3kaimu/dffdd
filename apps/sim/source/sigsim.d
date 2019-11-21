@@ -27,7 +27,7 @@ import simmain;
 import snippet;
 
 
-alias Signal = ForwardRange!(Complex!real);
+alias Signal = ForwardRange!(Complex!double);
 
 
 Signal asSignal(R)(R r)
@@ -39,7 +39,7 @@ if(isForwardRange!R)
 
 final class SimulatedSignals
 {
-    alias C = Complex!real;
+    alias C = Complex!double;
 
 
     this()
@@ -382,7 +382,7 @@ final class SimulatedSignals
 
 SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 {
-    alias C = Complex!real;
+    alias C = Complex!double;
 
     immutable doOutput = resultDir !is null;
     immutable bool* alwaysFalsePointer = new bool(false);
@@ -394,17 +394,17 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst.desiredBaseband = desiredRandomBits(model)
                         .connectToModulator(modOFDM(model), alwaysFalsePointer, model)
-                        .map!"a*1.0L"
+                        .map!(a => cast(C)(a*1.0))
                         .connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 1e-2)
                         .asSignal;
 
     dst.txBaseband = siRandomBits(model)
                         .connectToModulator(modOFDM(model), dst._useSWPOFDM, model)
-                        .map!"a*1.0L"
+                        .map!(a => cast(C)(a*1.0))
                         .connectTo!(PowerControlAmplifierConverter!C)(30.dBm, 1e-2)
                         .asSignal;
 
-    dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).toWrappedRange;
+    dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).map!(a => cast(C)(a*1.0)).toWrappedRange;
 
     if(model.useSTXIQ)
         dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
@@ -414,14 +414,14 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._txPANonlin = RappModelConverter!C(model.pa.GAIN, model.pa.smoothFactor, model.pa.IIP3.volt / 2);
+        dst._txPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat);
     }else{
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
 
     if(model.useDTXPA) {
         dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._detxPANonlin = RappModelConverter!C(model.pa.GAIN, model.pa.smoothFactor, model.pa.IIP3.volt / 2);
+        dst._detxPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat);
     }else{
         dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
@@ -432,7 +432,7 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     Voltage receivedSIPower = model.thermalNoise.power(model) * model.lna.NF * model.INR;
     if(model.useSRXLN){
         dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
-        dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, (model.lna.IIP3 / 36.dBm).asV);
+        dst._rxLNANonlin = RappModelConverter!C(model.lna.smoothFactor, model.lna.GAIN, model.lna.Vsat);
         //  dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
         // dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
     }else{

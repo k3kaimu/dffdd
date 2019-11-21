@@ -65,8 +65,8 @@ struct Model
     size_t numOfFilterTrainingSymbols = 100;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
-    real carrFreq = 2.45e9;
-    real samplingFreq = 20e6 * 8;
+    double carrFreq = 2.45e9;
+    double samplingFreq = 20e6 * 8;
     Gain SNR = 20.dB;
     Gain INR = 60.dB;
     bool withSIC = true;
@@ -132,7 +132,7 @@ struct Model
 
     struct ThermalNoise
     {
-        real temperature = 300;
+        double temperature = 300;
         Voltage power(Model model)
         {
             return Voltage(sqrt(noisePower(model.samplingFreq, model.thermalNoise.temperature)));
@@ -159,53 +159,41 @@ struct Model
     struct TXIQMixer
     {
         /* f(x) = x + b*x としたときの b */
-        Complex!real imbCoef;
+        Complex!double imbCoef;
     }
     TXIQMixer txIQMixer;
 
 
     struct RXIQMixer
     {
-        Complex!real imbCoef;
+        Complex!double imbCoef;
     }
     RXIQMixer rxIQMixer;
 
 
     struct PhaseNoise
     {
-        real paramC = 1.65e-19;
+        double paramC = 1.65e-19;
     }
     PhaseNoise phaseNoise;
 
 
     struct PA 
     {
-        // // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
-        // // MAX2616
-        // Gain GAIN = 18.dB;
-        // Voltage Vsat = (IIP3.dBm - 36).dB.gain.Voltage;
-        // Voltage IIP3 = (37.2 - 18.4).dBm;
-        // Voltage TX_POWER = 15.dBm;
-        // https://datasheets.maximintegrated.com/en/ds/MAX2612-MAX2616.pdf
-        // MAX2616
         Gain GAIN = 28.5.dB;
-        Voltage Vsat = Voltage(21.8.dBm.volt / 2);
-        Voltage IIP3 = 21.8.dBm;
+        Voltage Vsat = 21.8.dBm;        // 出力飽和電圧
         Voltage TX_POWER = 15.dBm;
-        Gain MAX_VAR_IIP3 = 0.dB;       // IIP3の最大変位，dB単位で一様分布
-        Gain MAX_VAR_TXP = 0.dB;        // 送信電力の最大変異，dB単位で一様分布
-        Gain MAX_VAR_GAIN = 0.dB;       // 利得の最大変異，dB単位で一様分布
         double smoothFactor = 3;
     }
     PA pa;
 
     struct LNA
     {
-        Gain GAIN = 20.dB;      // 20dB
-        Gain NF = 4.dB;         // 4dB
-        uint noiseSeedOffset = 123;
-        Gain DR = 70.dB;        // Dynamic Range
-        Voltage IIP3 = (0).dBm;  // MAX2695 https://datasheets.maximintegrated.com/en/ds/MAX2692-MAX2695.pdf
+        Gain GAIN = 20.dB;              // 20dB
+        Gain NF = 4.dB;                 // 4dB
+        // uint noiseSeedOffset = 123;
+        // Gain DR = 70.dB;             // Dynamic Range
+        Voltage Vsat = (20 - 6).dBm;    // 出力飽和電圧
         double smoothFactor = 3;
     }
     LNA lna;
@@ -234,7 +222,7 @@ struct Model
     //SIChannel channel;
     struct Channel
     {
-        Complex!real[] impulseResponse;
+        Complex!double[] impulseResponse;
         size_t taps;
     }
     Channel channelSI, channelDesired;
@@ -250,15 +238,15 @@ struct Model
 
     struct NLMSAdapter 
     {
-        real mu;
+        double mu;
     }
     NLMSAdapter nlmsAdapter;
 
 
     struct RLSAdapter
     {
-        real delta;
-        real lambda;
+        double delta;
+        double lambda;
     }
     RLSAdapter rlsAdapter;
 

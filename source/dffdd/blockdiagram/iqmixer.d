@@ -21,15 +21,16 @@ struct IQImbalanceConverter(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
+    alias F = typeof(C.init.re);
 
 
     this(Gain gain, Gain irr, real theta)
     {
-        this(gain, (1.0L/irr.asV) * std.complex.expi(theta));
+        this(gain, cast(C)(1.0L / irr.asV  * std.complex.expi(theta)));
     }
 
 
-    this(Gain gain, Complex!real coef)
+    this(Gain gain, C coef)
     {
         _g1V = gain.asV;
         _g2V = gain.asV * coef;
@@ -80,7 +81,7 @@ struct IQImbalanceConverter(C)
 
 
   private:
-    real _g1V;      // 電圧系での真値のゲイン
+    F _g1V;      // 電圧系での真値のゲイン
     C _g2V;         // 電圧計での真値のImageゲイン
 }
 
