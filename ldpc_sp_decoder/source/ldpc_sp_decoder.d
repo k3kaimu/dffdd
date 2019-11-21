@@ -174,6 +174,45 @@ void sumProductDecodeP0P1SIMD(V, F)(ref SpDecoderWorkspace!V ws, in uint[][] _ro
 
     edge_mat[] = 1;
 
+
+    // updated_p0p1に基づいて復号する
+    void tryDecode()
+    {
+        foreach(i; 0 .. P){
+            if(success[i]) continue;
+
+            static if(P == 1) 
+            {
+                foreach(j; 0 .. _N) {
+                    if(updated_p0p1[j] > 1)
+                        decoded_cw[j] = 0;
+                    else
+                        decoded_cw[j] = 1;
+                }
+            }
+            else
+            {
+                foreach(j; 0 .. _N) {
+                    if(updated_p0p1[j][i] > 1)
+                        decoded_cw[i*_N + j] = 0;
+                    else
+                        decoded_cw[i*_N + j] = 1;
+                }
+            }
+
+
+            if(checkCodeword(_row_mat, decoded_cw[i*_N .. (i+1)*_N]))
+                success[i] = true;
+        }
+    }
+
+
+    if(max_iter == 0) {
+        tryDecode();
+        return;
+    }
+
+
     foreach(iter; 0 .. max_iter) 
     {
         {
@@ -216,32 +255,7 @@ void sumProductDecodeP0P1SIMD(V, F)(ref SpDecoderWorkspace!V ws, in uint[][] _ro
             updated_p0p1[i] = vecminmax(updated_p0p1[i], 0, 2.0^^25);
         }
 
-        foreach(i; 0 .. P){
-            if(success[i]) continue;
-
-            static if(P == 1) 
-            {
-                foreach(j; 0 .. _N) {
-                    if(updated_p0p1[j] > 1)
-                        decoded_cw[j] = 0;
-                    else
-                        decoded_cw[j] = 1;
-                }
-            }
-            else
-            {
-                foreach(j; 0 .. _N) {
-                    if(updated_p0p1[j][i] > 1)
-                        decoded_cw[i*_N + j] = 0;
-                    else
-                        decoded_cw[i*_N + j] = 1;
-                }
-            }
-
-
-            if(checkCodeword(_row_mat, decoded_cw[i*_N .. (i+1)*_N]))
-                success[i] = true;
-        }
+        tryDecode();
 
         bool checkAllSuccess = true;
         foreach(i; 0 .. P)

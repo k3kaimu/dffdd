@@ -3,7 +3,8 @@
     "name": "sim_awgn_ldpc",
     "dependencies": {
         "dffdd": { "path": ".." }
-    }
+    },
+    "dflags-ldc": ["-enable-cross-module-inlining", "-mcpu=native"]
 }
 +/
 import dffdd;
@@ -106,6 +107,10 @@ void main()
     foreach(i, e; ebn0_dBList) {
         writefln!"EbN0 = %s [dB], BER = %s, BLER = %s"(e, berList[i], blerList[i]);
     }
+
+    writefln!"EbN0: %s"(ebn0_dBList);
+    writefln!"SNR:  %s"(ebn0_dBList.map!(a => a + 10*log10(1.0 * K / N * Nc)));
+    writefln!"EER:  %s"(berList);
 }
 
 

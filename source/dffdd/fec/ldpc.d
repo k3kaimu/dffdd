@@ -282,9 +282,9 @@ if(isFloatingPoint!F)
     }
 
 
-    LdpcSpDecoder makeDecoder(uint maxIter = 0) const
+    LdpcSpDecoder makeDecoder(int maxIter = -1) const
     {
-        if(maxIter == 0)
+        if(maxIter == -1)
             maxIter = this._maxIter;
 
         return new LdpcSpDecoder(this, maxIter);
