@@ -1,5 +1,6 @@
 module dffdd.blockdiagram.amplifier;
 
+import std.algorithm;
 import std.traits;
 import std.range;
 import std.math;
@@ -594,10 +595,11 @@ unittest
 /**
 与えられたAM/AM特性を線形補間する増幅器モデル
 */
-struct LinearInterpolatedAMAMConverter(F)
+struct LinearInterpolatedAMAMConverter(C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;
+    alias F = typeof(C.init.re);
 
 
     /**
@@ -618,7 +620,7 @@ struct LinearInterpolatedAMAMConverter(F)
         _maxf = fs.maxElement;
 
         // 正規化前の小信号ゲインの計算
-        if(0.01 < _x0) {
+        if(0.01 <= _x0) {
             _g0 = _f0 / _x0;
         } else {
             _g0 = _interp(0.01) / _x0;
@@ -629,11 +631,11 @@ struct LinearInterpolatedAMAMConverter(F)
     void opCall(InputElementType input, ref OutputElementType output)
     {
         F inputAmp = std.complex.abs(input);
-        if(inputAmp < _x0) {
-            output = input * (_f0 / _x0);
+        C u = input / inputAmp;
+        if(u.re.isNaN || u.im.isNaN) {
+            output = input * _g;
         } else {
-            F outputAmp = _interp(inputAmp);
-            output = outputAmp * (input / inputAmp);
+            output = normalized_AMAM(inputAmp * _g / _o) * _o * (input / inputAmp);
         }
     }
 
@@ -649,16 +651,19 @@ struct LinearInterpolatedAMAMConverter(F)
 
 
   private:
-    alias InterpT = typeof(ReturnType!_makeInterpolationObject);
+    alias InterpT = ReturnType!_makeInterpolationObject;
     InterpT _interp;
+    F _g, _o;
     immutable(F)[] _xs, _fs;
     immutable F _x0, _f0, _xN, _fN, _g0;
     immutable F _maxf;
 
     static
-    auto _makeInterpolationObject(in F[] xs, in F[] ys)
+    auto _makeInterpolationObject(immutable(F)[] xs, immutable(F)[] fs)
     {
-        return mir.interpolate.linear!F(xs, fs);
+        import mir.interpolate.linear : linear;
+        import mir.ndslice;
+        return linear!F(xs.sliced, fs.sliced);
     }
 
 
@@ -678,3 +683,41 @@ struct LinearInterpolatedAMAMConverter(F)
         }
     }
 }
+
+unittest
+{
+    alias F = double;
+    alias C = Complex!double;
+
+    immutable(F)[] xs = [0.10, 0.5, 1.0];
+    immutable(F)[] fs = [0.04, 0.2, 0.8];
+
+    Complex!F y;
+
+    // f(x) = 0.25 x        when x = [0, 4)
+    // f(x) = 0.75 x - 2    when x = [4, 8)
+    // f(x) = 4             when x = [8, inf)
+    auto interp = LinearInterpolatedAMAMConverter!C(xs, fs, Gain.fromVoltageGain(0.25), Voltage(4));
+
+    interp(C(0), y);
+    assert(y.re.approxEqual(0));
+
+    interp(C(2), y);
+    assert(y.re.approxEqual(0.5));
+
+    interp(C(4), y);
+    assert(y.re.approxEqual(1));
+    
+    interp(C(6), y);
+    assert(y.re.approxEqual(3*1.5 - 2));
+
+    interp(C(8), y);
+    assert(y.re.approxEqual(4));
+
+    interp(C(9), y);
+    assert(y.re.approxEqual(4));
+
+    interp(C(10), y);
+    assert(y.re.approxEqual(4));
+}
+
