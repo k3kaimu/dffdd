@@ -379,11 +379,25 @@ enum bool isOneElementConverter(TImpl) = is(typeof((TImpl impl){
 }));
 
 
-enum isDuplicableConverter(Conv) 
+enum isDuplicatableConverter(Conv) 
     = (isConverter!Conv || isOneElementConverter!Conv) 
         && is(typeof((const Conv conv) {
     Conv other = conv.dup;
 }));
+
+
+interface IConverter(T, U, Flag!"isDuplicatable" isDup = No.isDuplicatable)
+{
+    alias InputElementType = T;
+    alias OutputElementType = U;
+
+    void opCall(in T[], U[]);
+
+    static if(isDup)
+    {
+        IConverter!(T, U, isDup) dup() const;
+    }
+}
 
 
 
@@ -564,7 +578,7 @@ if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
   }
 
 
-  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  static if(isForwardRange!R && isDuplicatableConverter!TImpl)
   {
     typeof(this) save() @property
     {

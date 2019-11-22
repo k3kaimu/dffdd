@@ -12,6 +12,13 @@ import dffdd.utils.json;
 import dffdd.math.math;
 
 
+interface IAmplifier(C) : IConverter!(C, C, Yes.isDuplicatable)
+{
+    Gain linearGain() const;
+    JSONValue dumpInfoToJSON() const;
+}
+
+
 struct PowerAmplifier(R)
 {
     this(R r, Gain gain, Voltage iip3, Voltage iip5 = Voltage(0)/*, Voltage iip7 = Voltage(0)*/)
@@ -647,6 +654,30 @@ struct LinearInterpolatedAMAMConverter(C)
     do {
         foreach(i, e; input)
             this.opCall(e, output[i]);
+    }
+
+
+    /**
+    線形領域での利得を返します
+    */
+    Gain linearGain() const @property
+    {
+        return Gain.fromVoltageGain(_g);
+    }
+
+
+    LinearInterpolatedAMAMConverter!C dup() const
+    {
+        return LinearInterpolatedAMAMConverter!C(_xs, _fs, Gain.fromVoltageGain(_g), Voltage(_o));
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        JSONValue jv = JSONValue(["gain": _g, "outputSaturationVoltage": _o]);
+        jv["xs"] = _xs;
+        jv["fs"] = _fs;
+        return jv;
     }
 
 
