@@ -6,5 +6,5 @@
 	"description": "SIMD-Vectorized Sum-Product Decoder",
 	"license": "CC0",
 	"name": "ldpc-sp-decoder",
-	"dflags": ["-mcpu=native"]
+	"_dflags": ["-mcpu=native"]
 }
