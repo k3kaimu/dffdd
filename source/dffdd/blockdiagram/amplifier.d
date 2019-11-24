@@ -630,7 +630,7 @@ struct LinearInterpolatedAMAMConverter(C)
         if(0.01 <= _x0) {
             _g0 = _f0 / _x0;
         } else {
-            _g0 = _interp(0.01) / _x0;
+            _g0 = _interp(0.01) / 0.01;
         }
     }
 
@@ -642,7 +642,7 @@ struct LinearInterpolatedAMAMConverter(C)
         if(u.re.isNaN || u.im.isNaN) {
             output = input * _g;
         } else {
-            output = normalized_AMAM(inputAmp * _g / _o) * _o * (input / inputAmp);
+            output = normalized_AMAM(inputAmp * _g / _o) * _o * u;
         }
     }
 
@@ -686,8 +686,8 @@ struct LinearInterpolatedAMAMConverter(C)
     InterpT _interp;
     F _g, _o;
     immutable(F)[] _xs, _fs;
-    immutable F _x0, _f0, _xN, _fN, _g0;
-    immutable F _maxf;
+    F _x0, _f0, _xN, _fN, _g0;
+    F _maxf;
 
     static
     auto _makeInterpolationObject(immutable(F)[] xs, immutable(F)[] fs)
@@ -751,4 +751,3 @@ unittest
     interp(C(10), y);
     assert(y.re.approxEqual(4));
 }
-
