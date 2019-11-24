@@ -104,7 +104,7 @@ unittest
     import std.algorithm : map, equal;
     import dffdd.blockdiagram.utils;
 
-    static assert(isDuplicableConverter!(IQImbalanceConverter!(Complex!real)));
+    static assert(isDuplicatableConverter!(IQImbalanceConverter!(Complex!real)));
 
     Complex!real[] signal = new Complex!real[1024];
     foreach(i; 0 .. 1024)

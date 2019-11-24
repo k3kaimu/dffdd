@@ -456,7 +456,7 @@ if(is(ElementType!R : const(TImpl.InputElementType)[]))
   }
 
 
-  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  static if(isForwardRange!R && isDuplicatableConverter!TImpl)
   {
     typeof(this) save() @property
     {
@@ -699,7 +699,7 @@ if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
   }
 
 
-  static if(isForwardRange!R && isDuplicableConverter!TImpl)
+  static if(isForwardRange!R && isDuplicatableConverter!TImpl)
   {
     typeof(this) save() @property
     {
