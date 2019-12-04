@@ -9,6 +9,7 @@ import dffdd.mod.primitives;
 import dffdd.mod.bpsk;
 import dffdd.mod.qpsk;
 import dffdd.utils.unit;
+import dffdd.utils.binary : Bit;
 
 
 Bit[][] getGrayCode(size_t N)

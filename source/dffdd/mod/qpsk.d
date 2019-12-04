@@ -2,7 +2,7 @@ module dffdd.mod.qpsk;
 
 import std.complex;
 
-import dffdd.mod.primitives : Bit;
+import dffdd.utils.binary : Bit;
 
 struct QPSK(C)
 {

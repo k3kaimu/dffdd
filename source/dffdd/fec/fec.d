@@ -3,7 +3,7 @@ module dffdd.fec.fec;
 import std.math;
 import std.complex;
 
-import dffdd.mod.primitives : Bit;
+import dffdd.utils.binary : Bit;
 
 interface Fec(T)
 {

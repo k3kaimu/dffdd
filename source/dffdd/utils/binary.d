@@ -9,6 +9,29 @@ import std.traits;
 
 import carbon.stream;
 
+
+struct Bit
+{
+    ubyte value;
+    alias value this;
+
+
+    this(long v) pure nothrow @safe @nogc
+    {
+        this.opAssign(v);
+    }
+
+
+    void opAssign(long v) pure nothrow @safe @nogc
+    {
+        if(v)
+            value = 1;
+        else
+            value = 0;
+    }
+}
+
+
 /**
 渡されたレンジの要素のうち、下部nDigitsビットだけをレンジにして返します。
 */
@@ -22,9 +45,9 @@ body{
 
     static struct Result()
     {
-        bool front() @property pure nothrow @safe const
+        Bit front() @property pure nothrow @safe const
         {
-            return (_front & _mask) != 0;
+            return Bit((_front & _mask) != 0 ? 1 : 0);
         }
 
 

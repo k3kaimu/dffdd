@@ -5,8 +5,7 @@ import std.mathspecial;
 import std.math;
 import std.numeric;
 
-import dffdd.mod.primitives : Bit;
-
+import dffdd.utils.binary : Bit;
 
 struct BPSK(C)
 {

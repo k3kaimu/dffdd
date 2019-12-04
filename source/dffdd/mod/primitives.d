@@ -1,6 +1,7 @@
 module dffdd.mod.primitives;
 
 import std.numeric : gcd;
+import dffdd.utils.binary;
 
 
 
@@ -36,28 +37,6 @@ Mod.InputElementType[] demod(Mod, E)(ref Mod mod, in E[] sig)
     mod.demodulate(sig, dst);
 
     return dst;
-}
-
-
-struct Bit
-{
-    ubyte value;
-    alias value this;
-
-
-    this(long v)
-    {
-        this.opAssign(v);
-    }
-
-
-    void opAssign(long v)
-    {
-        if(v)
-            value = 1;
-        else
-            value = 0;
-    }
 }
 
 

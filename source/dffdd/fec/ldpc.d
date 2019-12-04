@@ -6,7 +6,7 @@ import std.range : iota;
 import std.traits : isFloatingPoint;
 
 import dffdd.fec.fec;
-import dffdd.mod.primitives : Bit;
+import dffdd.utils.binary : Bit;
 import ldpc_sp_decoder;
 
 
