@@ -85,11 +85,10 @@ struct RappModel(C)
     }
 
 
-    void opCall(in IType[] input, OType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in IType[] input, ref OType[] output)
+    {
+        output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -170,11 +169,10 @@ struct SalehModel(C)
     }
 
 
-    void opCall(in IType[] input, OType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in IType[] input, ref OType[] output)
+    {
+        output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -252,11 +250,10 @@ struct IdealAmplifier(C)
     }
 
 
-    void opCall(in IType[] input, OType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in IType[] input, ref OType[] output)
+    {
+        output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -407,11 +404,10 @@ struct PowerControlAmplifier(C)
     }
 
 
-    void opCall(in IType[] input, ref OType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in IType[] input, ref OType[] output)
+    {
+        output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -504,11 +500,10 @@ struct LinearInterpolatedAMAM(C)
     }
 
 
-    void opCall(in IType[] input, OType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in IType[] input, ref OType[] output)
+    {
+        output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
