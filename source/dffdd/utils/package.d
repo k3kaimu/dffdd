@@ -8,5 +8,6 @@ public import dffdd.utils.jsvisitor;
 public import dffdd.utils.linalg;
 public import dffdd.utils.msgpackrpc;
 public import dffdd.utils.optimize;
+public import dffdd.utils.range;
 public import dffdd.utils.unit;
 
