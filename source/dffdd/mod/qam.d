@@ -48,6 +48,9 @@ struct QAM(C)
             ++_k;
         }
 
+        if(_M == 1 || _M == 2)
+            return;
+
         _L = 2^^(_k/2);
 
         immutable avgE = (_M - 1) * 2.0 / 3;
@@ -70,6 +73,12 @@ struct QAM(C)
         assert(inputs.length % _k == 0);
     }
     body{
+        if(_M == 1) {
+            return BPSK!C().modulate(inputs, outputs);
+        } else if(_M == 2) {
+            return QPSK!C().modulate(inputs, outputs);
+        }
+
         outputs.length = inputs.length / _k;
 
         foreach(i; 0 .. outputs.length){
@@ -85,6 +94,12 @@ struct QAM(C)
 
     ref Bit[] demodulate(in C[] inputs, return ref Bit[] outputs)
     {
+        if(_M == 1) {
+            return BPSK!C().demodulate(inputs, outputs);
+        } else if(_M == 2) {
+            return QPSK!C().demodulate(inputs, outputs);
+        }
+
         if(outputs.length != inputs.length * _k)
             outputs.length = inputs.length * _k;
 
@@ -107,6 +122,12 @@ struct QAM(C)
 
     ref ushort[] demodulate_symbol(in C[] inputs, ref return ushort[] symbols)
     {
+        if(_M == 1) {
+            return BPSK!C().demodulate_symbol(inputs, symbols);
+        } else if(_M == 2) {
+            return QPSK!C().demodulate_symbol(inputs, symbols);
+        }
+
         if(symbols.length != inputs.length)
             symbols.length = inputs.length;
 
@@ -119,6 +140,10 @@ struct QAM(C)
 
     Voltage outputVoltage() const @property
     {
+        if(_M == 1 || _M == 2) {
+            return Voltage(1);
+        }
+
         real p = 0;
         foreach(e; _toSymbol)
             p += e.sqAbs();

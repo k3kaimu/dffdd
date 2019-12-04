@@ -43,7 +43,7 @@ struct BPSK(C)
 
 
     static
-    ref ushort[] demodulate_symbol(OutputElementType[] inputs, return ref ushort[] symbols)
+    ref ushort[] demodulate_symbol(in OutputElementType[] inputs, return ref ushort[] symbols)
     {
         if(symbols.length != inputs.length)
             symbols.length = inputs.length;
