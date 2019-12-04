@@ -20,6 +20,7 @@ import std.variant;
 import std.functional;
 
 
+
 private template _StaticIota(size_t M, size_t N)
 if(M <= N)
 {
@@ -82,7 +83,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(T)(T value)
     if(is(T == typeof(null)))
     out(result){
-        assert(result.type == JSON_TYPE.NULL);
+        assert(result.type == JSONType.null_);
     }
     do{
         return JSONValue(null);
@@ -93,7 +94,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(T)(T value)
     if(isSomeString!T)
     out(result){
-        assert(result.type == JSON_TYPE.STRING);
+        assert(result.type == JSONType.string);
     }
     do{
         return JSONValue(value.to!string);
@@ -104,7 +105,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(T)(T value)
     if(isUnsigned!T && isIntegral!T)
     out(result){
-        assert(result.type == JSON_TYPE.UINTEGER);
+        assert(result.type == JSONType.uinteger);
     }
     do{
         return JSONValue(value);
@@ -115,7 +116,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(T)(T value)
     if(isSigned!T && isIntegral!T)
     out(result){
-        assert(result.type == JSON_TYPE.INTEGER);
+        assert(result.type == JSONType.integer);
     }
     do{
         return JSONValue(value);
@@ -126,7 +127,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(T)(T value)
     if(is(T == bool))
     out(result){
-        assert(result.type == JSON_TYPE.TRUE || result.type == JSON_TYPE.FALSE);
+        assert(result.type == JSONType.true_ || result.type == JSONType.false_);
     }
     do{
         return JSONValue(value);
@@ -137,7 +138,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(T)(T value)
     if(isFloatingPoint!T)
     out(result){
-        assert(result.type == JSON_TYPE.FLOAT);
+        assert(result.type == JSONType.float_);
     }
     do{
         return JSONValue(value);
@@ -148,7 +149,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(F)(Complex!F dst)
     if(isFloatingPoint!F)
     out(result){
-        assert(result.type == JSON_TYPE.OBJECT);
+        assert(result.type == JSONType.object);
     }
     do{
         JSONValue json = JSONValue(string[string].init);
@@ -162,7 +163,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(R)(R range)
     if(isInputRange!R && !isSomeString!R)
     out(result){
-        assert(result.type == JSON_TYPE.ARRAY);
+        assert(result.type == JSONType.array);
     }
     do{
         auto app = appender!(JSONValue[])();
@@ -177,7 +178,7 @@ template JSONEnv(alias overloads)
     JSONValue toJSONValueImpl(AA)(AA aa)
     if(isAssociativeArray!AA)
     out(result){
-        assert(result.type == JSON_TYPE.OBJECT);
+        assert(result.type == JSONType.object);
     }
     do{
         JSONValue[string] dst;
@@ -244,7 +245,7 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(is(T == typeof(null)))
     {
-        enforce!JSONException(json.type == JSON_TYPE.NULL, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.null_, createFromJSONValueExceptionMsg!T(json));
     }
 
 
@@ -252,7 +253,7 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(isSomeString!T)
     {
-        enforce!JSONException(json.type == JSON_TYPE.STRING, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.string, createFromJSONValueExceptionMsg!T(json));
         dst = json.str.to!T;
     }
 
@@ -261,9 +262,9 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(isIntegral!T && isUnsigned!T)
     {
-        enforce!JSONException(json.type == JSON_TYPE.UINTEGER || json.type == JSON_TYPE.INTEGER, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.uinteger || json.type == JSONType.integer, createFromJSONValueExceptionMsg!T(json));
 
-        if(json.type == JSON_TYPE.UINTEGER)
+        if(json.type == JSONType.uinteger)
             dst = json.uinteger.to!T();
         else
             dst = json.integer.to!T();
@@ -274,9 +275,9 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(isIntegral!T && isSigned!T)
     {
-        enforce!JSONException(json.type == JSON_TYPE.INTEGER || json.type == JSON_TYPE.UINTEGER, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.integer || json.type == JSONType.uinteger, createFromJSONValueExceptionMsg!T(json));
 
-        if(json.type == JSON_TYPE.INTEGER)
+        if(json.type == JSONType.integer)
             dst = json.integer.to!T();
         else
             dst = json.uinteger.to!T();
@@ -287,8 +288,8 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(is(T == bool))
     {
-        enforce!JSONException(json.type == JSON_TYPE.TRUE || json.type == JSON_TYPE.FALSE, createFromJSONValueExceptionMsg!T(json));
-        dst = json.type == JSON_TYPE.TRUE;
+        enforce!JSONException(json.type == JSONType.true_ || json.type == JSONType.false_, createFromJSONValueExceptionMsg!T(json));
+        dst = json.type == JSONType.true_;
     }
 
 
@@ -296,13 +297,13 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(isFloatingPoint!T)
     {
-        enforce!JSONException(json.type == JSON_TYPE.FLOAT
-                             || json.type == JSON_TYPE.INTEGER
-                             || json.type == JSON_TYPE.UINTEGER, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.float_
+                             || json.type == JSONType.integer
+                             || json.type == JSONType.uinteger, createFromJSONValueExceptionMsg!T(json));
         
-        if(json.type == JSON_TYPE.FLOAT)
+        if(json.type == JSONType.float_)
             dst = json.floating;
-        else if(json.type == JSON_TYPE.INTEGER)
+        else if(json.type == JSONType.integer)
             dst = json.integer;
         else
             dst = json.uinteger;
@@ -313,9 +314,9 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(F)(JSONValue json, ref Complex!F dst)
     if(isFloatingPoint!F)
     {
-        enforce!JSONException(json.type == JSON_TYPE.OBJECT);
+        enforce!JSONException(json.type == JSONType.object);
         enforce!JSONException("re" in json.object && "im" in json.object);
-        enforce!JSONException(json["re"].type == JSON_TYPE.FLOAT && json["im"].type == JSON_TYPE.FLOAT);
+        enforce!JSONException(json["re"].type == JSONType.float_ && json["im"].type == JSONType.float_);
 
         dst.re = json["re"];
         dst.im = json["im"];
@@ -326,7 +327,7 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(isArray!T && !isSomeString!T)
     {
-        enforce!JSONException(json.type == JSON_TYPE.ARRAY, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.array, createFromJSONValueExceptionMsg!T(json));
 
         T data = new T(json.array.length);
 
@@ -344,7 +345,7 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(isInputRange!T && isOutputRange!(T, Unqual!(ElementType!T)) && !isArray!T)
     {
-        enforce!JSONException(json.type == JSON_TYPE.ARRAY, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.array, createFromJSONValueExceptionMsg!T(json));
 
         foreach(e; json.array){
             alias Elem = Unqual!(ElementType!T);
@@ -359,7 +360,7 @@ template JSONEnv(alias overloads)
     void fromJSONValueImpl(T)(JSONValue json, ref T dst)
     if(isAssociativeArray!(T))
     {
-        enforce!JSONException(json.type == JSON_TYPE.OBJECT, createFromJSONValueExceptionMsg!T(json));
+        enforce!JSONException(json.type == JSONType.object, createFromJSONValueExceptionMsg!T(json));
 
         alias V = typeof(T.init.values[0]);
         alias K = typeof(T.init.keys[0]);
@@ -386,35 +387,35 @@ template JSONEnv(alias overloads)
 
         final switch(json.type)
         {
-          case JSON_TYPE.STRING:
+          case JSONType.string:
             impl!string(json, dst);
             return;
 
-          case JSON_TYPE.INTEGER:
+          case JSONType.integer:
             impl!long(json, dst);
             return;
 
-          case JSON_TYPE.UINTEGER:
+          case JSONType.uinteger:
             impl!ulong(json, dst);
             return;
 
-          case JSON_TYPE.FLOAT:
+          case JSONType.float_:
             impl!real(json, dst);
             return;
 
-          case JSON_TYPE.OBJECT:
+          case JSONType.object:
             impl!(Variant[string])(json, dst);
             return;
 
-          case JSON_TYPE.ARRAY:
+          case JSONType.array:
             impl!(Variant[])(json, dst);
             return;
 
-          case JSON_TYPE.TRUE, JSON_TYPE.FALSE:
+          case JSONType.true_, JSONType.false_:
             impl!(bool)(json, dst);
             return;
 
-          case JSON_TYPE.NULL:
+          case JSONType.null_:
             impl!(typeof(null))(json, dst);
             return;
         }
@@ -517,7 +518,7 @@ unittest{
 
         static void fromJSONValueImpl(JSONValue json, ref string str)
         {
-            assert(json.type == JSON_TYPE.STRING, "Error");
+            assert(json.type == JSONType.string, "Error");
             str = json.str.find(" : ").drop(3);
         }
     }
