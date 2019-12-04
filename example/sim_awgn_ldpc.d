@@ -54,6 +54,8 @@ void main()
         Random rnd;
         rnd.seed(0);
 
+        auto bitSource = randomBits(rnd);
+
         StopWatch sw;
         while(totalBlocks < MaxTotalBlocks && errorBlocks < MaxErrorBlocks) {
             enum size_t P = 8;
@@ -62,7 +64,7 @@ void main()
             Bit[] decoded = new Bit[K*P];
             
             foreach(i; 0 .. P) {
-                rnd.makeBits(info);
+                consumeFill(bitSource, info);
 
                 Bit[] coded_part;
                 ldpc.encode(info, coded_part);
@@ -110,14 +112,5 @@ void main()
 
     writefln!"EbN0: %s"(ebn0_dBList);
     writefln!"SNR:  %s"(ebn0_dBList.map!(a => a + 10*log10(1.0 * K / N * Nc)));
-    writefln!"EER:  %s"(berList);
-}
-
-
-void makeBits(ref Random rnd, Bit[] dst)
-{
-    foreach(ref e; dst) {
-        e = rnd.front % 2;
-        rnd.popFront();
-    }
+    writefln!"BER:  %s"(berList);
 }
