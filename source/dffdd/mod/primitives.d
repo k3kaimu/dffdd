@@ -170,7 +170,7 @@ unittest
 
 
 
-struct BERCounter
+struct SERCounter
 {
     this(size_t k)
     {
@@ -188,7 +188,7 @@ struct BERCounter
     }
 
 
-    struct BERCounterResult
+    struct SERCounterResult
     {
         size_t totalBits;
         size_t totalSyms;
@@ -199,9 +199,9 @@ struct BERCounter
     }
 
 
-    BERCounterResult result() const
+    SERCounterResult result() const
     {
-        BERCounterResult res;
+        SERCounterResult res;
 
         res.totalBits = _totalSym * _k;
         res.totalSyms = _totalSym;
@@ -232,7 +232,7 @@ unittest
     ushort[] as = [0b0011, 0b1100, 0b0101, 0b1111];
     ushort[] bs = [0b0011, 0b1111, 0b1010, 0b1110];
 
-    BERCounter counter = BERCounter(4); // one symbol consists of four bits.
+    SERCounter counter = SERCounter(4); // one symbol consists of four bits.
 
     counter.count(as, bs);
 
@@ -244,4 +244,54 @@ unittest
         assert(ber == 7.0 / 16);
         assert(ser == 3.0 / 4);
     }
+}
+
+
+struct BERCounter
+{
+    void count(size_t kBits, in ushort[] symAs, in ushort[] symBs)
+    in(symAs.length == symBs.length)
+    {
+        _totalBits += symAs.length * kBits;
+        _errBit += countBitError(symAs, symBs);
+    }
+
+
+    void count(in Bit[] bitAs, in Bit[] bitBs)
+    in(bitAs.length == bitBs.length)
+    {
+        _totalBits += bitAs.length;
+        foreach(i; 0 .. bitAs.length)
+            _errBit += bitAs[i] != bitBs[i] ? 1 : 0;
+    }
+
+
+    struct BERCounterResult
+    {
+        size_t totalBits;
+        size_t errBits;
+        double ber;
+    }
+
+
+    BERCounterResult result() const
+    {
+        BERCounterResult res;
+
+        res.totalBits = _totalBits;
+        res.errBits = _errBit;
+        res.ber = 1.0 * _errBit / (_totalBits);
+
+        return res;
+    }
+
+
+    size_t totalBits() const { return _totalBits; }
+    size_t errBits() const { return _errBit; }
+
+
+
+  private:
+    size_t _totalBits;
+    size_t _errBit;
 }
