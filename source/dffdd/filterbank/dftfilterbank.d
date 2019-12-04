@@ -351,35 +351,35 @@ unittest
 }
 
 
-unittest
-{
-    import std.algorithm;
-    import std.format;
-    import std.stdio;
+// unittest
+// {
+//     import std.algorithm;
+//     import std.format;
+//     import std.stdio;
 
-    auto fftw = makeFFTWObject!Complex(1024*16);
+//     auto fftw = makeFFTWObject!Complex(1024*16);
 
-    void outputIRAndFR(real[] coefs, string filename)
-    {
-        File(filename ~ "_time.csv", "w").writefln!"[%(%.20g,%)]"(coefs);
-        fftw.inputs!real[] = Complex!real(0);
-        foreach(i, ref e; fftw.inputs!real[0 .. coefs.length]) e = coefs[i];
-        fftw.fft!real();
-        File(filename ~ "_freq.csv", "w").writefln!"[%(%.20g,%)]"(fftw.outputs!real.map!sqAbs);
-    }
+//     void outputIRAndFR(real[] coefs, string filename)
+//     {
+//         File(filename ~ "_time.csv", "w").writefln!"[%(%.20g,%)]"(coefs);
+//         fftw.inputs!real[] = Complex!real(0);
+//         foreach(i, ref e; fftw.inputs!real[0 .. coefs.length]) e = coefs[i];
+//         fftw.fft!real();
+//         File(filename ~ "_freq.csv", "w").writefln!"[%(%.20g,%)]"(fftw.outputs!real.map!sqAbs);
+//     }
 
-    foreach(beta; [0, 0.25, 0.5, 0.75, 1]) {
-        auto coefs = designRootRaisedCosine!real(32, 32, beta);
-        outputIRAndFR(coefs, "rrc_%s".format(beta));
-    }
+//     foreach(beta; [0, 0.25, 0.5, 0.75, 1]) {
+//         auto coefs = designRootRaisedCosine!real(32, 32, beta);
+//         outputIRAndFR(coefs, "rrc_%s".format(beta));
+//     }
 
-    foreach(beta; [2, 4, 8, 16, 32]) {
-        auto coefs = designKaiserBesselDrived!real(32, 32, beta);
-        outputIRAndFR(coefs, "kbd_%s".format(beta));
-    }
+//     foreach(beta; [2, 4, 8, 16, 32]) {
+//         auto coefs = designKaiserBesselDrived!real(32, 32, beta);
+//         outputIRAndFR(coefs, "kbd_%s".format(beta));
+//     }
 
-    foreach(k; [4, 6, 8, 10, 12]) {
-        auto coefs = designRootRaisedERF!real(32/2, 64, k);
-        outputIRAndFR(coefs, "erf_%s".format(k));
-    }
-}
+//     foreach(k; [4, 6, 8, 10, 12]) {
+//         auto coefs = designRootRaisedERF!real(32/2, 64, k);
+//         outputIRAndFR(coefs, "erf_%s".format(k));
+//     }
+// }
