@@ -11,7 +11,7 @@ import dffdd.utils.json;
 import dffdd.utils.unit;
 
 
-struct FIRFilterConverter(C)
+struct FIRFilter(C)
 {
     import dffdd.utils.fft;
     import std.complex;
@@ -19,8 +19,8 @@ struct FIRFilterConverter(C)
 
     alias F = typeof(C.init.re);
 
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
 
 
     this(in C[] coefs)
@@ -43,7 +43,7 @@ struct FIRFilterConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(IType input, ref OType output)
     {
         foreach(i; 0 .. _inputs.length-1)
             _inputs[i] = _inputs[i+1];
@@ -56,7 +56,7 @@ struct FIRFilterConverter(C)
     }
 
 
-    void opCall(const(InputElementType)[] input, OutputElementType[] output) @nogc
+    void opCall(const(IType)[] input, OType[] output) @nogc
     in{
         assert(input.length == output.length);
     }
@@ -98,7 +98,7 @@ struct FIRFilterConverter(C)
     }
 
 
-    FIRFilterConverter dup() const @property
+    FIRFilter dup() const @property
     {
         typeof(return) dst;
         dst._coefs = this._coefs.dup;
@@ -142,35 +142,8 @@ unittest
 
     alias C = Complex!float;
 
-    auto sig = [C(0), C(1), C(2), C(3)].connectTo!(FIRFilterConverter!C)([C(0), C(1)]);
+    auto sig = [C(0), C(1), C(2), C(3)].connectTo!(FIRFilter!C)([C(0), C(1)]);
     assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(sig, [C(0), C(0), C(1), C(2)]));
-}
-
-
-
-struct FIRFilter
-{
-    static
-    auto makeBlock(R, C)(R r, C[] coefs)
-    if(isInputRange!R)
-    {
-        import dffdd.blockdiagram.utils;
-        alias E = Unqual!(ElementType!R);
-        return r.connectTo!(FIRFilterConverter!E)(coefs);
-    }
-}
-
-unittest
-{
-    import std.algorithm;
-    import std.range;
-    import std.stdio;
-    import std.complex;
-
-    alias C = Complex!float;
-
-    auto sig = FIRFilter.makeBlock([C(0), C(1), C(2), C(3)], [C(0), C(1)]);
-    assert(equal(sig, [C(0), C(0), C(1), C(2)]));
 }
 
 

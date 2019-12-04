@@ -20,7 +20,6 @@ import std.stdio;
 import std.typecons;
 import std.exception : enforce;
 
-import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.amplifier;
 import dffdd.blockdiagram.decimator;
 import dffdd.blockdiagram.filter;

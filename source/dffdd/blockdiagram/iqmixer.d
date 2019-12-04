@@ -17,10 +17,10 @@ auto addIQImbalance(R)(R r, Gain gain, Gain irr)
 }
 
 
-struct IQImbalanceConverter(C)
+struct IQImbalance(C)
 {
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
     alias F = typeof(C.init.re);
 
 
@@ -37,13 +37,13 @@ struct IQImbalanceConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(IType input, ref OType output)
     {
         output = input * _g1V + input.conj * _g2V;
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    void opCall(in IType[] input, OType[] output) @nogc
     in {
         assert(input.length == output.length);
     }
@@ -86,17 +86,17 @@ struct IQImbalanceConverter(C)
 }
 
 
-struct IQImbalance
-{
-    static
-    auto makeBlock(R)(R range, Gain gain, Complex!real coef)
-    {
-        import dffdd.blockdiagram.utils : connectTo;
+// struct IQImbalance
+// {
+//     static
+//     auto makeBlock(R)(R range, Gain gain, Complex!real coef)
+//     {
+//         import dffdd.blockdiagram.utils : connectTo;
 
-        alias E = Unqual!(ElementType!R);
-        return range.connectTo!(IQImbalanceConverter!E)(gain, coef);
-    }
-}
+//         alias E = Unqual!(ElementType!R);
+//         return range.connectTo!(IQImbalanceConverter!E)(gain, coef);
+//     }
+// }
 
 
 unittest 
@@ -104,14 +104,14 @@ unittest
     import std.algorithm : map, equal;
     import dffdd.blockdiagram.utils;
 
-    static assert(isDuplicatableConverter!(IQImbalanceConverter!(Complex!real)));
+    static assert(isDuplicatableConverter!(IQImbalance!(Complex!real)));
 
     Complex!real[] signal = new Complex!real[1024];
     foreach(i; 0 .. 1024)
         signal[i] = Complex!real(uniform01, uniform01);
     enum coef = Complex!real(1.0, 2.0);
 
-    auto iqimb = signal.connectTo!IQImbalance(0.dB, coef);
+    auto iqimb = signal.connectTo!(IQImbalance!(Complex!real))(0.dB, coef);
     assert(equal(iqimb, signal.map!(a => a + a.conj * Complex!real(1.0, 2.0))));
 }
 

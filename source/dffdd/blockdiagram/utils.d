@@ -15,7 +15,7 @@ template connectTo(alias Block)
     auto connectTo(R, Params...)(R r, Params params)
     if(isInputRange!R)
     {
-      static if(is(typeof({static assert(isConverter!Block || isOneElementConverter!Block);})))
+      static if(is(typeof({static assert(isConverter!Block || isSISOConverter!Block);})))
         return RangeAdapter!(Block, R)(r, Block(params));
       else static if(is(typeof((){ auto b = Block(r, params); })))                   // Block is function
         return Block(r, params);
@@ -365,33 +365,50 @@ if(isForwardRange!R)
 // }
 
 
-enum isConverter(TImpl) = is(typeof((TImpl impl){
-    const(TImpl.InputElementType)[] input;
-    TImpl.OutputElementType[] output;
+// enum isBlock(T) = is(typeof((T block){
+
+// }));
+
+
+
+
+enum isConverter(T) = is(typeof((T impl){
+    const(T.IType)[] input;
+    T.OType[] output;
     impl(input, output);
 }));
 
 
-enum bool isOneElementConverter(TImpl) = is(typeof((TImpl impl){
-    TImpl.InputElementType input;
-    TImpl.OutputElementType output;
+enum isMIMOConverter(T) = isConverter!T && is(typeof((T impl){
+    size_t iu = impl.iunit;
+    size_t ou = impl.ounit;
+
+    const(T.IType)[] input = new const(T.IType)[iu];
+    T.OType[] output = new T.OType[ou];
+
+    impl(input, output);
+}));
+
+
+enum isSISOConverter(T) = isConverter!T && is(typeof((T impl){
+    const(T.IType) input;
+    T.OType output;
     impl(input, output);
 }));
 
 
 enum isDuplicatableConverter(Conv) 
-    = (isConverter!Conv || isOneElementConverter!Conv) 
-        && is(typeof((const Conv conv) {
+    = isConverter!Conv && is(typeof((const Conv conv) {
     Conv other = conv.dup;
 }));
 
 
 interface IConverter(T, U, Flag!"isDuplicatable" isDup = No.isDuplicatable)
 {
-    alias InputElementType = T;
-    alias OutputElementType = U;
+    alias IType = T;
+    alias OType = U;
 
-    void opCall(in T[], U[]);
+    void opCall(in T[], ref U[]);
 
     static if(isDup)
     {
@@ -399,10 +416,42 @@ interface IConverter(T, U, Flag!"isDuplicatable" isDup = No.isDuplicatable)
     }
 }
 
+unittest
+{
+    static assert(isConverter!(IConverter!(int, int, No.isDuplicatable)));
+    static assert(isConverter!(IConverter!(int, int, Yes.isDuplicatable)));
+    static assert(isDuplicatableConverter!(IConverter!(int, int, Yes.isDuplicatable)));
+}
+
+
+interface IMIMOConverter(T, U, Flag!"isDuplicatable" isDup = No.isDuplicatable) : IConverter!(T, U, isDup)
+{
+    size_t iunit();
+    size_t ounit();
+}
+
+unittest
+{
+    static assert(isMIMOConverter!(IMIMOConverter!(int, int, No.isDuplicatable)));
+}
+
+
+interface ISISOConverter(T, U, Flag!"isDuplicatable" isDup = No.isDuplicatable) : IConverter!(T, U, isDup)
+{
+    void opCall(in T[], ref U[]);
+    void opCall(const T, ref U);
+}
+
+unittest
+{
+    static assert(isConverter!(ISISOConverter!(int, int, No.isDuplicatable)));
+    static assert(isSISOConverter!(ISISOConverter!(int, int, No.isDuplicatable)));
+}
+
 
 
 struct RangeAdapter(TImpl, R)
-if(is(ElementType!R : const(TImpl.InputElementType)[]))
+if(is(ElementType!R : const(TImpl.IType)[]))
 {
     this(R range, TImpl impl)
     {
@@ -423,7 +472,7 @@ if(is(ElementType!R : const(TImpl.InputElementType)[]))
     // this(this);
 
 
-    const(OutputElementType)[] front() @property
+    const(OType)[] front() @property
     {
         if(_frontIsComputed) return _buffer;
 
@@ -471,10 +520,10 @@ if(is(ElementType!R : const(TImpl.InputElementType)[]))
 
 
   private:
-    alias InputElementType = TImpl.InputElementType;
-    alias OutputElementType = TImpl.OutputElementType;
+    alias IType = TImpl.IType;
+    alias OType = TImpl.OType;
 
-    OutputElementType[] _buffer;
+    OType[] _buffer;
     bool _frontIsComputed;
     R _range;
     TImpl _impl;
@@ -487,12 +536,12 @@ unittest
 
     static struct Impl
     {
-        alias InputElementType = int;
-        alias OutputElementType = int;
+        alias IType = int;
+        alias OType = int;
 
         this(long* ptr) { _sum = ptr; }
 
-        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        void opCall(in IType[] input, ref OType[] output)
         {
             import std.algorithm : sum;
 
@@ -522,7 +571,7 @@ unittest
 
 
 struct RangeAdapter(TImpl, R)
-if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
+if(isSISOConverter!TImpl && is(ElementType!R : TImpl.IType))
 {
     this(R range, TImpl impl)
     {
@@ -545,7 +594,7 @@ if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
     // this(this);
 
 
-    OutputElementType front() @property
+    OType front() @property
     {
         if(!_frontIsComputed){
             auto input = _range.front;
@@ -592,12 +641,12 @@ if(isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
 
 
   private:
-    alias InputElementType = TImpl.InputElementType;
-    alias OutputElementType = TImpl.OutputElementType;
+    alias IType = TImpl.IType;
+    alias OType = TImpl.OType;
 
     R _range;
     TImpl _impl;
-    OutputElementType _output;
+    OType _output;
     bool _frontIsComputed;
 }
 
@@ -608,15 +657,21 @@ unittest
 
     static struct Impl
     {
-        alias InputElementType = int;
-        alias OutputElementType = int;
+        alias IType = int;
+        alias OType = int;
 
         this(long* ptr) { _sum = ptr; }
 
-        void opCall(in InputElementType input, ref OutputElementType output)
+        void opCall(in IType input, ref OType output)
         {
             *_sum += input;
             output = input;
+        }
+
+        void opCall(in IType[] input, OType[] output)
+        {
+            foreach(i; 0 .. input.length)
+                this.opCall(input[i], output[i]);
         }
 
 
@@ -624,7 +679,7 @@ unittest
         long* _sum;
     }
 
-    static assert(isOneElementConverter!Impl);
+    static assert(isSISOConverter!Impl);
 
 
     static
@@ -642,7 +697,7 @@ unittest
 
 
 struct RangeAdapter(TImpl, R)
-if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
+if(!isSISOConverter!TImpl && is(ElementType!R : TImpl.IType))
 {
     this(R range, TImpl impl)
     {
@@ -656,7 +711,7 @@ if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
     {
         if(X.length != 0) _impl = TImpl(args);
         _range = range;
-        _buffer = new OutputElementType[1];
+        _buffer = new OType[1];
     }
 
 
@@ -664,11 +719,11 @@ if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
     // this(this);
 
 
-    const(OutputElementType)[] front() @property
+    const(OType)[] front() @property
     {
         if(!_frontIsComputed){
             auto input = _range.front;
-            TImpl.InputElementType[1] inputBuffer;
+            TImpl.IType[1] inputBuffer;
             inputBuffer[0] = input;
             _impl(inputBuffer[0 .. 1], _buffer);
             _frontIsComputed = true;
@@ -714,12 +769,12 @@ if(!isOneElementConverter!TImpl && is(ElementType!R : TImpl.InputElementType))
 
 
   private:
-    alias InputElementType = TImpl.InputElementType;
-    alias OutputElementType = TImpl.OutputElementType;
+    alias IType = TImpl.IType;
+    alias OType = TImpl.OType;
 
     R _range;
     TImpl _impl;
-    OutputElementType[] _buffer;
+    OType[] _buffer;
     bool _frontIsComputed;
 }
 
@@ -730,12 +785,12 @@ unittest
 
     static struct Impl
     {
-        alias InputElementType = int;
-        alias OutputElementType = int;
+        alias IType = int;
+        alias OType = int;
 
         this(long* ptr) { _sum = ptr; }
 
-        void opCall(in InputElementType[] input, ref OutputElementType[] output)
+        void opCall(in IType[] input, ref OType[] output)
         {
             import std.algorithm;
 

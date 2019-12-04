@@ -11,82 +11,23 @@ import dffdd.utils.unit;
 import dffdd.utils.json;
 import dffdd.math.math;
 
+import dffdd.blockdiagram.utils;
 
-interface IAmplifier(C) : IConverter!(C, C, Yes.isDuplicatable)
+
+interface IAmplifier(C) : ISISOConverter!(C, C, Yes.isDuplicatable)
 {
     Gain linearGain() const;
     JSONValue dumpInfoToJSON() const;
 }
 
 
-struct PowerAmplifier(R)
-{
-    this(R r, Gain gain, Voltage iip3, Voltage iip5 = Voltage(0)/*, Voltage iip7 = Voltage(0)*/)
-    {
-        _r = r;
-
-        _g1V = gain.gain;
-        _g3V = iip3.V == 0 ? 0 : (gain.gain / iip3.V^^2);
-        _g5V = iip5.V == 0 ? 0 : (gain.gain / iip5.V^^4);
-        //_g7V = iip7.V == 0 ? 0 : (gain.gain / iip7.V^^6);
-    }
-
-
-    auto front()
-    {
-        auto x = _r.front;
-        auto x1p = x.re^^2 + x.im^^2,
-             x3 = x * x1p,
-             x5 = x3 * x1p;
-        //     x7 = x5 * x1p;
-
-        return x * _g1V + x3 * _g3V + x5 * _g5V;// + x7 * _g7V;
-    }
-
-
-    void popFront()
-    {
-        _r.popFront();
-    }
-
-
-    bool empty()
-    {
-        return _r.empty;
-    }
-
-
-  static if(isForwardRange!R)
-  {
-    typeof(this) save() @property
-    {
-        typeof(this) dst;
-        dst._r = this._r.save;
-        dst._g1V = this._g1V;
-        dst._g3V = this._g3V;
-        dst._g5V = this._g5V;
-
-        return dst;
-    }
-  }
-
-
-  private:
-    R _r;
-    real _g1V;
-    real _g3V;
-    real _g5V;
-    //real _g7V;
-}
-
-
 /**
 Rapp model
 */
-struct RappModelConverter(C)
+struct RappModel(C)
 {
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
     alias F = typeof(C.init.re);
 
     /**
@@ -107,7 +48,7 @@ struct RappModelConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(IType input, ref OType output)
     {
         auto r = fast_abs(input),
              u = input / r;         // unit vector
@@ -144,7 +85,7 @@ struct RappModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    void opCall(in IType[] input, OType[] output) @nogc
     in{
         assert(input.length == output.length);
     }
@@ -186,33 +127,6 @@ struct RappModelConverter(C)
 }
 
 
-struct RappModel
-{
-    static
-    auto makeBlock(R)(R range, real smoothFactor, Gain gain, Voltage outputSatV)
-    if(isInputRange!R)
-    {
-        import dffdd.blockdiagram.utils : connectTo;
-        alias E = Unqual!(ElementType!R);
-        return range.connectTo!(RappModelConverter!E)(smoothFactor, gain, outputSatV);
-    }
-
-
-    static
-    auto makeBlock(C)(BufferedOutputTerminal!C src, size_t len, real smoothFactor, Gain gain, Voltage outputSatV)
-    {
-        auto conv = RappModelConverter!C(smoothFactor, gain, outputSatV);
-        return new ConverterBlock!RappModelConverter(len, src, conv);
-    }
-}
-
-unittest
-{
-    auto r = RappModel.makeBlock(Complex!float[].init, 1, 1.0.dB, 30.dBm);
-}
-
-
-
 /**
 Salehモデルを構築します．
 Salehモデルは，4つのパラメータAa, Ba, Ap, Bpで以下のように表されます．
@@ -224,10 +138,10 @@ f(x) = Aa x / (1 + Ba |x|^2) * expi ( Ap |x|^2 / (1 + Bp |x|^2) )
 
 この実装では，この振幅の最大値と小信号ゲインをユーザーが変更可能にしています．
 */
-struct SalehModelConverter(C)
+struct SalehModel(C)
 {
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
 
     /**
     gain: 小信号ゲイン
@@ -240,7 +154,7 @@ struct SalehModelConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(IType input, ref OType output)
     {
         input *= _g;
 
@@ -256,7 +170,7 @@ struct SalehModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    void opCall(in IType[] input, OType[] output) @nogc
     in{
         assert(input.length == output.length);
     }
@@ -313,10 +227,10 @@ struct SalehModelConverter(C)
 /**
 o: input saturation value
 */
-struct SoftLimitConverter(C)
+struct IdealAmplifier(C)
 {
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
 
     this(Gain gain, Voltage osatV)
     {
@@ -325,7 +239,7 @@ struct SoftLimitConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(IType input, ref OType output)
     {
         immutable r = std.complex.abs(input),
                   u = input / r;    // unit vector
@@ -338,7 +252,7 @@ struct SoftLimitConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    void opCall(in IType[] input, OType[] output) @nogc
     in{
         assert(input.length == output.length);
     }
@@ -378,10 +292,10 @@ struct SoftLimitConverter(C)
 
 
 
-struct VGAConverter(C)
+struct FixedGainAmplifier(C)
 {
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
 
     this(Gain gain)
     {
@@ -389,13 +303,13 @@ struct VGAConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(IType input, ref OType output)
     {
         output = input * _gain1V;
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    void opCall(in IType[] input, ref OType[] output)
     {
         output.length = input.length;
 
@@ -418,7 +332,7 @@ struct VGAConverter(C)
     }
 
 
-    VGAConverter!C dup() const pure nothrow @safe @nogc @property 
+    FixedGainAmplifier!C dup() const pure nothrow @safe @nogc @property 
     {
         return this;
     }
@@ -428,57 +342,18 @@ struct VGAConverter(C)
     real _gain1V;
 }
 
-
-struct VGA(R)
+unittest
 {
-    this(R r, Gain gain)
-    {
-        _r = r;
-        _gain1V = gain.gain;
-    }
-
-
-    auto front()
-    {
-        return _r.front * _gain1V;
-    }
-
-
-    bool empty()
-    {
-        return _r.empty;
-    }
-
-
-    void popFront()
-    {
-        _r.popFront();
-    }
-
-
-  static if(isForwardRange!R)
-  {
-    typeof(this) save() @property
-    {
-        typeof(return) dst = this;
-
-        dst._r = this._r.save;
-
-        return dst;
-    }
-  }
-
-
-  private:
-    R _r;
-    real _gain1V;
+    alias T = FixedGainAmplifier!float;
+    static assert(isConverter!T);
+    static assert(isSISOConverter!T);
 }
 
 
-struct PowerControlAmplifierConverter(C)
+struct PowerControlAmplifier(C)
 {
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
 
 
     /**
@@ -499,7 +374,7 @@ struct PowerControlAmplifierConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output) @nogc
+    void opCall(IType input, ref OType output) @nogc
     {
         if(!_isConverged){
             _sumPower += input.re^^2 + input.im^^2;
@@ -532,7 +407,7 @@ struct PowerControlAmplifierConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    void opCall(in IType[] input, ref OType[] output) @nogc
     in{
         assert(input.length == output.length);
     }
@@ -554,7 +429,7 @@ struct PowerControlAmplifierConverter(C)
     }
 
 
-    PowerControlAmplifierConverter!C dup() const pure nothrow @safe @nogc @property 
+    PowerControlAmplifier!C dup() const pure nothrow @safe @nogc @property 
     {
         return this;
     }
@@ -581,31 +456,13 @@ struct PowerControlAmplifierConverter(C)
 }
 
 
-
-struct PowerControlAmplifier
-{
-    static
-    auto makeBlock(R)(R r, Voltage op, real rtol = 1E-2, size_t startSamples = 64, size_t totalCount = 10)
-    {
-        import dffdd.blockdiagram.utils : connectTo;
-        alias E = Unqual!(ElementType!R);
-        return r.connectTo!(PowerControlAmplifierConverter!E)(op, rtol, startSamples, totalCount);
-    }
-}
-
-unittest
-{
-    auto pc = PowerControlAmplifier.makeBlock(repeat(Complex!real(0, 0)), 10.dBm);
-}
-
-
 /**
 与えられたAM/AM特性を線形補間する増幅器モデル
 */
-struct LinearInterpolatedAMAMConverter(C)
+struct LinearInterpolatedAMAM(C)
 {
-    alias InputElementType = C;
-    alias OutputElementType = C;
+    alias IType = C;
+    alias OType = C;
     alias F = typeof(C.init.re);
 
 
@@ -635,7 +492,7 @@ struct LinearInterpolatedAMAMConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(IType input, ref OType output)
     {
         F inputAmp = std.complex.abs(input);
         C u = input / inputAmp;
@@ -647,7 +504,7 @@ struct LinearInterpolatedAMAMConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
+    void opCall(in IType[] input, OType[] output) @nogc
     in{
         assert(input.length == output.length);
     }
@@ -666,9 +523,9 @@ struct LinearInterpolatedAMAMConverter(C)
     }
 
 
-    LinearInterpolatedAMAMConverter!C dup() const
+    LinearInterpolatedAMAM!C dup() const
     {
-        return LinearInterpolatedAMAMConverter!C(_xs, _fs, Gain.fromVoltageGain(_g), Voltage(_o));
+        return LinearInterpolatedAMAM!C(_xs, _fs, Gain.fromVoltageGain(_g), Voltage(_o));
     }
 
 
@@ -728,7 +585,7 @@ unittest
     // f(x) = 0.25 x        when x = [0, 4)
     // f(x) = 0.75 x - 2    when x = [4, 8)
     // f(x) = 4             when x = [8, inf)
-    auto interp = LinearInterpolatedAMAMConverter!C(xs, fs, Gain.fromVoltageGain(0.25), Voltage(4));
+    auto interp = LinearInterpolatedAMAM!C(xs, fs, Gain.fromVoltageGain(0.25), Voltage(4));
 
     interp(C(0), y);
     assert(y.re.approxEqual(0));
