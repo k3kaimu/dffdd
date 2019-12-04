@@ -362,11 +362,11 @@ final class SimulatedSignals
 
     Nullable!(IQImbalanceConverter!C) _txIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
-    Nullable!(RappModelConverter!C) _txPANonlin;
+    Nullable!(LinearInterpolatedAMAMConverter!C) _txPANonlin;
 
     Nullable!(IQImbalanceConverter!C) _detxIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _detxPAVGA;
-    Nullable!(RappModelConverter!C) _detxPANonlin;
+    Nullable!(LinearInterpolatedAMAMConverter!C) _detxPANonlin;
 
     Nullable!(FIRFilterConverter!C) _channelSI;
     Nullable!(FIRFilterConverter!C) _channelDesired;
@@ -414,14 +414,19 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._txPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat);
+        // dst._txPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat);
+        dst._txPANonlin = () {
+            import msgpack;
+            auto coefs = msgpack.unpack!(double[][2])(cast(ubyte[])std.file.read(model.pa.amamFilename));
+            return LinearInterpolatedAMAMConverter!C(coefs[0].dup, coefs[1].dup, model.pa.GAIN, model.pa.Vsat);
+        }();
     }else{
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
 
     if(model.useDTXPA) {
         dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._detxPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat);
+        dst._detxPANonlin = dst._txPANonlin.get.dup;
     }else{
         dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }

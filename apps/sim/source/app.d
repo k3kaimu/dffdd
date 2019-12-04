@@ -78,6 +78,7 @@ struct ModelSeed
     Voltage paVsat = 30.dBm;        // 出力飽和電圧
     Gain paGain = 30.dB;
     double paSmoothFactor = 3;
+    string amamFilename;
 
     /* LNA */
     double lnaSmoothFactor = 3;
@@ -150,6 +151,7 @@ void mainJob()
     size_t sumOfTrials = 0;
 
 
+    foreach(amamFileName; ["opt_amam/opt_fs_sicr_n200_p7.bin", "opt_amam/opt_fs_sicr_n200_p3.bin"])
     foreach(numChTaps; [64])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -195,9 +197,10 @@ void mainJob()
         }
 
 
-        string parentDir = format("results_Taps%s", numChTaps);
+        string parentDir = format("results_Opt_Taps%s_noLNA_832", numChTaps);
+        parentDir = buildPath(parentDir, amamFileName.replace(".", "_"));
 
-
+        /+
         // only desired signal on AWGN or Rayleigh
         static if(methodName == "Nop_X")
         foreach(snr; iota(0, (numChTaps == 1 ? 22 : 52), 3))
@@ -217,6 +220,7 @@ void mainJob()
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
 
         // // static if(methodName == "Nop_X" || methodName == "L_LS")
         // foreach(inr_dB; iota(0, 52, 3))
@@ -239,32 +243,32 @@ void mainJob()
         // }
 
 
-        // INR vs (EVM / SIC / BER)
-        foreach(learningSymbols; [50])
-        foreach(inr; iota(0, 82, 3))
-        foreach(loss; [70])
-        {
-            ModelSeed modelSeed;
-            modelSeed.paSmoothFactor = 3;
-            modelSeed.lnaSmoothFactor = 3;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = inr.dB;
-            // modelSeed.SNR = 50.dB;
-            modelSeed.DesiredLOSS = loss.dB;
-            modelSeed.onlyDesired = methodName == "Nop_X";
-            modelSeed.outputBER = true;
-            modelSeed.numofTapsOfSIChannel = numChTaps;
-            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+        // // INR vs (EVM / SIC / BER)
+        // foreach(learningSymbols; [50])
+        // foreach(inr; iota(0, 210, 10))
+        // foreach(loss; [70])
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.paSmoothFactor = 3;
+        //     modelSeed.lnaSmoothFactor = 3;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     modelSeed.INR = inr.dB;
+        //     // modelSeed.SNR = 50.dB;
+        //     modelSeed.DesiredLOSS = loss.dB;
+        //     modelSeed.onlyDesired = methodName == "Nop_X";
+        //     modelSeed.outputBER = false;
+        //     modelSeed.numofTapsOfSIChannel = numChTaps;
+        //     modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_inr_vs_sic", dir);
-            dirset[dir] = true;
-            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath(parentDir, "results_inr_vs_sic", dir);
+        //     dirset[dir] = true;
+        //     appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
 
         // TXP vs (EVM / SIC /  BER)
-        foreach(isoRF; [50, 70])
+        foreach(isoRF; [-100])
         foreach(desiredLoss; [70])
         foreach(learningSymbols; [50])
         foreach(txp; iota(10, 32, 1)) {
@@ -272,12 +276,12 @@ void mainJob()
             modelSeed.paSmoothFactor = 3;
             modelSeed.lnaSmoothFactor = 3;
             modelSeed.txPower = txp.dBm;
+            modelSeed.amamFilename = amamFileName;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
             // modelSeed.INR = (txp-23+inr).dB;
             modelSeed.TXRXISO = isoRF.dB;
             modelSeed.DesiredLOSS = desiredLoss.dB;
-            modelSeed.txPower = txp.dBm;
             modelSeed.onlyDesired = methodName == "Nop_X";
             modelSeed.outputBER = true;
             modelSeed.numofTapsOfSIChannel = numChTaps;
@@ -290,31 +294,31 @@ void mainJob()
         }
 
 
-        // SF vs (EVM / SIC / BER)
-        foreach(txp; [23])
-        foreach(isoRF; [50, 70])
-        foreach(desiredLoss; [70])
-        foreach(learningSymbols; [50])
-        foreach(sf_10; iota(2, 51, 2)) {
-            ModelSeed modelSeed;
-            modelSeed.paSmoothFactor = sf_10/10.0;
-            modelSeed.lnaSmoothFactor = sf_10/10.0;
-            modelSeed.txPower = txp.dBm;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            // modelSeed.INR = (txp-23+inr).dB;
-            modelSeed.TXRXISO = isoRF.dB;
-            modelSeed.DesiredLOSS = desiredLoss.dB;
-            modelSeed.onlyDesired = methodName == "Nop_X";
-            modelSeed.outputBER = true;
-            modelSeed.numofTapsOfSIChannel = numChTaps;
-            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+        // // SF vs (EVM / SIC / BER)
+        // foreach(txp; [23])
+        // foreach(isoRF; [50, 70])
+        // foreach(desiredLoss; [70])
+        // foreach(learningSymbols; [50])
+        // foreach(sf_10; iota(2, 51, 2)) {
+        //     ModelSeed modelSeed;
+        //     modelSeed.paSmoothFactor = sf_10/10.0;
+        //     modelSeed.lnaSmoothFactor = sf_10/10.0;
+        //     modelSeed.txPower = txp.dBm;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     // modelSeed.INR = (txp-23+inr).dB;
+        //     modelSeed.TXRXISO = isoRF.dB;
+        //     modelSeed.DesiredLOSS = desiredLoss.dB;
+        //     modelSeed.onlyDesired = methodName == "Nop_X";
+        //     modelSeed.outputBER = true;
+        //     modelSeed.numofTapsOfSIChannel = numChTaps;
+        //     modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
-            dirset[dir] = true;
-            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
+        //     dirset[dir] = true;
+        //     appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
     }
 
     import std.stdio;
@@ -407,6 +411,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         model.useSRXIQ = false;
         model.useSRXQZ = false;
 
+        model.useSRXLN = false;
+
 
         /* PAの設定 */
         {
@@ -414,6 +420,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             model.pa.GAIN = modelSeed.paGain;
             model.pa.Vsat = modelSeed.paVsat;
             model.pa.smoothFactor = modelSeed.paSmoothFactor;
+            model.pa.amamFilename = modelSeed.amamFilename;
         }
 
         /* LNAの設定 */

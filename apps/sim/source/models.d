@@ -103,9 +103,9 @@ struct Model
 
     struct OFDM
     {
-        uint numOfFFT = 64;
+        uint numOfFFT = 64*16;
         uint numOfCP = 16;
-        uint numOfSubcarrier = 52;
+        uint numOfSubcarrier = 52*16;
         uint scaleOfUpSampling = 8;
         Gain PAPR = 10.dB;                 // 10dB
         //uint model.numOfSamplesOf1Symbol = 
@@ -184,6 +184,7 @@ struct Model
         Voltage Vsat = 21.8.dBm;        // 出力飽和電圧
         Voltage TX_POWER = 15.dBm;
         double smoothFactor = 3;
+        string amamFilename;
     }
     PA pa;
 
