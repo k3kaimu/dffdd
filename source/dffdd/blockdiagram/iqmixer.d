@@ -170,7 +170,7 @@ struct PhaseNoise(R)
     R _r;
     real _noiseGain;
     real _phi;
-    BoxMuller!Random _noise;
+    BoxMuller!(Complex!real, Random) _noise;
 }
 
 

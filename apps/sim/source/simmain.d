@@ -561,7 +561,7 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
 {
     import dffdd.mod.qam;
     import dffdd.mod.ofdm;
-    import dffdd.mod.primitives : Bit;
+    import dffdd.utils.binary : Bit;
 
     alias F = float;
     alias C = Complex!float;
@@ -632,7 +632,7 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
     size_t totalOFDMSymbols;
 
     ushort[] receivedQAMSyms, referenceQAMSyms;
-    BERCounter counter = BERCounter(qamMod.symInputLength);
+    SERCounter counter = SERCounter(qamMod.symInputLength);
 
     auto sumPs = new double[nSC],
          diffPs = new double[nSC];

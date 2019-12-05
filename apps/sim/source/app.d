@@ -440,7 +440,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             Random rnd = uniqueRandom(iTrial, "Channel");
             model.channelSI.taps = 64;
 
-            BoxMuller!Random gGen = BoxMuller!Random(rnd);
+            auto gGen = boxMullerNoise(rnd);
             Complex!double[] coefs;
             foreach(i; 0 .. model.channelSI.taps){
                 // tapsのタップ数で40dB減衰
@@ -455,7 +455,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             Random rnd = uniqueRandom(iTrial, "ChannelDesired");
             model.channelDesired.taps = modelSeed.numOfTapsOfDesiredChannel;
 
-            BoxMuller!Random gGen = BoxMuller!Random(rnd);
+            auto gGen = boxMullerNoise(rnd);
             Complex!double[] coefs;
             foreach(i; 0 .. model.channelDesired.taps) {
                 // tapsのタップ数で40dB減衰
