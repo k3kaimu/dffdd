@@ -48,7 +48,7 @@ struct QAM(C)
             ++_k;
         }
 
-        if(_M == 1 || _M == 2)
+        if(_k == 1 || _k == 2)
             return;
 
         _L = 2^^(_k/2);
@@ -73,9 +73,9 @@ struct QAM(C)
         assert(inputs.length % _k == 0);
     }
     body{
-        if(_M == 1) {
+        if(_k == 1) {
             return BPSK!C().modulate(inputs, outputs);
-        } else if(_M == 2) {
+        } else if(_k == 2) {
             return QPSK!C().modulate(inputs, outputs);
         }
 
@@ -94,9 +94,9 @@ struct QAM(C)
 
     ref Bit[] demodulate(in C[] inputs, return ref Bit[] outputs)
     {
-        if(_M == 1) {
+        if(_k == 1) {
             return BPSK!C().demodulate(inputs, outputs);
-        } else if(_M == 2) {
+        } else if(_k == 2) {
             return QPSK!C().demodulate(inputs, outputs);
         }
 
@@ -122,9 +122,9 @@ struct QAM(C)
 
     ref ushort[] demodulate_symbol(in C[] inputs, ref return ushort[] symbols)
     {
-        if(_M == 1) {
+        if(_k == 1) {
             return BPSK!C().demodulate_symbol(inputs, symbols);
-        } else if(_M == 2) {
+        } else if(_k == 2) {
             return QPSK!C().demodulate_symbol(inputs, symbols);
         }
 
@@ -140,7 +140,7 @@ struct QAM(C)
 
     Voltage outputVoltage() const @property
     {
-        if(_M == 1 || _M == 2) {
+        if(_k == 1 || _k == 2) {
             return Voltage(1);
         }
 
@@ -201,6 +201,28 @@ struct QAM(C)
 
         return sym;
     }
+}
+
+unittest
+{
+    import std.algorithm : map;
+    import std.range : array;
+
+    alias C = Complex!float;
+
+    Bit[] bits = [0, 1, 0, 1, 0, 1, 0, 1].map!(a => Bit(a)).array();
+
+    auto qam2 = QAM!C(2);
+    auto bpsk = BPSK!C();
+
+    assert(qam2.mod(bits) == bpsk.mod(bits));
+    assert(qam2.demod(qam2.mod(bits)) ==  bits);
+
+    auto qam4 = QAM!C(4);
+    auto qpsk = QPSK!C();
+
+    assert(qam4.mod(bits) == qpsk.mod(bits));
+    assert(qam4.demod(qam4.mod(bits)) ==  bits);
 }
 
 
