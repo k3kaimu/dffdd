@@ -1,5 +1,6 @@
 module dffdd.math.math;
 
+import std.complex : Complex;
 import std.math;
 import std.traits;
 
@@ -24,6 +25,109 @@ if(isFloatingPoint!F)
     {
         return powl(x, y);
     }
+}
+
+
+/**
+compute log(x)
+*/
+F libm_log(F)(F x, F y) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : logf, log, logl;
+
+    static if(is(F == float))
+    {
+        return logf(x, y);
+    }
+    else static if(is(F == double))
+    {
+        return log(x, y);
+    }
+    else
+    {
+        return logl(x, y);
+    }
+}
+
+
+/**
+compute sin(x)
+*/
+F libm_sin(F)(F x) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : sinf, sin, sinl;
+
+    static if(is(F == float))
+    {
+        return sinf(x, y);
+    }
+    else static if(is(F == double))
+    {
+        return sin(x, y);
+    }
+    else
+    {
+        return sinl(x, y);
+    }
+}
+
+
+/**
+compute cos(x)
+*/
+F libm_cos(F)(F x) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : cosf, cos, cosl;
+
+    static if(is(F == float))
+    {
+        return cosf(x, y);
+    }
+    else static if(is(F == double))
+    {
+        return cos(x, y);
+    }
+    else
+    {
+        return cosl(x, y);
+    }
+}
+
+
+
+extern(C)
+{
+    void sincosf(float x, float *sin, float *cos) pure nothrow @nogc;
+    void sincos(double x, double *sin, double *cos) pure nothrow @nogc;
+    void sincosl(real x, real *sin, real *cos) pure nothrow @nogc;
+}
+
+
+/**
+compute exp(ix)
+*/
+Complex!F libm_expi(F)(F x) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    F re, im;
+
+    static if(is(F == float))
+    {
+        sincosf(x, &im, &re);
+    }
+    else static if(is(F == double))
+    {
+        sincos(x, &im, &re);
+    }
+    else
+    {
+        sincosl(x, &im, &re);
+    }
+
+    return Complex!F(re, im);
 }
 
 
@@ -73,6 +177,29 @@ if(isFloatingPoint!F)
 }
 
 
+/**
+compute log(x)
+*/
+F libm_log(F)(F x) pure nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : logf, log, logl;
+
+    static if(is(F == float))
+    {
+        return logf(x);
+    }
+    else static if(is(F == double))
+    {
+        return log(x);
+    }
+    else
+    {
+        return logl(x);
+    }
+}
+
+
 version(LDC)
 {
     pragma(LDC_intrinsic, "llvm.pow.f#")
@@ -81,18 +208,32 @@ version(LDC)
     F llvm_powi(F)(F x, int y) pure nothrow @nogc;
     pragma(LDC_intrinsic, "llvm.sqrt.f#")
     F llvm_sqrt(F)(F x) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.sin.f#")
+    F llvm_sin(F)(F x) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.cos.f#")
+    F llvm_cos(F)(F x) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.log.f#")
+    F llvm_log(F)(F x) pure nothrow @nogc;
 
 
     alias fast_pow = llvm_pow;
     alias fast_powi = llvm_powi;
     alias fast_sqrt = llvm_sqrt;
     alias fast_cbrt = libm_cbrt;
+    alias fast_sin = llvm_sin;
+    alias fast_cos = llvm_cos;
+    alias fast_expi = libm_expi;
+    alias fast_log = llvm_log;
 }
 else
 {
     alias fast_pow = libm_pow;
     alias fast_sqrt = libm_sqrt;
     alias fast_cbrt = libm_cbrt;
+    alias fast_sin = libm_sin;
+    alias fast_cos = libm_cos;
+    alias fast_expi = libm_expi;
+    alias fast_log = libm_log;
 
     F fast_powi(F)(F x, int y) pure nothrow @nogc
     {

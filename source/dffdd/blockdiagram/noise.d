@@ -5,20 +5,27 @@ import std.math,
 
 import std.complex;
 
+import dffdd.math.math;
 import dffdd.utils.unit;
 
 enum real BoltzmannConst = 1.3806488e-23;
 
-BoxMuller!Random boxMullerNoise()
+BoxMuller!(C, Random) boxMullerNoise(C = Complex!real)()
 {
     Random rnd;
     rnd.seed(unpredictableSeed());
 
-    return BoxMuller!Random(rnd);
+    return BoxMuller!(C, Random)(rnd);
 }
 
 
-struct BoxMuller(RNG)
+BoxMuller!(C, Rnd) boxMullerNoise(C = Complex!real, Rnd)(Rnd rnd)
+{
+    return BoxMuller!(C, Rnd)(rnd);
+}
+
+
+struct BoxMuller(C, RNG)
 {
     this(RNG urng)
     {
@@ -28,9 +35,14 @@ struct BoxMuller(RNG)
     }
 
 
-    Complex!real front() const @property
+    C front() const @property
     {
-        return sqrt(-2 * log(_x)) * Complex!real(cos(2*PI*_y), sin(2*PI*_y));
+        alias F = typeof(C.init.re);
+
+        F amp = fast_sqrt!F(-2 * fast_log!F(_x));
+        C cs = fast_expi!F(2 * PI * _y);
+
+        return amp * cs;
     }
 
 
@@ -50,7 +62,7 @@ struct BoxMuller(RNG)
     }
 
 
-    BoxMuller!RNG save() @property
+    BoxMuller!(C, RNG) save() @property
     {
         typeof(return) dst = this;
 
@@ -109,7 +121,7 @@ struct ThermalNoise
 
 
   private:
-    BoxMuller!Random _rnd;
+    BoxMuller!(Complex!real, Random) _rnd;
     real _gain;
 }
 
