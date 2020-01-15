@@ -1,11 +1,11 @@
 module dffdd.utils.linalg;
 
-import cblas;
 import std.complex;
 import std.range;
 import std.traits;
 
 import mir.ndslice;
+import dffdd.utils.cblas;
 
 // enum Order
 // {
@@ -15,6 +15,9 @@ import mir.ndslice;
 
 nothrow @trusted extern(C)
 {
+
+
+
     int LAPACKE_zheev(
             int matrix_order,
             const char jobz, const char uplo,
@@ -194,7 +197,7 @@ body{
     return cblas_ddot(x.length, x.ptr, x._stride!0, y.ptr, y._stride!0);
   else static if(is(typeof(E.init.re) == float))
   {
-    auto ret = cblas_cdotu(cast(int)x.length, cast(cfloat*)x.ptr, cast(int)x._stride!0, cast(cfloat*)y.ptr, cast(int)y._stride!0);
+    auto ret = cblas_cdotu(cast(int)x.length, cast(dffdd.utils.cblas._cfloat*)x.ptr, cast(int)x._stride!0, cast(dffdd.utils.cblas._cfloat*)y.ptr, cast(int)y._stride!0);
 
     static if(is(E == cfloat))
         return ret.re + ret.im*1.0fi;
@@ -203,7 +206,7 @@ body{
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    auto ret = cblas_zdotu(cast(int)x.length, cast(cdouble*)x.ptr, cast(int)x._stride!0, cast(cdouble*)y.ptr, cast(int)y._stride!0);
+    auto ret = cblas_zdotu(cast(int)x.length, cast(dffdd.utils.cblas._cdouble*)x.ptr, cast(int)x._stride!0, cast(dffdd.utils.cblas._cdouble*)y.ptr, cast(int)y._stride!0);
 
     static if(is(E == cdouble))
         return ret.re + ret.im*1.0i;
@@ -227,14 +230,14 @@ body{
   else static if(is(typeof(E.init.re) == float))
   {
     E ret;
-    cblas_cdotc_sub(cast(int)x.length, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, cast(_cfloat*)&(y[0]), cast(int)y._stride!0, cast(_cfloat*)&ret);
+    cblas_cdotc_sub(cast(int)x.length, cast(dffdd.utils.cblas._cfloat*)&(x[0]), cast(int)x._stride!0, cast(dffdd.utils.cblas._cfloat*)&(y[0]), cast(int)y._stride!0, cast(dffdd.utils.cblas._cfloat*)&ret);
 
     return ret;
   }
   else static if(is(typeof(E.init.re) == double))
   {
     E ret;
-    cblas_zdotc_sub(cast(int)x.length, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, cast(_cdouble*)&(y[0]), cast(int)y._stride!0, cast(_cdouble*)&ret);
+    cblas_zdotc_sub(cast(int)x.length, cast(dffdd.utils.cblas._cdouble*)&(x[0]), cast(int)x._stride!0, cast(dffdd.utils.cblas._cdouble*)&(y[0]), cast(int)y._stride!0, cast(dffdd.utils.cblas._cdouble*)&ret);
 
     return ret;
   }
@@ -301,11 +304,11 @@ void gemv(string opA = "", E)(E alpha, Slice!(E*, 2, Contiguous) matA, Slice!(E*
     cblas_dgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, alpha, (&matA[0, 0]), cast(int)matA._stride!0, &(x[0]), cast(int)x._stride!0, beta, &(y[0]), cast(int)y._stride!0);
   else static if(is(typeof(E.init.re) == float))
   {
-    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(_cfloat*)&alpha, cast(_cfloat*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cfloat*)&(x[0]), cast(int)x._stride!0, *cast(_cfloat*)&beta, cast(_cfloat*)&(y[0]), cast(int)y._stride!0);
+    cblas_cgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(dffdd.utils.cblas._cfloat*)&alpha, cast(dffdd.utils.cblas._cfloat*)(&matA[0, 0]), cast(int)matA._stride!0, cast(dffdd.utils.cblas._cfloat*)&(x[0]), cast(int)x._stride!0, *cast(dffdd.utils.cblas._cfloat*)&beta, cast(dffdd.utils.cblas._cfloat*)&(y[0]), cast(int)y._stride!0);
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, *cast(_cfloat*)&beta, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
+    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(dffdd.utils.cblas._cdouble*)&alpha, cast(dffdd.utils.cblas._cdouble*)(&matA[0, 0]), cast(int)matA._stride!0, cast(dffdd.utils.cblas._cdouble*)&(x[0]), cast(int)x._stride!0, *cast(dffdd.utils.cblas._cfloat*)&beta, cast(dffdd.utils.cblas._cdouble*)&(y[0]), cast(int)y._stride!0);
   }
   else
     static assert(0);

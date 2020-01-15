@@ -32,7 +32,10 @@ class LdpcSpDecoder
 
         _sp_ws_one = typeof(_sp_ws_one)(ldpc.outputLength, _row_mat);
         _sp_ws_sse = typeof(_sp_ws_sse)(ldpc.outputLength, _row_mat);
-        _sp_ws_avx = typeof(_sp_ws_avx)(ldpc.outputLength, _row_mat);
+
+        version(D_AVX) {
+            _sp_ws_avx = typeof(_sp_ws_avx)(ldpc.outputLength, _row_mat);
+        }
     }
 
 
@@ -47,7 +50,7 @@ class LdpcSpDecoder
         Bit[] remainDecoded = decoded;
 
         // DMD does not support AVX version well.
-        version(LDC) {
+        version(LDC) version(D_AVX) {
         while(remainBlock >= 8) {
             sumProductDecodeP0P1SIMD!(float[8])(_sp_ws_avx, _row_mat,  remainP0p1[0 .. _N*8], _maxIter);
 
@@ -95,7 +98,10 @@ class LdpcSpDecoder
     uint _maxIter;
     SpDecoderWorkspace!float _sp_ws_one;
     SpDecoderWorkspace!(float[4]) _sp_ws_sse;
-    SpDecoderWorkspace!(float[8]) _sp_ws_avx;
+
+    version(D_AVX) {
+        SpDecoderWorkspace!(float[8]) _sp_ws_avx;
+    }
 }
 
 

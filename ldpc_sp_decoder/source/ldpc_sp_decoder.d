@@ -13,18 +13,24 @@ version(LDC)
     float4 _mm_minps_(float4, float4) pure @safe;
     pragma(LDC_intrinsic, "llvm.maxnum.v4f32")
     float4 _mm_maxps_(float4, float4) pure @safe;
-    pragma(LDC_intrinsic, "llvm.minnum.v8f32")
-    float8 _mm_minps_(float8, float8) pure @safe;
-    pragma(LDC_intrinsic, "llvm.maxnum.v8f32")
-    float8 _mm_maxps_(float8, float8) pure @safe;
+
+    version(D_AVX) {
+        pragma(LDC_intrinsic, "llvm.minnum.v8f32")
+        float8 _mm_minps_(float8, float8) pure @safe;
+        pragma(LDC_intrinsic, "llvm.maxnum.v8f32")
+        float8 _mm_maxps_(float8, float8) pure @safe;
+    }
 }
 
 version(DigitalMars)
 {
     float4 _mm_minps_(float4 x, float4 y) pure @safe { return simd!(XMM.MINPS)(x, y); }
     float4 _mm_maxps_(float4 x, float4 y) pure @safe { return simd!(XMM.MAXPS)(x, y); }
-    float8 _mm_minps_(float8 x, float8 y) pure @safe { return simd!(XMM.MINPS)(x, y); }
-    float8 _mm_maxps_(float8 x, float8 y) pure @safe { return simd!(XMM.MAXPS)(x, y); }
+
+    version(D_AVX){
+        float8 _mm_minps_(float8 x, float8 y) pure @safe { return simd!(XMM.MINPS)(x, y); }
+        float8 _mm_maxps_(float8 x, float8 y) pure @safe { return simd!(XMM.MAXPS)(x, y); }
+    }
     enum int fastmath = 0;
 }
 
