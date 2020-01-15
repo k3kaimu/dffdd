@@ -104,7 +104,7 @@ do {
 
     immutable size_t N = freqResp.length * 2;
 
-    auto fftw = globalBankOf!makeFFTWObject[N];
+    auto fftw = globalFFTBankOf!makeFFTWObject[N];
     auto ips = fftw.inputs!F;
     foreach(i, ref e; ips[0 .. N/2])
         e = freqResp[i];

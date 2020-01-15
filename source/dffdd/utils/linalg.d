@@ -458,7 +458,7 @@ C[] leastSquareEstimateSimple(C)(in C[][] mat, in C[] y)
         foreach(j; 0 .. mat.length)
             mx[i, j] = mat[j][i];
 
-    return leastSquareEstimate(mx, y.dup);
+    return leastSquareEstimateColumnMajor(mx, y.dup);
 }
 
 

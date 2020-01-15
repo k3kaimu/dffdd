@@ -888,8 +888,7 @@ struct FFTObjectBank(alias makeFFTObject)
 /**
 
 */
-deprecated
-auto globalBankOf(alias makeFFTObj)() @property
+auto globalFFTBankOf(alias makeFFTObj)() @property
 {
     return FFTObjectBank!makeFFTObj.init;
 }
