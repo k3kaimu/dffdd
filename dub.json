@@ -12,7 +12,7 @@
     "dflags-ldc":["-oq"],
 
     "dependencies": {
-        "carbon": {"path": "../carbon"},
+        "carbon": "~>1.8.0",
         "dfftw3": "~>1.0.1",
         "mir-algorithm": "~>3.3.8",
         "libnlopt": "~>0.2.0",

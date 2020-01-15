@@ -10,9 +10,7 @@ import std.range;
 import std.meta : AliasSeq;
 import std.typecons : RefCounted, Tuple, tuple;
 
-import carbon.math;
-import carbon.complex;
-import carbon.memory : fastPODCopy;
+import carbon.complex : cpx, complex_t, isComplex, std_complex_t;
 
 
 enum FFTLibrary
@@ -1041,7 +1039,7 @@ unittest
 deprecated
 Complex!F[] fftWithSwap(FftObj, F)(FftObj fftObj, in Complex!F[] buf)
 in{
-    assert(buf.length.isPowOf2);
+    assert(buf.length.isPowerOf2);
 }
 body{
     Complex!F[] spec = new Complex!F[buf.length];
@@ -1057,7 +1055,7 @@ deprecated
 C[] fftWithSwap(FftObj, C)(FftObj fftObj, in C[] buf)
 if(is(typeof(buf[0].re) : float) && is(typeof(buf[0].im) : float))
 in{
-    assert(buf.length.isPowOf2);
+    assert(buf.length.isPowerOf2);
 }
 body{
     alias F = typeof(buf[0].re);

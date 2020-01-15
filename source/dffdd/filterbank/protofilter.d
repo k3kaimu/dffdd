@@ -96,8 +96,8 @@ unittest
 */
 F[] designPrototypeFromFreqResponse(F = real)(in F[] freqResp)
 in{
-    import carbon.math : isPowOf2;
-    assert(freqResp.length.isPowOf2);
+    // import carbon.math : isPowOf2;
+    assert(freqResp.length.isPowerOf2);
 }
 do {
     import std.algorithm : stdmap = map;

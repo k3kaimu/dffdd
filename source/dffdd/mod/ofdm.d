@@ -1,6 +1,6 @@
 module dffdd.mod.ofdm;
 
-import carbon.math;
+// import carbon.math;
 
 import dffdd.utils.fft;
 

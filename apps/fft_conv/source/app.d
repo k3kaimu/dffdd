@@ -69,7 +69,7 @@ ConvResult!ptrdiff_t implMain(string txDataFileName, string rxDataFileName)
 
 ConvResult!ptrdiff_t peakSearch(string txDataFileName, string rxDataFileName, size_t blockSize, size_t totalIteration, ptrdiff_t offsetTX)
 {
-    enforce(blockSize.isPowOf2, "Invalid Argument: blockSize is not a power number of 2.");
+    enforce(blockSize.isPowerOf2, "Invalid Argument: blockSize is not a power number of 2.");
 
     Fft fftObj = new Fft(blockSize);
 

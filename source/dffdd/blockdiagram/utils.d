@@ -172,8 +172,6 @@ unittest
     import core.atomic;
     import std.stdio;
 
-    import carbon.range;
-
     {
         static size_t countA(int a)
         {

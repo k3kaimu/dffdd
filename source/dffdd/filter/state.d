@@ -3,7 +3,7 @@ module dffdd.filter.state;
 import std.complex;
 import mir.ndslice;
 
-import carbon.math;
+// import carbon.math;
 
 
 struct MultiFIRState(C, SliceKind kind = Contiguous)

@@ -5,8 +5,7 @@ import std.range;
 import std.traits;
 import std.json;
 
-import carbon.math : nextPowOf2;
-
+import dffdd.math : fftSize;
 import dffdd.utils.json;
 import dffdd.utils.unit;
 
@@ -31,7 +30,7 @@ struct FIRFilter(C)
         foreach(ref e; _inputs)
             e = C(0);
 
-        immutable size = nextPowOf2(_coefs.length) * 4;
+        immutable size = fftSize(_coefs.length) * 4;
 
         _fftw = makeFFTWObject!Complex(size);
 

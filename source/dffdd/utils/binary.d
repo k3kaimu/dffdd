@@ -7,7 +7,7 @@ import std.random;
 import std.range;
 import std.traits;
 
-import carbon.stream;
+// import carbon.stream;
 
 
 struct Bit

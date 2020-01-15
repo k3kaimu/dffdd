@@ -452,3 +452,25 @@ unittest
 
     assert(approxEqual(approxLambda0ast(0.1), intBesselI0(0.1)));
 }
+
+
+/**
+サイズnの信号のFFTを計算できるだけの2のべき乗数を返します．
+*/
+size_t fftSize(size_t n)
+{
+    auto ret = nextPow2(n);
+    if(ret == n * 2)
+        return n;
+    else
+        return ret;
+}
+
+unittest 
+{
+    assert(fftSize(1) == 1);
+    assert(fftSize(2) == 2);
+    assert(fftSize(3) == 4);
+    assert(fftSize(4) == 4);
+    assert(fftSize(5) == 8);
+}

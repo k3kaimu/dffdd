@@ -1,7 +1,7 @@
 module dffdd.filter.orthogonalize;
 
-import carbon.math;
-//import carbon.linear;
+// import carbon.math;
+// import carbon.linear;
 import dffdd.utils.linalg;
 import dffdd.filter.traits;
 
@@ -33,7 +33,7 @@ final class DiagonalizationOBFFactory(C, basisFuncs...)
     {
         _cnt = 0;
         foreach(i; 0 .. Dim) foreach(j; 0 .. Dim)
-            _covm[i, j] = complexZero!C;
+            _covm[i, j] = C(0);
     }
 
 
@@ -100,7 +100,7 @@ final class GramSchmidtOBFFactory(C)
     void start()
     {
         foreach(i; 0 .. _dim) foreach(j; 0 .. _dim)
-            _m[i, j] = complexZero!C;
+            _m[i, j] = C(0);
 
         _xs.length = 0;
     }
@@ -111,10 +111,10 @@ final class GramSchmidtOBFFactory(C)
         // 行iとjの内積
         C innerProduct(size_t i, size_t j)
         {
-            C sum = complexZero!C;
+            C sum = C(0);
             foreach(es; _xs){
-                C v1 = complexZero!C,
-                  v2 = complexZero!C;
+                C v1 = C(0),
+                  v2 = C(0);
                 foreach(k, e; es){
                     v1 += _m[i, k] * e;
                     v2 += _m[j, k] * e;
@@ -133,7 +133,7 @@ final class GramSchmidtOBFFactory(C)
         {
             F sum = 0;
             foreach(es; _xs){
-                C v1 = complexZero!C;
+                C v1 = C(0);
                 foreach(k, e; es)
                     v1 += _m[i, k] * e;
 
@@ -152,9 +152,9 @@ final class GramSchmidtOBFFactory(C)
 
         auto res = new C[_dim];
         foreach(i; 0 .. _dim){
-            _m[i, i] = complexZero!C + 1;
+            _m[i, i] = C(0) + 1;
 
-            foreach(j; 0 .. _dim) res[j] = complexZero!C;
+            foreach(j; 0 .. _dim) res[j] = C(0);
             foreach(j; 0 .. i){
                 immutable c = innerProduct(i, j);
                 std.exception.enforce(!isNaN(c.re^^2 + c.im^^2), std.conv.to!string(i) ~ std.conv.to!string(j) ~ std.conv.to!string(_m));
@@ -207,7 +207,7 @@ final class VectorConverter(C)
     this(size_t dim)
     {
         this(new C[dim * dim].sliced(dim, dim));
-        this.convertMatrix[] = complexZero!C;
+        this.convertMatrix[] = C(0);
         this.convertMatrix.diagonal[] = 1;
     }
 
@@ -250,7 +250,7 @@ unittest
     alias C = Complex!float;
 
     auto conv = new VectorConverter!(Complex!float)(2);
-    conv.convertMatrix[] = complexZero!C;
+    conv.convertMatrix[] = C(0);
     conv.convertMatrix[0, 0] = 1;
     conv.convertMatrix[1, 1] = 1;
 
@@ -316,7 +316,7 @@ unittest
     auto conv = new VectorConverter!(Complex!float)(2);
     auto dist = new Distorter!(Complex!float, x => x, x => x*2)();
 
-    conv.convertMatrix[] = complexZero!C;
+    conv.convertMatrix[] = C(0);
     conv.convertMatrix[0, 0] = 1;
     conv.convertMatrix[0, 1] = -1;
     conv.convertMatrix[1, 0] = -1;
@@ -528,7 +528,7 @@ template OBFEval(basisFuncs...)
 {
     C OBFEval(C)(C x, C[] coefs)
     {
-        C ret = complexZero!C;
+        C ret = C(0);
         foreach(i, bf; basisFuncs){
             ret += bf(x) * coefs[i];
         }
