@@ -67,6 +67,8 @@ struct ModelSeed
 {
     string cancellerType;
 
+    uint ofdmNfft = 64;         // オーバーサンプリングを考慮しないOFDMのFFTサイズ
+
     bool linearMode = false;
 
     /* IQ Mixer */
@@ -141,7 +143,9 @@ void mainJob()
     }
 
 
-    enum bool isProgressChecker = true;
+    // enum bool isProgressChecker = true;
+    import core.runtime : Runtime;
+    immutable bool isProgressChecker = Runtime.args.canFind("check");
     enum bool isDumpedFileCheck = true;
 
 
@@ -151,6 +155,7 @@ void mainJob()
 
 
     foreach(numChTaps; [64])
+    foreach(numFFT; [64, 256, 1024])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     "OPHPAOnly3_LS",
@@ -171,7 +176,7 @@ void mainJob()
             taskListShort ~= appShort;
             taskListLong ~= appLong;
             
-            static if(isProgressChecker)
+            if(isProgressChecker)
             {
                 foreach(dir, _; dirset) {
                     if(!exists(buildPath(dir, ALL_RESULT_FILENAME))){
@@ -195,7 +200,7 @@ void mainJob()
         }
 
 
-        string parentDir = format("results_Taps%s", numChTaps);
+        string parentDir = format("results_Taps%s_NFFT%s_101_uniform", numChTaps, numFFT);
 
 
         // only desired signal on AWGN or Rayleigh
@@ -211,6 +216,7 @@ void mainJob()
             modelSeed.outputBER = true;
             modelSeed.linearMode = true;
             modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+            modelSeed.ofdmNfft = numFFT;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_ber", dir ~ "_onlyDesired");
@@ -256,6 +262,7 @@ void mainJob()
             modelSeed.outputBER = true;
             modelSeed.numofTapsOfSIChannel = numChTaps;
             modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+            modelSeed.ofdmNfft = numFFT;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_inr_vs_sic", dir);
@@ -282,6 +289,7 @@ void mainJob()
             modelSeed.outputBER = true;
             modelSeed.numofTapsOfSIChannel = numChTaps;
             modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+            modelSeed.ofdmNfft = numFFT;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_txp_vs_sic", dir);
@@ -309,6 +317,7 @@ void mainJob()
             modelSeed.outputBER = true;
             modelSeed.numofTapsOfSIChannel = numChTaps;
             modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+            modelSeed.ofdmNfft = numFFT;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
@@ -320,7 +329,7 @@ void mainJob()
     import std.stdio;
 
 
-    static if(isProgressChecker)
+    if(isProgressChecker)
     {
         immutable size_t totalTaskListLen = taskListShort.length + taskListLong.length;
 
@@ -333,16 +342,24 @@ void mainJob()
     }
     else
     {
+        import core.runtime : Runtime;
+
         JobEnvironment env = defaultJobEnvironment();
-        env.pmem = 3;
-        env.mem = env.pmem * env.taskGroupSize;
+        if(env.pmem == 0) {
+            env.pmem = 3;
+            env.mem = env.pmem * env.taskGroupSize;
+        }
         // env.scriptPath = "jobscript.sh";
 
-        if(taskListShort.length != 0)
+        if(taskListShort.length != 0) {
+            env.jobName = env.saveOrLoadENV("MY_JOBNAME", format("%s_%s_S", Runtime.args[0].replace("./", ""), hashOfExe()));
             tuthpc.taskqueue.run(taskListShort, env);
+        }
 
-        if(taskListLong.length != 0)
+        if(taskListLong.length != 0) {
+            env.jobName = env.saveOrLoadENV("MY_JOBNAME", format("%s_%s_L", Runtime.args[0].replace("./", ""), hashOfExe()));
             tuthpc.taskqueue.run(taskListLong, env);
+        }
     }
 
     // foreach(i; 0 .. taskListShort.length)
@@ -370,6 +387,10 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             models ~= model;
 
         immutable NP = (10*log10(noisePower(model.samplingFreq, 300)) + 30).dBm * 4.dB;
+
+        model.ofdm.numOfFFT = modelSeed.ofdmNfft;
+        model.ofdm.numOfCP = modelSeed.ofdmNfft / 4;
+        model.ofdm.numOfSubcarrier = modelSeed.ofdmNfft / 16 * 13;  // (52/64)
 
         model.uniqueId = format("%s_%s", hashOfModelSeed, iTrial.to!string);
         model.rndSeed = cast(uint)hashOf(iTrial);
@@ -444,7 +465,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             Complex!double[] coefs;
             foreach(i; 0 .. model.channelSI.taps){
                 // tapsのタップ数で40dB減衰
-                auto db = -1 * (40.0 / model.channelSI.taps) * i;
+                // auto db = -1 * (40.0 / model.channelSI.taps) * i;
+                double db = 0;  // 減衰なし
                 coefs ~= cast(Complex!double)(gGen.front * 10.0 ^^ (db/20));
                 gGen.popFront();
             }
@@ -459,7 +481,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             Complex!double[] coefs;
             foreach(i; 0 .. model.channelDesired.taps) {
                 // tapsのタップ数で40dB減衰
-                auto db = -1 * (40 / (model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling)) * i;
+                // auto db = -1 * (40 / (model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling)) * i;
+                double db = 0;  // 減衰なし
                 coefs ~= cast(Complex!double)(gGen.front * 10.0 ^^ (db/20));
                 gGen.popFront();
             }
