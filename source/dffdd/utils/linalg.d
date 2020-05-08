@@ -398,7 +398,7 @@ Complex!R[] leastSquareEstimateColumnMajor(R : double)(Slice!(Complex!R*, 2, Con
     int rankN = void;
     static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
 
-    adjustSize(sworkSpace, min(L, P));
+    adjustSize(sworkSpace, max(L, P));
     gelss(102, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)L, cast(R[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
 
     return y[0 .. P];
@@ -426,13 +426,13 @@ Complex!R[] leastSquareEstimateRowMajor(R : double)(Slice!(Complex!R*, 2, Contig
     static R[] sworkSpace;
 
     immutable L = y.length;
-    immutable P = mx.length!0;
+    immutable P = mx.length!1;
 
     int rankN = void;
     static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
 
-    adjustSize(sworkSpace, min(L, P));
-    gelss(Order.RowMajor, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)L, cast(R[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
+    adjustSize(sworkSpace, max(L, P));
+    gelss(Order.RowMajor, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)mx.leadingDimension, cast(R[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
 
     return y[0 .. P];
 }
