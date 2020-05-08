@@ -1,7 +1,10 @@
 module dffdd.math.math;
 
+import std.complex;
 import std.math;
 import std.traits;
+
+import carbon.complex : isComplex;
 
 
 /**
@@ -295,4 +298,150 @@ unittest
     }
 
     assert(approxEqual(approxLambda0ast(0.1), intBesselI0(0.1)));
+}
+
+
+
+
+C fact(C = ulong)(uint n)
+{
+    C dst = 1;
+    foreach(i; 2 .. n + 1)
+        dst *= i;
+
+    return dst;
+}
+
+unittest
+{
+    assert(fact(0) == 1);
+    assert(fact(1) == 1);
+    assert(fact(2) == 2);
+    assert(fact(3) == 6);
+    assert(fact(4) == 24);
+    assert(fact(5) == 120);
+}
+
+C binom(C)(C x, size_t k) if(isComplex!C || isFloatingPoint!C || isIntegral!C)
+{
+    C num = 1;
+    C den = 1;
+    foreach(i; 0 .. k)
+    {
+        num *= x - i;
+        den *= k - i;
+    }
+
+    return num / den;
+}
+
+unittest
+{
+    assert(binom(5, 0) == 1);
+    assert(binom(5, 1) == 5);
+    assert(binom(5, 2) == 10);
+    assert(binom(5, 3) == 10);
+    assert(binom(5, 4) == 5);
+    assert(binom(5, 5) == 1);
+}
+
+/**
+一般ラゲール多項式（Generalized Laguerre Polynomial） L_n^a(x)を評価します．
+*/
+C laguerre(C)(C x, int n, C a = 0) if(isComplex!C || isFloatingPoint!C)
+{
+    C sum = 0;
+    foreach(i; 0 .. n + 1)
+        sum += (-1) ^^ i * binom(n + a, n - i) * x ^^ i / fact!C(i);
+
+    return sum;
+}
+
+unittest
+{
+    import std.math : approxEqual;
+
+    // L_0^a(x) = 1
+    auto l0a = delegate(real a, real x) { return 1.0L; };
+
+    // L_1^a(x) = -x + a + 1
+    auto l1a = delegate(real a, real x) { return -x + a + 1; };
+
+    // L_2^a(x) = x^2/2 - (a+2)x + (a+2)(a+1)/2
+    auto l2a = delegate(real a, real x) {
+        return x ^^ 2 / 2 - (a + 2) * x + (a + 2) * (a + 1) / 2;
+    };
+
+    // L_3^a(x) = -x^3/6 + (a+3)x^2/2 - (a+2)(a+3)x/2 + (a+1)(a+2)(a+3)/6
+    auto l3a = delegate(real a, real x) {
+        return -x ^^ 3 / 6 + (a + 3) * x ^^ 2 / 2 - (a + 2) * (a + 3) * x / 2 + (
+                a + 1) * (a + 2) * (a + 3) / 6;
+    };
+
+    auto testXs = [0, 0.1, 0.5, 1, 2, 5, 10];
+    auto testAs = [0, 1, 2, 3, 4, 5];
+
+    foreach(x; testXs)
+        foreach(a; testAs)
+        {
+            foreach(int i, f; [l0a, l1a, l2a, l3a])
+                assert(laguerre(x, i, a).approxEqual(f(a, x)));
+        }
+}
+
+/**
+一般ラゲール多項式に基づく正規直交基底を計算します
+*/
+C laguerreOBF(C)(C x, int m, int n) if(isComplex!C || isFloatingPoint!C)
+{
+    alias F = typeof(abs(x));
+
+    if(m >= n)
+    {
+        immutable F normCoef = sqrt(fact!F(n) / fact!F(m));
+        return (-1) ^^ n * normCoef * x ^^ (m - n) * laguerre(x.sqAbs, n, m - n);
+    }
+    else
+    {
+        immutable F normCoef = sqrt(fact!F(m) / fact!F(n));
+        return (-1) ^^ m * normCoef * x.conj ^^ (n - m) * laguerre(x.sqAbs, m, n - m);
+    }
+}
+
+unittest
+{
+    //
+    auto ps = [0, 1, 2, 3, 4, 5];
+    auto xs = [complex(0, 0), complex(0, 1), complex(1, 0), complex(1, 1),
+        complex(0.5, 0.5), complex(-0.5, -0.5), complex(0.5, -0.5), complex(-0.5, 0.5)];
+
+    foreach(p; ps)
+    {
+        foreach(x; xs)
+        {
+            assert(laguerreOBF(x, p, 0).approxEqualC(1 / sqrt(fact!real(p)) * x ^^ p));
+            assert(laguerreOBF(x, 0, p).approxEqualC(laguerreOBF(x, p, 0).conj));
+            assert(laguerreOBF(x, p, p).approxEqualC((-1) ^^ p * laguerre(x.sqAbs, p)));
+            assert(laguerreOBF(x, p + 1, p).approxEqualC((-1) ^^ p / sqrt(p + 1.0L) * x * laguerre(x.sqAbs,
+                    p, 1)));
+            assert(laguerreOBF(x, p, p + 1).approxEqualC(laguerreOBF(x, p + 1, p).conj));
+        }
+    }
+}
+
+
+bool approxEqualC(C1, C2)(C1 x, C2 y)
+        if((isComplex!C1 || isFloatingPoint!C1) && (isComplex!C2 || isFloatingPoint!C2))
+{
+    static if(isFloatingPoint!C1)
+        return .approxEqualC(complex(x, 0), y);
+    else
+    {
+        static if(isFloatingPoint!C2)
+            return .approxEqualC(x, complex(y, 0));
+        else
+        {
+            return std.math.approxEqual(x.re, y.re) && std.math.approxEqual(x.im, y.im);
+        }
+    }
 }
