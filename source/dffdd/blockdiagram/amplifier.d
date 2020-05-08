@@ -242,8 +242,6 @@ struct SalehModelConverter(C)
 
     void opCall(InputElementType input, ref OutputElementType output)
     {
-        input *= _g;
-
         immutable r = std.complex.abs(input),
                   u = input / r;    // unit vector
 
