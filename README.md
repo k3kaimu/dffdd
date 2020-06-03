@@ -1,29 +1,43 @@
 # dffdd: Digital Filter library for Full-Duplex written by D
 
+This library ``dffdd'' is a software library written by D programming language for baseband signal simulation of in-band full-duplex transceivers.
+This library provides following primitive modules and self-interference cancellers:
+
++ Phase Shift Keying modulator, demodulator
++ OFDM modulator, demodulator
++ Low Density Parity Check (LDPC) code
++ FIR and IIR filter
++ Memoryless Nonlinearity: Saleh, Rapp, etc...
++ Linear Least Squares methods
++ Adaptive Algorithms: LMS, NLMS, RLS
++ Parallel Hammerstein cancellers on time-domain and frequency-domain
++ Iterative Nonlinear canceller
+
 ## How to use
 
-At first, you must install dmd and dub.
+In this instruction, we use [Homebrew](https://brew.sh/) to install compilers, and libraries such as FFTW, OpenBLAS, NLopt.
+If you are using Linux, you can use the package manager of your distribution instead of Homebrew.
+Of course, you can build an environment with Homebrew on Linux.
 
-~~~~~
-$ brew install dmd
-$ brew install dub
-~~~~~
+### Step 0: Install D compiler and tools
 
+```sh
+$ brew install dmd dub
+```
+
+### Step 1: Install FFTW, OpenBLAS, and NLopt
 This library requires `FFTW`, `OpenBLAS`, and `NLopt`.
-They can be installed by `homebrew`.
 
-~~~~~
+```sh
 $ brew install fftw openblas nlopt
-~~~~~
+```
 
-In addition, you should clone this library and carbon from gitlab and github, respectively.
+### Step 2: Clone repositories
 
-~~~~~
-$ mkdir workdir && cd workdir
-$ git clone https://whale0.comm.ee.tut.ac.jp/gitlab/komatsu/dffdd.git
+```sh
+$ git clone https://github.com/k3kaimu/dffdd.git
 $ git clone https://github.com/k3kaimu/carbon.git
-$ git clone https://github.com/k3kaimu/dranges.git
-~~~~~
+```
 
 
 ## Example: build and run a full-duplex simulator
