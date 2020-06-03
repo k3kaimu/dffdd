@@ -62,7 +62,7 @@ alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Comple
 struct Model
 {
     // size_t numOfModelTrainingSymbols = 100;
-    size_t numOfFilterTrainingSymbols = 100;
+    size_t numOfFilterTrainingSymbols = 250;
     //size_t blockSize = 1024;
     size_t blockSize() const @property { return ofdm.numOfSamplesOf1Symbol*4; }
     double carrFreq = 2.45e9;
@@ -150,8 +150,8 @@ struct Model
 
     struct BERCounter
     {
-        ulong totalBits = 1_000_000;
-        ulong evmSymbols = 300;
+        ulong totalBits = 100_000;
+        ulong evmSymbols = 30;
     }
     BERCounter berCounter;
 

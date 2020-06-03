@@ -287,6 +287,8 @@ auto makeFilter(string filterType)(Model model)
 
     static if(filterStructure.canFind("Sub"))
         alias Dist = SubSetOfPADistorter!(Complex!float, POrder);
+    else static if(filterStructure.canFind("PHPAOnly"))
+        alias Dist = OnlyPADistorter!(Complex!float, POrder);
     else
         alias Dist = PADistorter!(Complex!float, POrder);
 
@@ -516,6 +518,8 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
              INR = Gain.fromPowerGain(sumSI / sumNoisePower),
              canc = Gain.fromPowerGain((INR.asP + 1) / (RINR.asP + 1));
 
+        infoResult["RemainPower"] = sumRemainPower;
+        infoResult["SIPower"] = sumSI;
         infoResult["cancellation_dB"] = canc.asdB;
         infoResult["RINR_dB"] = RINR.asdB;
         infoResult["INR_dB"] = INR.asdB;

@@ -141,11 +141,12 @@ void mainJob()
     }
 
 
-    enum bool isProgressChecker = true;
+    import core.runtime : Runtime;
+    immutable bool isProgressChecker = Runtime.args.canFind("check");
     enum bool isDumpedFileCheck = true;
 
 
-    enum numOfTrials = 101;
+    enum numOfTrials = 10001;
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
@@ -153,9 +154,9 @@ void mainJob()
     foreach(numChTaps; [64])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
-                                    "OPHPAOnly3_LS",
-                                    "OPHPAOnly5_LS",
-                                    "OPHPAOnly7_LS",
+                                    "PHPAOnly3_LS",
+                                    "PHPAOnly5_LS",
+                                    "PHPAOnly7_LS",
                                     // "OPHPAOnly5_LS",
                                     // "OPHPAOnly3_LS",
                                     // "Nop_X",
@@ -171,7 +172,7 @@ void mainJob()
             taskListShort ~= appShort;
             taskListLong ~= appLong;
             
-            static if(isProgressChecker)
+            if(isProgressChecker)
             {
                 foreach(dir, _; dirset) {
                     if(!exists(buildPath(dir, ALL_RESULT_FILENAME))){
@@ -195,7 +196,7 @@ void mainJob()
         }
 
 
-        string parentDir = format("results_Taps%s", numChTaps);
+        string parentDir = format("results_Taps_SalehSaleh%s_%s", numChTaps, numOfTrials);
 
 
         // only desired signal on AWGN or Rayleigh
@@ -240,7 +241,7 @@ void mainJob()
 
 
         // INR vs (EVM / SIC / BER)
-        foreach(learningSymbols; [50])
+        foreach(learningSymbols; [200])
         foreach(inr; iota(0, 82, 3))
         foreach(loss; [70])
         {
@@ -264,9 +265,9 @@ void mainJob()
         }
 
         // TXP vs (EVM / SIC /  BER)
-        foreach(isoRF; [50, 70])
+        foreach(isoRF; [50])
         foreach(desiredLoss; [70])
-        foreach(learningSymbols; [50])
+        foreach(learningSymbols; [200])
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
             modelSeed.paSmoothFactor = 3;
@@ -289,16 +290,16 @@ void mainJob()
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-
+        /+
         // SF vs (EVM / SIC / BER)
         foreach(txp; [23])
-        foreach(isoRF; [50, 70])
+        foreach(isoRF; [50])
         foreach(desiredLoss; [70])
-        foreach(learningSymbols; [50])
+        foreach(learningSymbols; [200])
         foreach(sf_10; iota(2, 51, 2)) {
             ModelSeed modelSeed;
             modelSeed.paSmoothFactor = sf_10/10.0;
-            modelSeed.lnaSmoothFactor = sf_10/10.0;
+            modelSeed.lnaSmoothFactor = 3;
             modelSeed.txPower = txp.dBm;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = learningSymbols;
@@ -314,13 +315,13 @@ void mainJob()
             dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        }+/
     }
 
     import std.stdio;
 
 
-    static if(isProgressChecker)
+    if(isProgressChecker)
     {
         immutable size_t totalTaskListLen = taskListShort.length + taskListLong.length;
 
@@ -334,8 +335,13 @@ void mainJob()
     else
     {
         JobEnvironment env = defaultJobEnvironment();
-        env.pmem = 3;
+        env.pmem = 5;
         env.mem = env.pmem * env.taskGroupSize;
+        
+        import core.runtime : Runtime;
+        import std.digest.crc : crc32Of;
+        import std.digest : toHexString;
+        env.jobName = format("run_%s_%s", Runtime.args[0].baseName, crc32Of(cast(ubyte[])std.file.read(Runtime.args[0])).toHexString);
         // env.scriptPath = "jobscript.sh";
 
         if(taskListShort.length != 0)
@@ -444,7 +450,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             Complex!double[] coefs;
             foreach(i; 0 .. model.channelSI.taps){
                 // tapsのタップ数で40dB減衰
-                auto db = -1 * (40.0 / model.channelSI.taps) * i;
+                // auto db = -1 * (40.0 / model.channelSI.taps) * i;
+                auto db = 0;
                 coefs ~= cast(Complex!double)(gGen.front * 10.0 ^^ (db/20));
                 gGen.popFront();
             }
@@ -459,7 +466,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             Complex!double[] coefs;
             foreach(i; 0 .. model.channelDesired.taps) {
                 // tapsのタップ数で40dB減衰
-                auto db = -1 * (40 / (model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling)) * i;
+                // auto db = -1 * (40 / (model.ofdm.numOfCP * model.ofdm.scaleOfUpSampling)) * i;
+                auto db = 0;
                 coefs ~= cast(Complex!double)(gGen.front * 10.0 ^^ (db/20));
                 gGen.popFront();
             }
@@ -655,6 +663,8 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     }
 
     JSONValue jv = cast(JSONValue[string])null;
+    jv["RemainPowers"] = resList.map!(a => a["RemainPower"]).array();
+    jv["SIPowers"] = resList.map!(a => a["SIPower"]).array();
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
     jv["RINRs"] = resList.map!(a => a["RINR_dB"]).array();
     jv["INRs"] = resList.map!(a => a["INR_dB"]).array();

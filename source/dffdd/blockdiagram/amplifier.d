@@ -232,11 +232,13 @@ struct SalehModelConverter(C)
     /**
     gain: 小信号ゲイン
     osatV: 出力飽和電圧
+    satPhi: 出力飽和電圧での位相回転量
     */
-    this(Gain gain, Voltage osatV)
+    this(Gain gain, Voltage osatV, real satPhi)
     {
         _g = gain.asV;
         _o = osatV.volt;
+        _phi = satPhi;
     }
 
 
@@ -249,7 +251,7 @@ struct SalehModelConverter(C)
         if(r <= 1E-6) {
             output = input * _g;
         } else {
-            output = _o * normalized_saleh(_g * r / _o) * u;
+            output = _o * normalized_saleh(_g * r / _o, _phi) * u;
         }
     }
 
@@ -283,27 +285,27 @@ struct SalehModelConverter(C)
     {
         return JSONValue([
             "gain":         _g,
-            "saturation":   _o
+            "saturation":   _o,
+            "phisat" : _phi
         ]);
     }
 
 
   private:
-    real _g, _o;
+    real _g, _o, _phi;
 
 
     /**
-    飽和電圧1，小信号ゲイン1のsalehモデル
+    飽和電圧1，小信号ゲイン1，飽和時の位相回転量phiのsalehモデル
     */
-    C normalized_saleh(real r)
+    C normalized_saleh(real r, real phi)
     {
-        immutable aa = 2.1587,
-                  ba = aa^^2 / 4,   // = 1.16402521
-                  ap = 4.033,
-                  bp = 9.1040;
+        immutable real aa = 1.0,
+                       ba = aa^^2 / 4,
+                       ap = 2 * phi,
+                       bp = ba;
 
-        r /= aa;
-        return C(aa * r / (1+ba*r^^2) * std.complex.expi(ap*r^^2/(1+bp*r^^2)));
+        return C(aa * r / (1 + ba*r^^2) * std.complex.expi(ap*r^^2 / (1+bp*r^^2)));
     }
 }
 
