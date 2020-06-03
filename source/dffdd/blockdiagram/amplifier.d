@@ -7,6 +7,7 @@ import std.math;
 import std.complex;
 import std.json;
 
+import dffdd.blockdiagram.utils;
 import dffdd.utils.unit;
 import dffdd.utils.json;
 import dffdd.math.math;
@@ -16,6 +17,59 @@ interface IAmplifier(C) : IConverter!(C, C, Yes.isDuplicatable)
 {
     Gain linearGain() const;
     JSONValue dumpInfoToJSON() const;
+}
+
+
+final class AmplifierObject(C, Struct) : IAmplifier!C
+{
+    this(Struct original)
+    {
+        _original = original;
+    }
+
+
+    alias InputElementType = Struct.InputElementType;
+    alias OutputElementType = Struct.OutputElementType;
+
+
+    void opCall(in InputElementType[] src, OutputElementType[] dst)
+    {
+        static if(is(typeof(_original(src, dst))))
+            _original(src, dst);
+        else {
+            foreach(i; 0 .. src.length) {
+                _original(src[i], dst[i]);
+            }
+        }
+    }
+
+
+    AmplifierObject!(C, Struct) dup() const
+    {
+        return new AmplifierObject!(C, Struct)(_original.dup);
+    }
+
+
+    Gain linearGain() const
+    {
+        return _original.linearGain();
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        return _original.dumpInfoToJSON();
+    }
+
+
+  private:
+    Struct _original;
+}
+
+
+IAmplifier!(C) toAmplifierObject(C, Amp)(Amp amp)
+{
+    return new AmplifierObject!(C, Amp)(amp);
 }
 
 

@@ -74,12 +74,14 @@ struct ModelSeed
     Gain rxIRR = 25.dB;
 
     /* PA */
+    string paModelName;
     Voltage txPower = 23.dBm;       // 送信電力
     Voltage paVsat = 30.dBm;        // 出力飽和電圧
     Gain paGain = 30.dB;
     double paSmoothFactor = 3;
 
     /* LNA */
+    string lnaModelName;
     double lnaSmoothFactor = 3;
     Gain lnaGain = 20.dB;         // LNA利得 
     Voltage lnaVsatIn = (-6).dBm; // 入力飽和電圧
@@ -151,6 +153,7 @@ void mainJob()
     size_t sumOfTrials = 0;
 
 
+    foreach(amplifierModel; ["Rapp", "Saleh"])
     foreach(numChTaps; [64])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -196,7 +199,7 @@ void mainJob()
         }
 
 
-        string parentDir = format("results_Taps_SalehSaleh%s_%s", numChTaps, numOfTrials);
+        string parentDir = format("results_Taps_%s%s_%s", amplifierModel, numChTaps, numOfTrials);
 
 
         // only desired signal on AWGN or Rayleigh
@@ -204,6 +207,8 @@ void mainJob()
         foreach(snr; iota(0, (numChTaps == 1 ? 22 : 52), 3))
         {
             ModelSeed modelSeed;
+            modelSeed.paModelName = amplifierModel;
+            modelSeed.lnaModelName = amplifierModel;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 10;
             modelSeed.INR = 20.dB;
@@ -224,6 +229,8 @@ void mainJob()
         // {
         //     ModelSeed modelSeed;
         //     // modelSeed.linearMode = true;
+                // modelSeed.paModelName = amplifierModel;
+            // modelSeed.lnaModelName = amplifierModel;
         //     modelSeed.paSmoothFactor = paSF;
         //     modelSeed.lnaSmoothFactor = lnaSF;
         //     modelSeed.cancellerType = methodName;
@@ -246,6 +253,8 @@ void mainJob()
         foreach(loss; [70])
         {
             ModelSeed modelSeed;
+            modelSeed.paModelName = amplifierModel;
+            modelSeed.lnaModelName = amplifierModel;
             modelSeed.paSmoothFactor = 3;
             modelSeed.lnaSmoothFactor = 3;
             modelSeed.cancellerType = methodName;
@@ -270,6 +279,8 @@ void mainJob()
         foreach(learningSymbols; [200])
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
+            modelSeed.paModelName = amplifierModel;
+            modelSeed.lnaModelName = amplifierModel;
             modelSeed.paSmoothFactor = 3;
             modelSeed.lnaSmoothFactor = 3;
             modelSeed.txPower = txp.dBm;
@@ -298,6 +309,8 @@ void mainJob()
         foreach(learningSymbols; [200])
         foreach(sf_10; iota(2, 51, 2)) {
             ModelSeed modelSeed;
+            modelSeed.paModelName = amplifierModel;
+            modelSeed.lnaModelName = amplifierModel;
             modelSeed.paSmoothFactor = sf_10/10.0;
             modelSeed.lnaSmoothFactor = 3;
             modelSeed.txPower = txp.dBm;
@@ -416,6 +429,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
 
         /* PAの設定 */
         {
+            model.pa.modelName = modelSeed.paModelName;
             model.pa.TX_POWER = modelSeed.txPower;
             model.pa.GAIN = modelSeed.paGain;
             model.pa.Vsat = modelSeed.paVsat;
@@ -424,6 +438,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
 
         /* LNAの設定 */
         {
+            model.lna.modelName = modelSeed.lnaModelName;
             model.lna.GAIN = modelSeed.lnaGain;
             model.lna.Vsat = modelSeed.lnaVsatIn * modelSeed.lnaGain;   // 入力飽和電圧から出力飽和電圧への変換
             model.lna.smoothFactor = modelSeed.lnaSmoothFactor;

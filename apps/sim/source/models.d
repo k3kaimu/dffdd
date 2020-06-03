@@ -180,6 +180,7 @@ struct Model
 
     struct PA 
     {
+        string modelName;
         Gain GAIN = 28.5.dB;
         Voltage Vsat = 21.8.dBm;        // 出力飽和電圧
         Voltage TX_POWER = 15.dBm;
@@ -189,6 +190,7 @@ struct Model
 
     struct LNA
     {
+        string modelName;
         Gain GAIN = 20.dB;              // 20dB
         Gain NF = 4.dB;                 // 4dB
         // uint noiseSeedOffset = 123;

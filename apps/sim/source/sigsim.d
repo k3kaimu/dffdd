@@ -242,18 +242,18 @@ final class SimulatedSignals
 
         if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.get.dup;
         if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.get.dup;
-        if(!this._txPANonlin.isNull)    dst._txPANonlin = this._txPANonlin.get.dup;
+        if(!this._txPANonlin.isNull)    dst._txPANonlin = cast(IAmplifier!C)this._txPANonlin.get.dup;
 
         if(!this._detxIQMixer.isNull)     dst._detxIQMixer = this._detxIQMixer.get.dup;
         if(!this._detxPAVGA.isNull)       dst._detxPAVGA = this._detxPAVGA.get.dup;
-        if(!this._detxPANonlin.isNull)    dst._detxPANonlin = this._detxPANonlin.get.dup;
+        if(!this._detxPANonlin.isNull)    dst._detxPANonlin = cast(IAmplifier!C)this._detxPANonlin.get.dup;
         
         if(!this._channelSI.isNull)         dst._channelSI = this._channelSI.get.dup;
         if(!this._channelDesired.isNull)    dst._channelDesired = this._channelDesired.get.dup;
 
         if(!this._rxDESVGA.isNull)      dst._rxDESVGA = this._rxDESVGA.get.dup;
         if(!this._rxLNAVGA.isNull)      dst._rxLNAVGA = this._rxLNAVGA.get.dup;
-        if(!this._rxLNANonlin.isNull)   dst._rxLNANonlin = this._rxLNANonlin.get.dup;
+        if(!this._rxLNANonlin.isNull)   dst._rxLNANonlin = cast(IAmplifier!C)this._rxLNANonlin.get.dup;
         if(!this._rxIQMixer.isNull)     dst._rxIQMixer = this._rxIQMixer.get.dup;
         if(!this._rxQZVGA.isNull)       dst._rxQZVGA = this._rxQZVGA.get.dup;
         if(!this._rxQZ.isNull)          dst._rxQZ = this._rxQZ.get.dup;
@@ -362,18 +362,18 @@ final class SimulatedSignals
 
     Nullable!(IQImbalanceConverter!C) _txIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
-    Nullable!(RappModelConverter!C) _txPANonlin;
+    Nullable!(IAmplifier!C) _txPANonlin;
 
     Nullable!(IQImbalanceConverter!C) _detxIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _detxPAVGA;
-    Nullable!(RappModelConverter!C) _detxPANonlin;
+    Nullable!(IAmplifier!C) _detxPANonlin;
 
     Nullable!(FIRFilterConverter!C) _channelSI;
     Nullable!(FIRFilterConverter!C) _channelDesired;
 
     Nullable!(PowerControlAmplifierConverter!C) _rxDESVGA;
     Nullable!(PowerControlAmplifierConverter!C) _rxLNAVGA;
-    Nullable!(RappModelConverter!C) _rxLNANonlin;
+    Nullable!(IAmplifier!C) _rxLNANonlin;
     Nullable!(IQImbalanceConverter!C) _rxIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _rxQZVGA;
     Nullable!(SimpleQuantizerConverter!C) _rxQZ;
@@ -414,14 +414,26 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._txPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat);
+
+        if(model.pa.modelName == "Rapp")
+            dst._txPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat).toAmplifierObject!C;
+        else if(model.pa.modelName == "Saleh")
+            dst._txPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.Vsat, PI/6).toAmplifierObject!C;
+        else
+            assert(0, "Invalid model name of PA");
     }else{
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
 
     if(model.useDTXPA) {
         dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
-        dst._detxPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat);
+
+        if(model.pa.modelName == "Rapp")
+            dst._detxPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat).toAmplifierObject!C;
+        else if(model.pa.modelName == "Saleh")
+            dst._detxPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.Vsat, PI/6).toAmplifierObject!C;
+        else
+            assert(0, "Invalid model name of PA");
     }else{
         dst._detxPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER, 1e-2);
     }
@@ -432,9 +444,14 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     Voltage receivedSIPower = model.thermalNoise.power(model) * model.lna.NF * model.INR;
     if(model.useSRXLN){
         dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
-        dst._rxLNANonlin = RappModelConverter!C(model.lna.smoothFactor, model.lna.GAIN, model.lna.Vsat);
+
+        if(model.lna.modelName == "Rapp")
+            dst._rxLNANonlin = RappModelConverter!C(model.lna.smoothFactor, model.lna.GAIN, model.lna.Vsat).toAmplifierObject!C;
+        else if(model.lna.modelName == "Saleh")
+            dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, model.lna.Vsat, PI/6).toAmplifierObject!C;
+        else
+            assert(0, "Invalid model name of LNA");
         //  dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
-        // dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
     }else{
         dst._rxLNAVGA = PowerControlAmplifierConverter!C(receivedSIPower, 1e-2);
         // dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, real.infinity);
