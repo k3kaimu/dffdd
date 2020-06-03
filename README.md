@@ -17,14 +17,14 @@ This library provides following primitive modules and self-interference cancelle
 
 ## How to use
 
-In this instruction, we use [Homebrew](https://brew.sh/) to install compilers, and libraries such as FFTW, OpenBLAS, NLopt.
+In this instruction, we use [Homebrew](https://brew.sh/) to install compilers and libraries such as FFTW, OpenBLAS, and NLopt.
 If you are using Linux, you can use the package manager of your distribution instead of Homebrew.
 Of course, you can build an environment with Homebrew on Linux.
 
 ### Step 0: Install D compiler and tools
 
 ```sh
-$ brew install dmd dub
+$ brew install dmd dub ldc
 ```
 
 ### Step 1: Install FFTW, OpenBLAS, and NLopt
@@ -45,7 +45,7 @@ $ git clone https://github.com/k3kaimu/carbon.git
 ### Step 3: Build and run a full-duplex simulator
 
 ~~~~
-$ cd apps/sim
+$ cd dffdd/apps/sim
 $ dub --build=release
 ~~~~
 
