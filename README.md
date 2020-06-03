@@ -40,7 +40,7 @@ $ git clone https://github.com/k3kaimu/carbon.git
 ```
 
 
-## Example: build and run a full-duplex simulator
+## Step 3: Build and run a full-duplex simulator
 
 ~~~~
 $ cd apps/sim
