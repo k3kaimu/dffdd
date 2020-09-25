@@ -747,8 +747,8 @@ struct LinearInterpolatedAMAMConverter(C)
     auto _makeInterpolationObject(immutable(F)[] xs, immutable(F)[] fs)
     {
         import mir.interpolate.linear : linear;
-        import mir.ndslice;
-        return linear!F(xs.sliced, fs.sliced);
+        import mir.rc.array;
+        return linear!F(xs.rcarray.asSlice, fs.rcarray!(const(F)).asSlice);
     }
 
 
