@@ -498,6 +498,9 @@ final class SidelobeIterativeWLNL(C, size_t P)
             real yabs = y.abs;
             real e = yabs;
             foreach(i; 0 .. _nNewtonIter) {
+                if(e == 0)
+                    return C(0, 0);
+
                 real fx = mypoly(C(e), coefs).abs - yabs;
 
                 real sumR = 0, sumI = 0, sumRD = 0, sumID = 0;
