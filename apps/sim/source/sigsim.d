@@ -7,6 +7,7 @@ import std.format;
 import std.math;
 import std.meta;
 import std.path;
+import std.random;
 import std.range;
 import std.traits;
 import std.typecons;
@@ -112,7 +113,7 @@ final class SimulatedSignals
             xs = _tempbuf[1][0 .. len],
             ns = _tempbuf[2][0 .. len];
 
-        foreach(i; 0 .. len){
+        foreach(i; 0 .. len) {
             ds[i] = desiredBaseband.front;
             xs[i] = txBaseband.front;
             ns[i] = noise.front;
@@ -129,6 +130,14 @@ final class SimulatedSignals
             detxvgas = _tempbuf[7][0 .. len],
             detxpas = _tempbuf[8][0 .. len];
 
+        C[] txpn = _tempbuf[17][0 .. len],
+            depn = _tempbuf[18][0 .. len],
+            onesbuf = _tempbuf[19][0 .. len];
+
+        onesbuf[] = C(1);
+        txpn[] = C(1);
+        depn[] = C(1);
+
         // 自端末の送信機のIQインバランス
         if(_model.useSTXIQ) _txIQMixer.get()(xs, txiqs);
         else                txiqs[] = xs[];
@@ -136,6 +145,16 @@ final class SimulatedSignals
         // 相手端末の送信機のIQインバランス
         if(_model.useDTXIQ) _detxIQMixer.get()(ds, detxiqs);
         else                detxiqs[] = ds[];
+
+        // 自端末と相手端末の位相雑音を生成
+        if(_model.useSTXPN) _pnGen1.get()(onesbuf, txpn);
+        if(_model.useDTXPN) _pnGen2.get()(onesbuf, depn);
+
+        // 両端末の送信機で位相雑音をかける
+        foreach(i; 0 .. len) {
+            txiqs[i] *= txpn[i];
+            detxiqs[i] *= depn[i];
+        }
 
         // 自端末の送信機のPAの歪み
         _txPAVGA.get()(txiqs, txvgas);
@@ -172,6 +191,11 @@ final class SimulatedSignals
         // 自端末の受信機のLNAの歪み
         if(_model.useSRXLN) _rxLNANonlin.get()(rxvgas, rxlnas);
         else                rxlnas[] = rxvgas[];
+
+        // 自端末の位相雑音で割る
+        foreach(i; 0 .. len) {
+            rxlnas[i] /= txpn[i];
+        }
 
         // 自端末の受信機のIQインバランス
         if(_model.useSRXIQ) _rxIQMixer.get()(rxlnas, rxiqs);
@@ -239,6 +263,9 @@ final class SimulatedSignals
         dst._desiredCoef = this._desiredCoef;
         dst._selfInterferenceCoef = this._selfInterferenceCoef;
         dst._noiseCoef = this._noiseCoef;
+
+        if(!this._pnGen1.isNull)        dst._pnGen1 = this._pnGen1.get.dup;
+        if(!this._pnGen2.isNull)        dst._pnGen2 = this._pnGen2.get.dup;
 
         if(!this._txIQMixer.isNull)     dst._txIQMixer = this._txIQMixer.get.dup;
         if(!this._txPAVGA.isNull)       dst._txPAVGA = this._txPAVGA.get.dup;
@@ -351,7 +378,7 @@ final class SimulatedSignals
     Signal noise;
 
   private:
-    C[][17] _tempbuf;
+    C[][20] _tempbuf;
 
     bool _nowTrainingMode;
     bool* _useSWPOFDM;
@@ -359,6 +386,9 @@ final class SimulatedSignals
     C _desiredCoef = C(1);
     C _selfInterferenceCoef = C(1);
     C _noiseCoef = C(1);
+
+    Nullable!(FROPhaseNoiseGenerator!(C, Xorshift)) _pnGen1;
+    Nullable!(FROPhaseNoiseGenerator!(C, Xorshift)) _pnGen2;
 
     Nullable!(IQImbalanceConverter!C) _txIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
@@ -406,11 +436,21 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
 
     dst.noise = thermalNoise(model).connectTo!VGA(model.lna.NF).map!(a => cast(C)(a*1.0)).toWrappedRange;
 
-    if(model.useSTXIQ)
-        dst._txIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
+    if(model.useSTXPN)
+        dst._pnGen1 = FROPhaseNoiseGenerator!(C, Xorshift)(Xorshift( (model.rndSeed + hashOf("STXPN")) & uint.max ), model.samplingFreq, model.phaseNoise.betaBWHz);
 
-    if(model.useDTXIQ)
-        dst._detxIQMixer = IQImbalanceConverter!C(0.dB, model.txIQMixer.imbCoef);
+    if(model.useDTXPN)
+        dst._pnGen2 = FROPhaseNoiseGenerator!(C, Xorshift)(Xorshift( (model.rndSeed + hashOf("DTXPN")) & uint.max ), model.samplingFreq, model.phaseNoise.betaBWHz);
+
+    if(model.useSTXIQ) {
+        immutable normgain = 1/sqrt(1 + model.txIQMixer.imbCoef.sqAbs);
+        dst._txIQMixer = IQImbalanceConverter!C(Gain.fromVoltageGain(normgain), model.txIQMixer.imbCoef);
+    }
+
+    if(model.useDTXIQ) {
+        immutable normgain = 1/sqrt(1 + model.txIQMixer.imbCoef.sqAbs);
+        dst._detxIQMixer = IQImbalanceConverter!C(Gain.fromVoltageGain(normgain), model.txIQMixer.imbCoef);
+    }
 
     if(model.useSTXPA){
         dst._txPAVGA = PowerControlAmplifierConverter!C(model.pa.TX_POWER / model.pa.GAIN, 1e-2);
@@ -419,6 +459,8 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
             dst._txPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat).toAmplifierObject!C;
         else if(model.pa.modelName == "Saleh")
             dst._txPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.Vsat, PI/6).toAmplifierObject!C;
+        else if(model.pa.modelName == "Saleh_noPM")
+            dst._txPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.Vsat, 0).toAmplifierObject!C;
         else
             assert(0, "Invalid model name of PA");
     }else{
@@ -432,6 +474,8 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
             dst._detxPANonlin = RappModelConverter!C(model.pa.smoothFactor, model.pa.GAIN, model.pa.Vsat).toAmplifierObject!C;
         else if(model.pa.modelName == "Saleh")
             dst._detxPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.Vsat, PI/6).toAmplifierObject!C;
+        else if(model.pa.modelName == "Saleh_noPM")
+            dst._detxPANonlin = SalehModelConverter!C(model.pa.GAIN, model.pa.Vsat, 0).toAmplifierObject!C;
         else
             assert(0, "Invalid model name of PA");
     }else{
@@ -449,6 +493,8 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
             dst._rxLNANonlin = RappModelConverter!C(model.lna.smoothFactor, model.lna.GAIN, model.lna.Vsat).toAmplifierObject!C;
         else if(model.lna.modelName == "Saleh")
             dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, model.lna.Vsat, PI/6).toAmplifierObject!C;
+        else if(model.pa.modelName == "Saleh_noPM")
+            dst._rxLNANonlin = SalehModelConverter!C(model.lna.GAIN, model.lna.Vsat, 0).toAmplifierObject!C;
         else
             assert(0, "Invalid model name of LNA");
         //  dst._rxLNANonlin = SoftLimitConverter!C(model.lna.GAIN, (model.lna.IIP3 / 36.dBm).asV);
@@ -457,8 +503,10 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
         // dst._rxLNANonlin = RappModelConverter!C(model.lna.GAIN, model.lna.smoothFactor, real.infinity);
     }
 
-    if(model.useSRXIQ)
-        dst._rxIQMixer = IQImbalanceConverter!C(0.dB, model.rxIQMixer.imbCoef);
+    if(model.useSRXIQ) {
+        immutable normgain = 1/sqrt(1 + model.rxIQMixer.imbCoef.sqAbs);
+        dst._rxIQMixer = IQImbalanceConverter!C(Gain.fromVoltageGain(normgain), model.rxIQMixer.imbCoef);
+    }
 
     dst._rxQZVGA = PowerControlAmplifierConverter!C((30 - model.ofdm.PAPR.asdB + 4.76).dBm, 1e-2);
 

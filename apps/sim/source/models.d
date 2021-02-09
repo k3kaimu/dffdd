@@ -173,7 +173,11 @@ struct Model
 
     struct PhaseNoise
     {
-        double paramC = 1.65e-19;
+        // \beta = 1/sqrt(10) [Hz] for -90 [dBc/Hz] at 10 [kHz]
+        // double betaBWHz = 0.3162277;
+        // https://www.pasternack.com/images/ProductPDF/PE1V11018.pdf
+        // \beta = 0.1 [Hz] for -100 [dBc/Hz] at 10 [kHz]
+        double betaBWHz = 0.1;
     }
     PhaseNoise phaseNoise;
 
@@ -316,7 +320,7 @@ auto modOFDM(Model model)
     return chainedMod(
         //dffdd.mod.bpsk.BPSK.init,
         dffdd.mod.qam.QAM!(Complex!float)(16),
-        new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling),
+        new dffdd.mod.ofdm.OFDMWithStaticPilot!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier-2, model.ofdm.scaleOfUpSampling),
     );
 }
 

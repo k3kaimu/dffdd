@@ -68,10 +68,14 @@ struct ModelSeed
     string cancellerType;
 
     bool linearMode = false;
+    bool useIQImbalance = false;
+    bool usePhaseNoise = false;
+    bool syncPhaseNoise = true;
 
     /* IQ Mixer */
     Gain txIRR = 25.dB;
     Gain rxIRR = 25.dB;
+    double pn3dBBWHz = 0.1;
 
     /* PA */
     string paModelName;
@@ -148,23 +152,27 @@ void mainJob()
     enum bool isDumpedFileCheck = true;
 
 
-    enum numOfTrials = 10001;
+    enum numOfTrials = 101;
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
-
-    foreach(amplifierModel; ["Rapp", "Saleh"])
+    foreach(usePhaseNoise; [false, true])
+    foreach(useIQImbalance; [false, true])
+    foreach(amplifierModel; ["Rapp", /*"Saleh", /*"Saleh_noPM"*/])
     foreach(numChTaps; [64])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
+                                    "L_LS",
                                     "PHPAOnly3_LS",
                                     "PHPAOnly5_LS",
                                     "PHPAOnly7_LS",
+                                    "WL_LS",
+                                    "OPH3_LS",
+                                    "OPH5_LS",
+                                    "OPH7_LS",
                                     // "OPHPAOnly5_LS",
                                     // "OPHPAOnly3_LS",
                                     // "Nop_X",
-
-                                    "L_LS",
             ))
     {
         bool[string] dirset;
@@ -200,6 +208,10 @@ void mainJob()
 
 
         string parentDir = format("results_Taps_%s%s_%s", amplifierModel, numChTaps, numOfTrials);
+        if(useIQImbalance)
+            parentDir ~= "_withIQI";
+        if(usePhaseNoise)
+            parentDir ~= "_withPN";
 
 
         // only desired signal on AWGN or Rayleigh
@@ -207,6 +219,9 @@ void mainJob()
         foreach(snr; iota(0, (numChTaps == 1 ? 22 : 52), 3))
         {
             ModelSeed modelSeed;
+            modelSeed.useIQImbalance = useIQImbalance;
+            modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
             modelSeed.cancellerType = methodName;
@@ -253,6 +268,9 @@ void mainJob()
         foreach(loss; [70])
         {
             ModelSeed modelSeed;
+            modelSeed.useIQImbalance = useIQImbalance;
+            modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
             modelSeed.paSmoothFactor = 3;
@@ -273,12 +291,16 @@ void mainJob()
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
+
         // TXP vs (EVM / SIC /  BER)
         foreach(isoRF; [50])
         foreach(desiredLoss; [70])
         foreach(learningSymbols; [200])
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
+            modelSeed.useIQImbalance = useIQImbalance;
+            modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
             modelSeed.paSmoothFactor = 3;
@@ -301,14 +323,18 @@ void mainJob()
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
 
-        /+
+
         // SF vs (EVM / SIC / BER)
+        if(amplifierModel == "Rapp")
         foreach(txp; [23])
         foreach(isoRF; [50])
         foreach(desiredLoss; [70])
         foreach(learningSymbols; [200])
         foreach(sf_10; iota(2, 51, 2)) {
             ModelSeed modelSeed;
+            modelSeed.useIQImbalance = useIQImbalance;
+            modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
             modelSeed.paSmoothFactor = sf_10/10.0;
@@ -328,7 +354,38 @@ void mainJob()
             dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }+/
+        }
+
+
+        // PhaseNoise vs (EVM / SIC / BER)
+        if(usePhaseNoise)
+        foreach(learningSymbols; [200])
+        foreach(pn3dBBWHz; iota(-20, 23, 2).map!(a => 10.0^^(a/10.0)))
+        foreach(loss; [70])
+        {
+            ModelSeed modelSeed;
+            modelSeed.pn3dBBWHz = pn3dBBWHz;
+            modelSeed.useIQImbalance = useIQImbalance;
+            modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.paModelName = amplifierModel;
+            modelSeed.lnaModelName = amplifierModel;
+            modelSeed.paSmoothFactor = 3;
+            modelSeed.lnaSmoothFactor = 3;
+            modelSeed.cancellerType = methodName;
+            modelSeed.numOfTrainingSymbols = learningSymbols;
+            modelSeed.INR = 60.dB;
+            // modelSeed.SNR = 50.dB;
+            modelSeed.DesiredLOSS = loss.dB;
+            modelSeed.onlyDesired = methodName == "Nop_X";
+            modelSeed.outputBER = true;
+            modelSeed.numofTapsOfSIChannel = numChTaps;
+            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+
+            auto dir = makeDirNameOfModelSeed(modelSeed);
+            dir = buildPath(parentDir, "results_phasenoise_vs_sic", dir);
+            dirset[dir] = true;
+            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        }
     }
 
     import std.stdio;
@@ -416,14 +473,15 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         // model.withSIC = false;
 
         // 再現する非線形性の選択
-        model.useDTXIQ = false;
-        model.useDTXPN = false;
+        model.useDTXIQ = modelSeed.useIQImbalance;
+        // model.useDTXPN = true;
+        model.useDTXPN = modelSeed.usePhaseNoise;
         model.useDTXPA = ! modelSeed.linearMode;
-        model.useSTXIQ = false;
-        model.useSTXPN = false;
+        model.useSTXIQ = modelSeed.useIQImbalance;
+        model.useSTXPN = modelSeed.usePhaseNoise;
         model.useSTXPA = ! modelSeed.linearMode;
         model.useSRXLN = ! modelSeed.linearMode;
-        model.useSRXIQ = false;
+        model.useSRXIQ = modelSeed.useIQImbalance;
         model.useSRXQZ = false;
 
 
@@ -443,6 +501,9 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             model.lna.Vsat = modelSeed.lnaVsatIn * modelSeed.lnaGain;   // 入力飽和電圧から出力飽和電圧への変換
             model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
         }
+
+        // 位相雑音
+        model.phaseNoise.betaBWHz = modelSeed.pn3dBBWHz;
 
         /* TX IQ Mixer の設定 */
         {
@@ -564,12 +625,13 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     }
     else
     {
-        dir = "TXP%s_%s_%s_%s_IRR%s_%s"
+        dir = "TXP%s_%s_%s_%s_IRR%s_PN%s_%s"
             .format(modelSeed.txPower,
                     strINRorISO,
                     strSNRorISO,
                     cancellerName,
                     modelSeed.txIRR,
+                    10*log10(modelSeed.pn3dBBWHz)+100,
                     modelSeed.numOfTrainingSymbols);
     }
 

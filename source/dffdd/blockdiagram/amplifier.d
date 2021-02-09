@@ -356,7 +356,7 @@ struct SalehModelConverter(C)
     {
         immutable real aa = 1.0,
                        ba = aa^^2 / 4,
-                       ap = 2 * phi,
+                       ap = 0.5 * phi,
                        bp = ba;
 
         return C(aa * r / (1 + ba*r^^2) * std.complex.expi(ap*r^^2 / (1+bp*r^^2)));

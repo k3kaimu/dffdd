@@ -341,6 +341,59 @@ unittest
     assert(D.indexOfConjugated(11) == 6);
 }
 
+
+final class PADistorterWithEvenOrder(C, size_t P)
+{
+    enum size_t outputDim = P + P*(P+1)/2 + 1;
+    enum size_t inputBlockLength = 1;
+
+
+    this() {}
+
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        output.length = outputDim;
+        size_t i = 0;
+        foreach(p; 0 .. P+1){
+            foreach(j; 0 .. p+1){
+                output[i] = input^^(p-j) * input.conj^^(j);
+                ++i;
+            }
+        }
+    }
+
+    mixin ConverterOpCalls!(const(C), C[]);
+
+}
+
+
+final class Laguerre2DDistorter(C, size_t P)
+{
+    enum size_t outputDim = P + P*(P+1)/2 + 1;
+    enum size_t inputBlockLength = 1;
+
+
+    this() {}
+
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        import dffdd.math.math;
+
+        output.length = outputDim;
+        size_t i = 0;
+        foreach(int p; 0 .. P+1){
+            foreach(int j; 0 .. p+1){
+                output[i] = laguerreOBF(input, p-j, j);
+                ++i;
+            }
+        }
+    }
+
+    mixin ConverterOpCalls!(const(C), C[]);
+}
+
 __EOF__
 
 /**

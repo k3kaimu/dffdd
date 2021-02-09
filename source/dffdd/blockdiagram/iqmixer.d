@@ -122,6 +122,7 @@ auto addPhaseNoise(R)(R r, Gain phaseNoise, real alpha = 0.5)
 }
 
 
+deprecated
 struct PhaseNoise(R)
 {
     this(R r, real carrFreq, real samplingFreq, real paramC)
@@ -172,6 +173,55 @@ struct PhaseNoise(R)
     real _phi;
     BoxMuller!Random _noise;
 }
+
+
+struct FROPhaseNoiseGenerator(C, Rnd)
+{
+    this(Rnd rndGen, real sampFreqHz, real betaBWHz)
+    {
+        _normGen = BoxMuller!Rnd(rndGen);
+        _phase = 0;
+        _scale = 2 * sqrt(PI * betaBWHz / sampFreqHz);
+    }
+
+
+    void opCall(in C[] input, ref C[] output)
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+        
+        foreach(i; 0 .. input.length) {
+            output[i] = input[i] * std.complex.expi(_phase);
+            _phase += _normGen.front.re * _scale;
+            _normGen.popFront();
+        }
+    }
+
+
+    FROPhaseNoiseGenerator!(C, Rnd) dup()
+    {
+        FROPhaseNoiseGenerator!(C, Rnd) dst;
+        dst._phase = this._phase;
+        dst._scale = this._scale;
+        dst._normGen = this._normGen.save;
+        return dst;
+    }
+
+
+  private:
+    alias F = typeof(C.init.re);
+
+    F _phase;
+    F _scale;
+    BoxMuller!Rnd _normGen;
+}
+
+
+
+// struct PLLPhaseNoiseGenerator(C, Rnd)
+// {
+//     this(Rnd rnd, real Cvco, real Cxtl, real kdp, real omegaLp, real sampFreqHz, real ccontr, real fc)
+// }
 
 
 

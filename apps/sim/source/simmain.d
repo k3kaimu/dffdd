@@ -575,7 +575,7 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
     immutable nSC = model.ofdm.numOfSubcarrier;
     immutable nSYM = model.ofdm.numOfSamplesOf1Symbol;
 
-    auto ofdmMod = new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
+    auto ofdmMod = new dffdd.mod.ofdm.OFDMWithStaticPilot!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier-2, model.ofdm.scaleOfUpSampling);
     auto qamMod = QAM!(Complex!float)(16);
 
     if(!model.withSI) signals.ignoreSI = true;
