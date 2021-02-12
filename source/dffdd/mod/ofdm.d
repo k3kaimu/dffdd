@@ -5,6 +5,7 @@ import carbon.math;
 import dffdd.utils.fft;
 
 import std.math;
+import std.complex;
 
 final class OFDM(C)
 {
@@ -278,6 +279,142 @@ unittest
     // 振幅変動と位相回転を与える
     foreach(ref e; res)
         e *= Complex!float(0.5, 1.0);
+
+    Complex!float[] demodsym;
+    ofdmMod.demodulate(res, demodsym);
+
+    assert(demodsym.length == inps.length);
+
+    foreach(i; 0 .. inps.length){
+        assert(approxEqual(inps[i].re, demodsym[i].re));
+        assert(approxEqual(inps[i].im, demodsym[i].im));
+    }
+}
+
+
+
+/**
+DC biased optical OFDM (DCO-OFDM)
+*/
+final class DCO_OFDM(C)
+{
+    alias RealType = typeof(C.init.re);
+    alias InputElementType = C;
+    alias OutputElementType = RealType;
+
+
+    this(uint nFFT, uint nCp, uint nTone, uint nUpSampling = 1, RealType dcBias = 0)
+    {
+        _ofdm = new OFDM!C(nFFT, nCp, nTone*2, nUpSampling);
+        _dcBias = dcBias;
+        _inpBuffer = new C[nTone*2];
+        _outBuffer = new C[_ofdm.symOutputLength];
+    }
+
+
+    size_t symInputLength() const @property { return this._ofdm.symInputLength / 2; }
+    size_t symOutputLength() const @property { return _ofdm.symOutputLength; }
+
+
+    @property
+    void bias(RealType newvalue)
+    {
+        _dcBias = newvalue;
+    }
+
+
+    @property
+    RealType bias() const 
+    {
+        return _dcBias;
+    }
+
+
+    ref OutputElementType[] modulate(in InputElementType[] inputs, return ref OutputElementType[] outputs)
+    in{
+        assert(inputs.length % this.symInputLength == 0);
+    }
+    do {
+        if(outputs.length != inputs.length / this.symInputLength * this.symOutputLength)
+            outputs.length = inputs.length / this.symInputLength * this.symOutputLength;
+
+        immutable nTone = this.symInputLength;
+        immutable nOFDMLen = this.symOutputLength;
+
+        foreach(i; 0 .. inputs.length / nTone)
+        {
+            _inpBuffer[0 .. $/2] = inputs[nTone * i .. nTone * (i+1)];
+            foreach(j; 0 .. nTone) {
+                immutable c = inputs[nTone * i + j];
+                _inpBuffer[j] = c;
+                _inpBuffer[$-j-1] = c.conj;
+            }
+
+            _ofdm.modulate(_inpBuffer, _outBuffer);
+
+            foreach(j; 0 .. nOFDMLen)
+                outputs[nOFDMLen * i + j] = _outBuffer[j].re + _dcBias;
+        }
+
+        return outputs;
+    }
+
+
+    ref InputElementType[] demodulate(in OutputElementType[] inputs, return ref InputElementType[] outputs)
+    in {
+        assert(inputs.length % this.symOutputLength == 0);
+    }
+    do {
+        if(outputs.length != inputs.length / this.symOutputLength * this.symInputLength)
+            outputs.length = inputs.length / this.symOutputLength * this.symInputLength;
+
+        immutable nTone = this.symInputLength;
+        immutable nOFDMLen = this.symOutputLength;
+
+        foreach(i; 0 .. inputs.length / nOFDMLen)
+        {
+            // _outBuffer[] = inputs[nOFDMLen * i .. nOFDMLen * (i+1)];
+            foreach(j; 0 .. nOFDMLen)
+                _outBuffer[j] = inputs[nOFDMLen * i + j];
+
+            _ofdm.demodulate(_outBuffer, _inpBuffer);
+            outputs[i * nTone .. (i+1) * nTone] = _inpBuffer[0 .. $/2];
+        }
+
+        return outputs;
+    }
+
+
+
+  private:
+    OFDM!C _ofdm;
+    RealType _dcBias;
+    C[] _inpBuffer, _outBuffer;
+}
+
+//
+unittest
+{
+    import std.complex, std.math;
+
+    // FFTサイズ: 8
+    // サイクリックプレフィックス: 3
+    // 使用サブキャリア数: 2
+    // アップサンプリング率: 2
+    // DCバイアス: 3
+    auto ofdmMod = new DCO_OFDM!(Complex!float)(8, 3, 2, 2, 3);
+
+    Complex!float[] inps = [Complex!float(1, 1), Complex!float(-1, -1)];
+    float[] res;
+
+    // 変調
+    ofdmMod.modulate(inps, res);
+
+    assert(res.length == (8 + 3) * 2);
+
+    // CPのチェック
+    foreach(i; 0 .. 3 * 2)
+        assert(res[i] == res[$ - 3*2 + i]);
 
     Complex!float[] demodsym;
     ofdmMod.demodulate(res, demodsym);
