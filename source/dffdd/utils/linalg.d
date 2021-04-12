@@ -432,7 +432,7 @@ Complex!R[] leastSquareEstimateRowMajor(R : double)(Slice!(Complex!R*, 2, Contig
     static void adjustSize(T)(ref T[] arr, size_t n) { if(arr.length < n) arr.length = n; }
 
     adjustSize(sworkSpace, max(L, P));
-    gelss(Order.RowMajor, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)mx.leadingDimension, cast(R[2]*)y.ptr, cast(int)max(L, P), sworkSpace.ptr, 0.00001f, &rankN);
+    gelss(Order.RowMajor, cast(int)L, cast(int)P, 1, cast(R[2]*)&(mx[0, 0]), cast(int)mx.leadingDimension, cast(R[2]*)y.ptr, cast(int)1, sworkSpace.ptr, 0.00001f, &rankN);
 
     return y[0 .. P];
 }
