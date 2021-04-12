@@ -459,6 +459,80 @@ C[] leastSquareEstimateSimple(C)(in C[][] mat, in C[] y)
 }
 
 
+struct LeastSquareEstimator(C)
+{
+    /**
+    パラメータ数を設定して，最小二乗学習機を構築する
+    */
+    this(size_t numParams)
+    {
+        _numParams = numParams;
+    }
+
+
+    /// 学習サンプルを追加する
+    void append(in C[] xs, C y)
+    in(xs.length == _numParams)
+    do {
+        _matrix ~= xs.dup;
+        _ys ~= y;
+    }
+
+
+    /// 推定して結果を返す．
+    C[] estimate()
+    {
+        auto mx = slice!C(_matrix.length, _numParams);
+        foreach(i; 0 .. _matrix.length)
+            foreach(j; 0 .. _numParams)
+                mx[i, j] = _matrix[i][j];
+
+        return leastSquareEstimateRowMajor(mx, _ys.dup);
+    }
+
+
+    /// 学習データをすべて削除する
+    void clear()
+    {
+        _ys.length = 0;
+        _matrix.length = 0;
+    }
+
+
+  private:
+    size_t _numParams;
+    C[][] _matrix;
+    C[] _ys;
+}
+
+
+unittest
+{
+    import std.math;
+    import std.random;
+    alias C = Complex!double;
+
+    // モデルの真の係数
+    C[] coefs = [C(1), C(2)];
+
+    // パラメータ数3の推定オブジェクトを作成
+    auto lsEst = LeastSquareEstimator!C(coefs.length);
+
+    Random rnd = Random(0);
+
+    foreach(i; 0 .. 10) {
+        C[2] xs = [C(uniform01(rnd)), C(uniform01(rnd)) ];
+        lsEst.append(xs, dot(xs[].sliced, coefs.sliced));
+    }
+
+    auto est = lsEst.estimate();
+    assert(approxEqual(est[0].re, coefs[0].re));
+    assert(approxEqual(est[0].im, 0));
+    assert(approxEqual(est[1].re, coefs[1].re));
+    assert(approxEqual(est[1].im, 0));
+}
+
+
 /**
 パラメータ数2個の最小二乗問題をときます
 */
