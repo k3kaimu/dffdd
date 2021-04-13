@@ -46,12 +46,14 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
     }
 
 
-    void opCall(in C[] inputs, C[] outputs)
+    void opCall(in C[] inputs, ref C[] outputs)
     in {
-        assert(inputs.length == outputs.length);
         assert(inputs.length == _nchannel);
     }
     do {
+        if(outputs.length != input.length)
+            outputs.length = input.length;
+
         static if(isAnalysis)
         {
             // 各チャネルのFIRフィルタの状態を一つすすめる
@@ -220,17 +222,21 @@ final class OversampledDFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
     }
 
 
-    void opCall(in C[] inputs, C[] outputs)
+    void opCall(in C[] inputs, ref C[] outputs)
     in {
         if(isAnalysis){
             assert(inputs.length == _nchannel / 2);
-            assert(outputs.length == _nchannel);
         }else{
             assert(inputs.length == _nchannel);
-            assert(outputs.length == _nchannel / 2);
         }
     }
     do {
+        if(isAnalysis) {
+            outputs.length = _nchannel;
+        } else {
+            outputs.length = _nchannel / 2;
+        }
+
         static if(isAnalysis)
         {
             // even channel

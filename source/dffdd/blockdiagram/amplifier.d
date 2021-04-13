@@ -32,7 +32,7 @@ final class AmplifierObject(C, Struct) : IAmplifier!C
     alias OutputElementType = Struct.OutputElementType;
 
 
-    void opCall(in InputElementType[] src, OutputElementType[] dst)
+    void opCall(in InputElementType[] src, ref OutputElementType[] dst)
     {
         static if(is(typeof(_original(src, dst))))
             _original(src, dst);
@@ -198,11 +198,11 @@ struct RappModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -310,11 +310,11 @@ struct SalehModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -392,11 +392,11 @@ struct SoftLimitConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -587,10 +587,10 @@ struct PowerControlAmplifierConverter(C)
 
 
     void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }
@@ -701,11 +701,11 @@ struct LinearInterpolatedAMAMConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }

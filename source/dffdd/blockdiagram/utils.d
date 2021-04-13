@@ -393,7 +393,7 @@ interface IConverter(T, U, Flag!"isDuplicatable" isDup = No.isDuplicatable)
     alias InputElementType = T;
     alias OutputElementType = U;
 
-    void opCall(in T[], U[]);
+    void opCall(in T[], ref U[]);
 
     static if(isDup)
     {

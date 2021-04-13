@@ -43,11 +43,11 @@ struct IQImbalanceConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, OutputElementType[] output) @nogc
-    in {
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
         foreach(i, e; input)
             this.opCall(e, output[i]);
     }

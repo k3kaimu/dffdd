@@ -56,11 +56,11 @@ struct FIRFilterConverter(C)
     }
 
 
-    void opCall(const(InputElementType)[] input, OutputElementType[] output) @nogc
-    in{
-        assert(input.length == output.length);
-    }
-    do {
+    void opCall(const(InputElementType)[] input, ref OutputElementType[] output) @nogc
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
         immutable clen = _coefs.length;
         immutable size = _freqCoefs.length;
 
