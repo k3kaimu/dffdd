@@ -1,6 +1,7 @@
 module dffdd.mod.primitives;
 
 import std.numeric : gcd;
+import std.typecons;
 
 
 
@@ -219,6 +220,39 @@ ModConverter!(Mod, Yes.isMod) asModConverter(Mod)(Mod mod)
 ModConverter!(Mod, No.isMod) asDemodConverter(Mod)(Mod mod)
 {
     return ModConverter!(Mod, No.isMod)(mod);
+}
+
+
+unittest 
+{
+    static struct DummyMod(R)
+    {
+        alias InputElementType = R;
+        alias OutputElementType = R;
+
+        void modulate(in R[] input, ref R[] output) {
+            output.length = input.length;
+            output[] = input[] * 2;
+        }
+
+
+        void demodulate(in R[] input , ref R[] output) {
+            output.length = input.length;
+            output[] = input[] / 2;
+        }
+    }
+
+    auto dummy = DummyMod!float();
+    auto mod = dummy.asModConverter;
+    auto demod = dummy.asDemodConverter;
+
+    float[] input = [1, 2, 3];
+    float[] output;
+    mod(input, output);
+    assert(output == [2, 4, 6]);
+
+    demod(input, output);
+    assert(output == [0.5, 1, 1.5]);
 }
 
 

@@ -51,8 +51,8 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
         assert(inputs.length == _nchannel);
     }
     do {
-        if(outputs.length != input.length)
-            outputs.length = input.length;
+        if(outputs.length != inputs.length)
+            outputs.length = inputs.length;
 
         static if(isAnalysis)
         {

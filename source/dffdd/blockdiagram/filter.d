@@ -56,7 +56,7 @@ struct FIRFilterConverter(C)
     }
 
 
-    void opCall(const(InputElementType)[] input, ref OutputElementType[] output) @nogc
+    void opCall(const(InputElementType)[] input, ref OutputElementType[] output)
     {
         if(output.length != input.length)
             output.length = input.length;
