@@ -1,7 +1,9 @@
 module dffdd.blockdiagram.utils;
 
 import core.thread;
+import core.lifetime : forward;
 
+import std.meta;
 import std.range;
 import std.typecons;
 import std.concurrency;
@@ -763,3 +765,146 @@ unittest
     assert(*ptr == 1023*512);
 }
 
+
+private
+bool isValidConverterConnections(Convs...)()
+{
+    bool ret = true;
+    static foreach(i, C; Convs) {
+        static if(i != 0)
+            ret = ret && is(Convs[i].InputElementType == Convs[i-1].OutputElementType); 
+    }
+
+    return ret;
+}
+
+unittest
+{
+    static struct DummyConv(T, U) {
+        alias InputElementType = T;
+        alias OutputElementType = U;
+    }
+
+
+    static assert(isValidConverterConnections!(
+        DummyConv!(int, long), DummyConv!(long, short)
+    )());
+
+
+    static assert(!isValidConverterConnections!(
+        DummyConv!(int, short), DummyConv!(long, short)
+    )());
+}
+
+
+private
+template ConverterIOBufferTypes(Convs...)
+{
+    static if(Convs.length == 0)
+    {
+        alias ConverterIOBufferTypes = AliasSeq!();
+    }
+    else static if(Convs.length == 1)
+    {
+        alias ConverterIOBufferTypes = AliasSeq!(Convs[0].InputElementType[], Convs[0].OutputElementType[]);
+    }
+    else {
+        alias ConverterIOBufferTypes = AliasSeq!(Convs[0].InputElementType[], ConverterIOBufferTypes!(Convs[1 .. $]));
+    }
+}
+
+
+unittest
+{
+    static struct DummyConv(T, U) {
+        alias InputElementType = T;
+        alias OutputElementType = U;
+    }
+
+
+    static assert(is(ConverterIOBufferTypes!() == AliasSeq!()));
+    static assert(is(ConverterIOBufferTypes!(DummyConv!(int, double)) == AliasSeq!(int[], double[])));
+    static assert(is(ConverterIOBufferTypes!(DummyConv!(int, double), DummyConv!(double, short)) == AliasSeq!(int[], double[], short[])));
+}
+
+
+/// 複数のコンバータをつなぎ合わせます
+struct ConverterGroup(Convs...)
+if(isValidConverterConnections!Convs())
+{
+    this(Convs convs) {
+        _convs = convs;
+    }
+
+
+    void opCall(in typeof(_buffers[0]) input, ref typeof(_buffers[$-1]) output)
+    {
+        if(_buffers[0].length != input.length)
+            _buffers[0].length = input.length;
+
+        _buffers[0][] = input[];
+
+        static foreach(i, C; Convs) {
+            _convs[i](_buffers[i], _buffers[i+1]);
+        }
+
+        if(output.length != _buffers[$-1].length)
+            output.length = _buffers[$-1].length;
+        
+        output[] = _buffers[$-1][];
+    }
+
+
+    ref Convs[index] getConverter(size_t index)()
+    {
+        return _convs[index];
+    }
+
+
+  private:
+    Convs _convs;
+    ConverterIOBufferTypes!(Convs) _buffers;
+}
+
+
+/// ditto
+ConverterGroup!Convs makeConverterGroup(Convs...)(auto ref Convs converters)
+{
+    return ConverterGroup!Convs(forward!converters);
+}
+
+
+unittest
+{
+    static struct DummyConv(T, U) {
+        this(U g) { gain = g; }
+
+        U gain;
+
+        alias InputElementType = T;
+        alias OutputElementType = U;
+
+        void opCall(in T[] input, ref U[] output)
+        {
+            output.length = input.length;
+            foreach(i, ref e; output) e = input[i];
+            output[] *= gain;
+        }
+    }
+
+
+    auto cg = makeConverterGroup(
+        DummyConv!(int, int)(2),
+        DummyConv!(int, float)(3),
+        DummyConv!(float, double)(0.1)
+    );
+
+    int[] input = [1, 2, 3];
+    double[] output;
+    cg(input, output);
+
+    import std.math;
+    assert(approxEqual(output[0], 0.6));
+    assert(approxEqual(output[1], 1.2));
+    assert(approxEqual(output[2], 1.8));
+}
