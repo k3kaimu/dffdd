@@ -167,6 +167,61 @@ unittest
 
 
 
+/**
+変復調機を変調器か復調器のConverterにします
+*/
+struct ModConverter(Mod, Flag!"isMod" isMod)
+{
+    this(Mod mod)
+    {
+        _mod = mod;
+    }
+
+
+    static if(isMod)
+    {
+        alias InputElementType = Mod.InputElementType;
+        alias OutputElementType = Mod.OutputElementType;
+    }
+    else
+    {
+        alias InputElementType = Mod.OutputElementType;
+        alias OutputElementType = Mod.InputElementType;
+    }
+
+
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    {
+        static if(isMod)
+        {
+            _mod.modulate(input, output);
+        }
+        else
+        {
+            _mod.demodulate(input, output);
+        }
+    }
+
+
+  private:
+    Mod _mod;
+}
+
+
+/// ditto
+ModConverter!(Mod, Yes.isMod) asModConverter(Mod)(Mod mod)
+{
+    return ModConverter!(Mod, Yes.isMod)(mod);
+}
+
+
+/// ditto
+ModConverter!(Mod, No.isMod) asDemodConverter(Mod)(Mod mod)
+{
+    return ModConverter!(Mod, No.isMod)(mod);
+}
+
+
 size_t countBitError(in ushort[] symAs, in ushort[] symBs)
 in(symAs.length == symBs.length)
 {
