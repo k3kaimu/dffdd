@@ -908,3 +908,77 @@ unittest
     assert(approxEqual(output[1], 1.2));
     assert(approxEqual(output[2], 1.8));
 }
+
+
+
+struct ChunkedConverter(C)
+{
+    this(size_t size)
+    {
+        _chunksize = size;
+        _buffer.length = size;
+        _buffered = 0;
+    }
+
+
+    void opCall(in C[] input, ref C[] output)
+    {
+        if(_buffered + input.length < _chunksize) {
+            _buffer[_buffered .. _buffered + input.length] = input[];
+            _buffered += input.length;
+            output.length = 0;
+            return;
+        }
+
+        immutable ntimes = (_buffered + input.length) / _chunksize;
+        immutable consume = ntimes * _chunksize;
+        immutable consume_input = consume - _buffered;
+        output.length = ntimes * _chunksize;
+        foreach(i; 0 .. _buffered)
+            output[i] = _buffer[i];
+        foreach(i; 0 .. consume_input)
+            output[i + _buffered] = input[i];
+
+        immutable remain = input.length - consume_input;
+        _buffered = remain;
+        foreach(i; 0 .. remain)
+            _buffer[i] = input[consume_input + i];
+    }
+
+
+  private:
+    C[] _buffer;
+    size_t _chunksize;
+    size_t _buffered;
+}
+
+unittest
+{
+    auto chunker = ChunkedConverter!int(4);
+    int[] input = [1, 2, 3];
+    int[] output;
+
+    chunker(input, output);
+    assert(output == []);
+    assert(chunker._buffered == 3);
+    assert(chunker._buffer[0 .. 3] == [1, 2, 3]);
+    chunker(input, output);
+    assert(output == [1, 2, 3, 1]);
+    assert(chunker._buffered == 2);
+    assert(chunker._buffer[0 .. 2] == [2, 3]);
+    chunker(input, output);
+    assert(output == [2, 3, 1, 2]);
+    assert(chunker._buffered == 1);
+    assert(chunker._buffer[0 .. 1] == [3]);
+    chunker(input, output);
+    assert(output == [3, 1, 2, 3]);
+    assert(chunker._buffered == 0);
+    chunker(input, output);
+    assert(output == []);
+    assert(chunker._buffered == 3);
+    assert(chunker._buffer[0 .. 3] == [1, 2, 3]);
+    chunker(input ~ input, output);
+    assert(output == [1, 2, 3, 1, 2, 3, 1, 2]);
+    assert(chunker._buffered == 1);
+    assert(chunker._buffer[0 .. 1] == [3]);
+}
