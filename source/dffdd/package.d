@@ -10,3 +10,4 @@ public import dffdd.math;
 public import dffdd.mod;
 public import dffdd.utils;
 public import dffdd.window;
+public import dffdd.dpd.polynomial;
