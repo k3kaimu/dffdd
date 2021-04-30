@@ -1,6 +1,6 @@
 {
     "name": "dffdd",
-    "description": "Digital Filter Library for Full Duplex writted in D",
+    "description": "Digital Filter Library for Full Duplex written in D",
     "copyright": "Copyright © 2015, Kazuki KOMATSU",
     "authors": ["Kazuki Komatsu"],
     "targetType": "library",
