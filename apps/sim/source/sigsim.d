@@ -82,9 +82,26 @@ final class SimulatedSignals
         immutable oldUseSWP = *_useSWPOFDM;
         *_useSWPOFDM = false;
 
-        while(!this.isConvergedAllVGA){
+        // まずはDPDを無視して，VGAを学習させる
+        while(!this.isConvergedAllVGA([&_txDPD, &_detxDPD])){
             this.popFrontN(_model.ofdm.numOfSamplesOf1Symbol);
         }
+
+        this.popFrontN(_model.ofdm.numOfSamplesOf1Symbol * 4);
+
+        auto paDirect = new C[_model.ofdm.numOfSamplesOf1Symbol * _model.dpd.numOfTrainingSymbols];
+        auto txBaseband = new C[_model.ofdm.numOfSamplesOf1Symbol * _model.dpd.numOfTrainingSymbols];
+        // 次にDPDの学習をする
+        if(! _txDPD.isNull) {
+            this.fillBuffer!("txBaseband", "paDirect")(txBaseband, paDirect);
+            _txDPD.get().estimate(txBaseband, paDirect);
+        }
+
+        if(! _detxDPD.isNull) {
+            this.fillBuffer!("desiredBaseband", "desiredPADirect")(txBaseband, paDirect);
+            _txDPD.get().estimate(txBaseband, paDirect);
+        }
+
 
         _nowTrainingMode = false;
         *_useSWPOFDM = oldUseSWP;
@@ -101,7 +118,7 @@ final class SimulatedSignals
     }
     body{
         static foreach(m; aliasSeqOf!ms)
-            static assert(canFind(["txBaseband", "desiredBaseband", "paDirect", "received"], m), m ~ " is illegal.");
+            static assert(canFind(["txBaseband", "desiredBaseband", "paDirect", "desiredPADirect", "received"], m), m ~ " is illegal.");
 
         immutable size_t len = buffers[0].length;
         if(len == 0) return;
@@ -122,6 +139,15 @@ final class SimulatedSignals
             txBaseband.popFront();
             noise.popFront();
         }
+
+        C[] dpdds = _tempbuf[20][0 .. len],
+            dpdxs = _tempbuf[21][0 .. len];
+        
+        if(_model.useSTXDPD) _txDPD.apply(xs, dpdxs);
+        else                 dpdxs[] = xs[];
+
+        if(_model.useDTXDPD) _detxDPD.apply(ds, dpdds);
+        else                 dpdds[] = ds[];
 
         C[] txiqs = _tempbuf[3][0 .. len],
             txvgas = _tempbuf[4][0 .. len],
@@ -214,6 +240,8 @@ final class SimulatedSignals
                 ds.copy(buffers[i]);
             else static if(m == "paDirect")
                 txpas.copy(buffers[i]);
+            else static if(m == "desiredPADirect")
+                detxpas.copy(buffers[i]);
             else static if(m == "received")
                 rxqzs.copy(buffers[i]);
             else static assert(0, m ~ " is illegal.");
@@ -309,11 +337,14 @@ final class SimulatedSignals
     }
 
 
-    bool isConvergedAllVGA() @property
+    bool isConvergedAllVGA(in void*[] ignoreList = null) @property
     {
         static
         bool _isconverged(X)(X* v)
         {
+            if(v.canFind(ignoreList))
+                return true;
+
             static if(is(X : Nullable!Y, Y)){
                 if(v.isNull)
                     return true;
@@ -378,7 +409,7 @@ final class SimulatedSignals
     Signal noise;
 
   private:
-    C[][20] _tempbuf;
+    C[][22] _tempbuf;
 
     bool _nowTrainingMode;
     bool* _useSWPOFDM;
@@ -389,6 +420,9 @@ final class SimulatedSignals
 
     Nullable!(FROPhaseNoiseGenerator!(C, Xorshift)) _pnGen1;
     Nullable!(FROPhaseNoiseGenerator!(C, Xorshift)) _pnGen2;
+
+    Nullable!(PolynomialPredistorter!C) _txDPD;
+    Nullable!(PolynomialPredistorter!C) _detxDPD;
 
     Nullable!(IQImbalanceConverter!C) _txIQMixer;
     Nullable!(PowerControlAmplifierConverter!C) _txPAVGA;
@@ -517,6 +551,12 @@ SimulatedSignals makeSimulatedSignals(Model model, string resultDir = null)
     // immutable noisePowerPerSubcarrier = model.thermalNoise.power(model) * model.lna.NF / snScaleOFDM;
 
     dst._rxDESVGA = PowerControlAmplifierConverter!C(model.thermalNoise.power(model) * model.lna.NF * model.SNR, 1e-2);
+
+    if(model.useSTXDPD)
+        dst._txDPD = PolynomialPredistorter!C(model.dpd.order);
+
+    if(model.useDTXDPD)
+        dst._detxDPD = PolynomialPredistorter!C(model.dpd.order);
 
     return dst;
 }

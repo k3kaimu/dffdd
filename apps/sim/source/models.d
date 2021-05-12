@@ -81,6 +81,8 @@ struct Model
     string uniqueId;
 
 
+    bool useDTXDPD = true;
+    bool useSTXDPD = true;
     bool useDTXIQ = true;
     bool useDTXPN = false;
     bool useDTXPA = true;
@@ -286,6 +288,14 @@ struct Model
         Flag!"use3rdSidelobe" use3rdSidelobe = Yes.use3rdSidelobe;
     }
     IterativeFreqSIC iterativeFreqSIC;
+
+
+    struct DPD
+    {
+        size_t order;
+        size_t numOfTrainingSymbols = 10;
+    }
+    DPD dpd;
 
     void txPower(Voltage p) @property
     {

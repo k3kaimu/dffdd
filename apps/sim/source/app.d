@@ -70,6 +70,7 @@ struct ModelSeed
     bool linearMode = false;
     bool useIQImbalance = false;
     bool usePhaseNoise = false;
+    bool useDPD = true;
     bool syncPhaseNoise = true;
 
     /* IQ Mixer */
@@ -97,6 +98,9 @@ struct ModelSeed
     Nullable!Gain TXRXISO;
     uint numOfTrainingSymbols = 20;
     Gain gamma = 0.dB;
+
+    /* DPD Param */
+    uint orderOfDPD = 3;
 
     /* NLMS/RLS Params */
     real nlmsMu;
@@ -156,8 +160,8 @@ void mainJob()
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
-    foreach(usePhaseNoise; [false, true])
-    foreach(useIQImbalance; [false, true])
+    foreach(usePhaseNoise; [false])
+    foreach(useIQImbalance; [false])
     foreach(amplifierModel; ["Rapp", /*"Saleh", /*"Saleh_noPM"*/])
     foreach(numChTaps; [64])
     // ADC&IQ&PA
@@ -166,10 +170,10 @@ void mainJob()
                                     "PHPAOnly3_LS",
                                     "PHPAOnly5_LS",
                                     "PHPAOnly7_LS",
-                                    "WL_LS",
-                                    "OPH3_LS",
-                                    "OPH5_LS",
-                                    "OPH7_LS",
+                                    // "WL_LS",
+                                    // "OPH3_LS",
+                                    // "OPH5_LS",
+                                    // "OPH7_LS",
                                     // "OPHPAOnly5_LS",
                                     // "OPHPAOnly3_LS",
                                     // "Nop_X",
@@ -473,6 +477,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         // model.withSIC = false;
 
         // 再現する非線形性の選択
+        model.useDTXDPD = modelSeed.useDPD;
+        model.useSTXDPD = modelSeed.useDPD;
         model.useDTXIQ = modelSeed.useIQImbalance;
         // model.useDTXPN = true;
         model.useDTXPN = modelSeed.usePhaseNoise;
@@ -586,6 +592,13 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             model.iterativeFreqSIC.numOfSCForEstNL = modelSeed.iterNumOfSCForEstNL;
             model.iterativeFreqSIC.estimationOrder = modelSeed.iterEstOrder;
             model.iterativeFreqSIC.use3rdSidelobe = modelSeed.iterUse3rdSidelobe;
+        }
+
+
+        /* DPDの設定 */
+        {
+            model.dpd.order = modelSeed.orderOfDPD;
+            model.dpd.numOfTrainingSymbols = 10;
         }
     }
 
