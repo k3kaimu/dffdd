@@ -310,7 +310,7 @@ struct SalehModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
     {
         if(output.length != input.length)
             output.length = input.length;
