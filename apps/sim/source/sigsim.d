@@ -100,7 +100,7 @@ final class SimulatedSignals
 
         if(! _detxDPD.isNull) {
             this.fillBuffer!(["desiredBaseband", "desiredPADirect"])(txBaseband, paDirect);
-            _txDPD.get().estimate(txBaseband, paDirect);
+            _detxDPD.get().estimate(txBaseband, paDirect);
         }
 
 
