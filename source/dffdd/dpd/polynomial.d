@@ -13,9 +13,9 @@ struct PolynomialPredistorter(C)
     /**
     非線形次数と目標の利得を指定して構築
     */
-    this(size_t Porder, Gain targetGain)
+    this(size_t Porder)
     {
-        _targetGain = targetGain;
+        // _targetGain = targetGain;
 
         _coefs ~= C(1);
         foreach(i; 1 .. (Porder+1)/2)
@@ -26,23 +26,25 @@ struct PolynomialPredistorter(C)
     void estimate(in C[] transmitted, in C[] received)
     in(transmitted.length == received.length)
     do {
+        immutable inputPower = transmitted.map!"a.re^^2 + a.im^^2".sum() / received.length;
         immutable outputPower = received.map!"a.re^^2 + a.im^^2".sum() / received.length;
-        immutable normCoef = sqrt(outputPower);
+        immutable normCoefIN = sqrt(inputPower);
+        immutable normCoefOT = sqrt(outputPower);
+        // immutable normCoef = 1;
 
         auto lsEst = LeastSquareEstimator!(C)(_coefs.length);
         C[] xvec = new C[_coefs.length];
         foreach(i; 0 .. received.length) {
-            auto x = received[i] / normCoef;
-            auto y = transmitted[i];
+            auto x = received[i] / normCoefOT;
+            auto y = transmitted[i] / normCoefIN;
             foreach(p, ref e; xvec)
                 e = x * sqAbs(x) ^^ p;
             
             lsEst.append(xvec, y);
         }
 
-        C[] estparam = lsEst.estimate();
-        foreach(p, e; estparam)
-            _coefs[p] = estparam[p] / (normCoef ^^ (2*p + 1));
+        _coefs[] = lsEst.estimate()[];
+        _trained = true;
     }
 
 
@@ -51,8 +53,10 @@ struct PolynomialPredistorter(C)
         if(output.length != input.length)
             output.length = input.length;
 
+        // auto g0 = _targetGain.asV;
+
         foreach(i, e; input) {
-            auto x = e * _targetGain.asV;
+            auto x = e;
             output[i] = C(0);
             foreach(p, c; _coefs)
                 output[i] += c * x * x.sqAbs() ^^ p;
@@ -60,9 +64,19 @@ struct PolynomialPredistorter(C)
     }
 
 
+    inout(C)[] coefs() inout { return _coefs; }
+
+
+    bool isConverged()
+    {
+        return _trained;
+    }
+
+
   private:
-    Gain _targetGain;
+    // Gain _targetGain;
     C[] _coefs;
+    bool _trained;
 }
 
 unittest
