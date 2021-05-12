@@ -913,6 +913,9 @@ unittest
 
 struct ChunkedConverter(C)
 {
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
     this(size_t size)
     {
         _chunksize = size;
@@ -943,6 +946,18 @@ struct ChunkedConverter(C)
         _buffered = remain;
         foreach(i; 0 .. remain)
             _buffer[i] = input[consume_input + i];
+    }
+
+
+    ChunkedConverter!C dup() const
+    {
+        ChunkedConverter!C dst;
+
+        dst._buffer = this._buffer.dup;
+        dst._chunksize = this._chunksize;
+        dst._buffered = this._buffered;
+
+        return dst;
     }
 
 
@@ -981,4 +996,151 @@ unittest
     assert(output == [1, 2, 3, 1, 2, 3, 1, 2]);
     assert(chunker._buffered == 1);
     assert(chunker._buffer[0 .. 1] == [3]);
+}
+
+
+struct ChunkedSource(C, R)
+if(is(ElementType!R : C))
+{
+    // alias InputElementType = C;
+    alias OutputElementType = C;
+
+    this(R range, size_t size)
+    {
+        _range = range;
+        _chunksize = size;
+    }
+
+
+    void opCall(ref C[] output)
+    {
+        if(output.length != _chunksize)
+            output.length = _chunksize;
+        
+        foreach(i; 0 .. _chunksize) {
+            if(_range.empty) {
+                output.length = 0;
+                return;
+            }
+
+            output[i] = _range.front;
+            _range.popFront();
+        }
+    }
+
+
+    bool empty() { return _range.empty; }
+
+
+    ChunkedSource!(C, R) dup()
+    {
+        ChunkedSource!(C, R) dst;
+
+        dst._range = this._range.save;
+        dst._chunksize = this._chunksize;
+
+        return dst;
+    }
+
+
+  private:
+    R _range;
+    size_t _chunksize;
+}
+
+
+struct ChunkedSource(C, R)
+if(is(ElementType!R : const(C)[]))
+{
+    // alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(R range, size_t size)
+    {
+        _range = range;
+        _buf = ChunkedConverter!(C)(size);
+    }
+
+
+    void opCall(ref C[] output)
+    {
+        output.length = 0;
+        while(output.length == 0 && !_range.empty) {
+            _buf(_range.front, output);
+            _range.popFront();
+        }
+    }
+
+
+    bool empty() { return _range.empty; }
+
+
+    ChunkedSource!(C, R) dup()
+    {
+        ChunkedSource!(C, R) dst;
+
+        dst._range = this._range.save;
+        dst._buf = this._buf.dup;
+
+        return dst;
+    }
+
+
+  private:
+    R _range;
+    ChunkedConverter!(C) _buf;
+}
+
+
+auto makeChunkedSource(C, R)(R range, size_t size)
+{
+    return ChunkedSource!(C, R)(range, size);
+}
+
+
+unittest 
+{
+    auto r = iota(0, 10);
+    auto chunked = r.makeChunkedSource!int(3);
+    int[] buf;
+
+    assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == [0, 1, 2]);
+    assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == [3, 4, 5]);
+    assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == [6, 7, 8]);
+    // assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == []);
+    assert(chunked.empty == true);
+}
+
+
+unittest 
+{
+    import std.algorithm : map;
+
+    auto r = iota(0, 5).map!"[a*1, a*2]"();
+    auto chunked = r.makeChunkedSource!int(3);
+    
+    int[] buf;
+
+    assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == [0, 0, 1]);
+    assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == [2, 2, 4]);
+    assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == [3, 6, 4]);
+    // assert(chunked.empty == false);
+    chunked(buf);
+    assert(buf == []);
+    assert(chunked.empty == true);
 }
