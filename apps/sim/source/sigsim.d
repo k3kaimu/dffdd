@@ -20,6 +20,7 @@ import dffdd.blockdiagram.utils;
 import dffdd.blockdiagram.iqmixer;
 import dffdd.blockdiagram.filter;
 import dffdd.blockdiagram.quantizer;
+import dffdd.dpd.polynomial;
 import dffdd.utils.unit;
 import dffdd.utils.json;
 
@@ -93,12 +94,12 @@ final class SimulatedSignals
         auto txBaseband = new C[_model.ofdm.numOfSamplesOf1Symbol * _model.dpd.numOfTrainingSymbols];
         // 次にDPDの学習をする
         if(! _txDPD.isNull) {
-            this.fillBuffer!("txBaseband", "paDirect")(txBaseband, paDirect);
+            this.fillBuffer!(["txBaseband", "paDirect"])(txBaseband, paDirect);
             _txDPD.get().estimate(txBaseband, paDirect);
         }
 
         if(! _detxDPD.isNull) {
-            this.fillBuffer!("desiredBaseband", "desiredPADirect")(txBaseband, paDirect);
+            this.fillBuffer!(["desiredBaseband", "desiredPADirect"])(txBaseband, paDirect);
             _txDPD.get().estimate(txBaseband, paDirect);
         }
 
@@ -143,10 +144,10 @@ final class SimulatedSignals
         C[] dpdds = _tempbuf[20][0 .. len],
             dpdxs = _tempbuf[21][0 .. len];
         
-        if(_model.useSTXDPD) _txDPD.apply(xs, dpdxs);
+        if(_model.useSTXDPD) _txDPD.get().apply(xs, dpdxs);
         else                 dpdxs[] = xs[];
 
-        if(_model.useDTXDPD) _detxDPD.apply(ds, dpdds);
+        if(_model.useDTXDPD) _detxDPD.get().apply(ds, dpdds);
         else                 dpdds[] = ds[];
 
         C[] txiqs = _tempbuf[3][0 .. len],
@@ -337,12 +338,11 @@ final class SimulatedSignals
     }
 
 
-    bool isConvergedAllVGA(in void*[] ignoreList = null) @property
+    bool isConvergedAllVGA(const(void*)[] ignoreList = null) @property
     {
-        static
         bool _isconverged(X)(X* v)
         {
-            if(v.canFind(ignoreList))
+            if(ignoreList.canFind(cast(void*)v))
                 return true;
 
             static if(is(X : Nullable!Y, Y)){
