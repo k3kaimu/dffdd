@@ -160,6 +160,7 @@ void mainJob()
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
+    foreach(useDPD; [false, true])
     foreach(usePhaseNoise; [false])
     foreach(useIQImbalance; [false])
     foreach(amplifierModel; ["Rapp", /*"Saleh", /*"Saleh_noPM"*/])
@@ -216,6 +217,8 @@ void mainJob()
             parentDir ~= "_withIQI";
         if(usePhaseNoise)
             parentDir ~= "_withPN";
+        if(useDPD)
+            parentDir ~= "_withDPD";
 
 
         // only desired signal on AWGN or Rayleigh
@@ -225,6 +228,7 @@ void mainJob()
             ModelSeed modelSeed;
             modelSeed.useIQImbalance = useIQImbalance;
             modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.useDPD = useDPD;
             modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
@@ -274,6 +278,7 @@ void mainJob()
             ModelSeed modelSeed;
             modelSeed.useIQImbalance = useIQImbalance;
             modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.useDPD = useDPD;
             modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
@@ -304,6 +309,7 @@ void mainJob()
             ModelSeed modelSeed;
             modelSeed.useIQImbalance = useIQImbalance;
             modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.useDPD = useDPD;
             modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
@@ -338,6 +344,7 @@ void mainJob()
             ModelSeed modelSeed;
             modelSeed.useIQImbalance = useIQImbalance;
             modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.useDPD = useDPD;
             modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
@@ -371,6 +378,7 @@ void mainJob()
             modelSeed.pn3dBBWHz = pn3dBBWHz;
             modelSeed.useIQImbalance = useIQImbalance;
             modelSeed.usePhaseNoise = usePhaseNoise;
+            modelSeed.useDPD = useDPD;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
             modelSeed.paSmoothFactor = 3;
