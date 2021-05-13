@@ -163,7 +163,7 @@ void mainJob()
     foreach(usePhaseNoise; [false])
     foreach(useIQImbalance; [false])
     foreach(amplifierModel; ["Rapp", /*"Saleh", /*"Saleh_noPM"*/])
-    foreach(numChTaps; [64])
+    foreach(numChTaps; [1])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     "L_LS",
@@ -526,7 +526,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         /* チャネルの設定 */
         {
             Random rnd = uniqueRandom(iTrial, "Channel");
-            model.channelSI.taps = 64;
+            model.channelSI.taps = modelSeed.numofTapsOfSIChannel;
 
             BoxMuller!Random gGen = BoxMuller!Random(rnd);
             Complex!double[] coefs;
