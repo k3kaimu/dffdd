@@ -36,6 +36,7 @@ immutable string DUMPED_RESULT_LIST_FILENAME = "dumped_results.bin";
 void writeJSONData(string path, JSONValue jv)
 {
     std.file.write(path, msgpack.pack(msgpack.fromJSONValue(jv)));
+    std.file.write(path.withExtension(".json"), jv.toString(JSONOptions.specialFloatLiterals));
 }
 
 
@@ -71,7 +72,7 @@ struct ModelSeed
     bool useIQImbalance = false;
     bool usePhaseNoise = false;
     bool useDPD = true;
-    bool syncPhaseNoise = true;
+    // bool syncPhaseNoise = true;
 
     /* IQ Mixer */
     Gain txIRR = 25.dB;
@@ -160,10 +161,10 @@ void mainJob()
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
-    foreach(useDPD; [false, true])
+    foreach(dpdOrder; [1, 3, 5, 7])
     foreach(usePhaseNoise; [false])
     foreach(useIQImbalance; [false])
-    foreach(amplifierModel; ["Rapp", /*"Saleh", /*"Saleh_noPM"*/])
+    foreach(amplifierModel; ["Linear", "Rapp", /*"Saleh", /*"Saleh_noPM"*/])
     foreach(numChTaps; [1])
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
@@ -212,33 +213,36 @@ void mainJob()
         }
 
 
-        string parentDir = format("results_Taps_%s%s_%s", amplifierModel, numChTaps, numOfTrials);
+        string parentDir = format("results_%sTaps_%s_%s", numChTaps, amplifierModel, numOfTrials);
         if(useIQImbalance)
             parentDir ~= "_withIQI";
         if(usePhaseNoise)
             parentDir ~= "_withPN";
-        if(useDPD)
-            parentDir ~= "_withDPD";
+        if(dpdOrder > 1)
+            parentDir ~= "_withDPD%s".format(dpdOrder);
 
 
         // only desired signal on AWGN or Rayleigh
         static if(methodName == "Nop_X")
-        foreach(snr; iota(0, (numChTaps == 1 ? 22 : 52), 3))
+        // foreach(loss_dB; iota(90, 120, 3))
+        foreach(txp; iota(10, 32, 1))
         {
             ModelSeed modelSeed;
+            modelSeed.txPower = txp.dBm;
             modelSeed.useIQImbalance = useIQImbalance;
             modelSeed.usePhaseNoise = usePhaseNoise;
-            modelSeed.useDPD = useDPD;
+            modelSeed.useDPD = (dpdOrder > 1);
+            modelSeed.orderOfDPD = dpdOrder;
             modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
             modelSeed.cancellerType = methodName;
             modelSeed.numOfTrainingSymbols = 10;
-            modelSeed.INR = 20.dB;
-            modelSeed.SNR = snr.dB;
+            modelSeed.INR = (-100).dB;
+            modelSeed.DesiredLOSS = 100.dB;
             modelSeed.onlyDesired = true;
             modelSeed.outputBER = true;
-            modelSeed.linearMode = true;
+            modelSeed.linearMode = (amplifierModel == "Linear" ? true : false);
             modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
@@ -251,9 +255,9 @@ void mainJob()
         // foreach(inr_dB; iota(0, 52, 3))
         // {
         //     ModelSeed modelSeed;
-        //     // modelSeed.linearMode = true;
-                // modelSeed.paModelName = amplifierModel;
-            // modelSeed.lnaModelName = amplifierModel;
+        //     modelSeed.linearMode = true;
+        //     modelSeed.paModelName = amplifierModel;
+        //     modelSeed.lnaModelName = amplifierModel;
         //     modelSeed.paSmoothFactor = paSF;
         //     modelSeed.lnaSmoothFactor = lnaSF;
         //     modelSeed.cancellerType = methodName;
@@ -270,46 +274,47 @@ void mainJob()
         // }
 
 
-        // INR vs (EVM / SIC / BER)
-        foreach(learningSymbols; [200])
-        foreach(inr; iota(0, 82, 3))
-        foreach(loss; [70])
-        {
-            ModelSeed modelSeed;
-            modelSeed.useIQImbalance = useIQImbalance;
-            modelSeed.usePhaseNoise = usePhaseNoise;
-            modelSeed.useDPD = useDPD;
-            modelSeed.pn3dBBWHz = 0.1;
-            modelSeed.paModelName = amplifierModel;
-            modelSeed.lnaModelName = amplifierModel;
-            modelSeed.paSmoothFactor = 3;
-            modelSeed.lnaSmoothFactor = 3;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = inr.dB;
-            // modelSeed.SNR = 50.dB;
-            modelSeed.DesiredLOSS = loss.dB;
-            modelSeed.onlyDesired = methodName == "Nop_X";
-            modelSeed.outputBER = true;
-            modelSeed.numofTapsOfSIChannel = numChTaps;
-            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+        // // INR vs (EVM / SIC / BER)
+        // foreach(learningSymbols; [200])
+        // foreach(inr; iota(0, 82, 3))
+        // foreach(loss; [70])
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.useIQImbalance = useIQImbalance;
+        //     modelSeed.usePhaseNoise = usePhaseNoise;
+        //     modelSeed.useDPD = useDPD;
+        //     modelSeed.pn3dBBWHz = 0.1;
+        //     modelSeed.paModelName = amplifierModel;
+        //     modelSeed.lnaModelName = amplifierModel;
+        //     modelSeed.paSmoothFactor = 3;
+        //     modelSeed.lnaSmoothFactor = 3;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     modelSeed.INR = inr.dB;
+        //     // modelSeed.SNR = 50.dB;
+        //     modelSeed.DesiredLOSS = loss.dB;
+            // modelSeed.onlyDesired = methodName == "Nop_X";
+        //     modelSeed.outputBER = true;
+        //     modelSeed.numofTapsOfSIChannel = numChTaps;
+        //     modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_inr_vs_sic", dir);
-            dirset[dir] = true;
-            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath(parentDir, "results_inr_vs_sic", dir);
+        //     dirset[dir] = true;
+        //     appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
 
 
         // TXP vs (EVM / SIC /  BER)
         foreach(isoRF; [50])
-        foreach(desiredLoss; [70])
+        foreach(desiredLoss; [/*70, 80, 90, */100])
         foreach(learningSymbols; [200])
         foreach(txp; iota(10, 32, 1)) {
             ModelSeed modelSeed;
             modelSeed.useIQImbalance = useIQImbalance;
             modelSeed.usePhaseNoise = usePhaseNoise;
-            modelSeed.useDPD = useDPD;
+            modelSeed.useDPD = (dpdOrder > 1);
+            modelSeed.orderOfDPD = dpdOrder;
             modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
@@ -322,7 +327,7 @@ void mainJob()
             modelSeed.TXRXISO = isoRF.dB;
             modelSeed.DesiredLOSS = desiredLoss.dB;
             modelSeed.txPower = txp.dBm;
-            modelSeed.onlyDesired = methodName == "Nop_X";
+            // modelSeed.onlyDesired = methodName == "Nop_X";
             modelSeed.outputBER = true;
             modelSeed.numofTapsOfSIChannel = numChTaps;
             modelSeed.numOfTapsOfDesiredChannel = numChTaps;
@@ -334,70 +339,71 @@ void mainJob()
         }
 
 
-        // SF vs (EVM / SIC / BER)
-        if(amplifierModel == "Rapp")
-        foreach(txp; [23])
-        foreach(isoRF; [50])
-        foreach(desiredLoss; [70])
-        foreach(learningSymbols; [200])
-        foreach(sf_10; iota(2, 51, 2)) {
-            ModelSeed modelSeed;
-            modelSeed.useIQImbalance = useIQImbalance;
-            modelSeed.usePhaseNoise = usePhaseNoise;
-            modelSeed.useDPD = useDPD;
-            modelSeed.pn3dBBWHz = 0.1;
-            modelSeed.paModelName = amplifierModel;
-            modelSeed.lnaModelName = amplifierModel;
-            modelSeed.paSmoothFactor = sf_10/10.0;
-            modelSeed.lnaSmoothFactor = 3;
-            modelSeed.txPower = txp.dBm;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            // modelSeed.INR = (txp-23+inr).dB;
-            modelSeed.TXRXISO = isoRF.dB;
-            modelSeed.DesiredLOSS = desiredLoss.dB;
-            modelSeed.onlyDesired = methodName == "Nop_X";
-            modelSeed.outputBER = true;
-            modelSeed.numofTapsOfSIChannel = numChTaps;
-            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+        // // SF vs (EVM / SIC / BER)
+        // if(amplifierModel == "Rapp")
+        // foreach(txp; [23])
+        // foreach(isoRF; [50])
+        // foreach(desiredLoss; [70])
+        // foreach(learningSymbols; [200])
+        // foreach(sf_10; iota(2, 51, 2)) {
+        //     ModelSeed modelSeed;
+        //     modelSeed.useIQImbalance = useIQImbalance;
+        //     modelSeed.usePhaseNoise = usePhaseNoise;
+        //     modelSeed.useDPD = useDPD;
+        //     modelSeed.pn3dBBWHz = 0.1;
+        //     modelSeed.paModelName = amplifierModel;
+        //     modelSeed.lnaModelName = amplifierModel;
+        //     modelSeed.paSmoothFactor = sf_10/10.0;
+        //     modelSeed.lnaSmoothFactor = 3;
+        //     modelSeed.txPower = txp.dBm;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     // modelSeed.INR = (txp-23+inr).dB;
+        //     modelSeed.TXRXISO = isoRF.dB;
+        //     modelSeed.DesiredLOSS = desiredLoss.dB;
+            // modelSeed.onlyDesired = methodName == "Nop_X";
+        //     modelSeed.outputBER = true;
+        //     modelSeed.numofTapsOfSIChannel = numChTaps;
+        //     modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
-            dirset[dir] = true;
-            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
+        //     dirset[dir] = true;
+        //     appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
 
 
         // PhaseNoise vs (EVM / SIC / BER)
-        if(usePhaseNoise)
-        foreach(learningSymbols; [200])
-        foreach(pn3dBBWHz; iota(-20, 23, 2).map!(a => 10.0^^(a/10.0)))
-        foreach(loss; [70])
-        {
-            ModelSeed modelSeed;
-            modelSeed.pn3dBBWHz = pn3dBBWHz;
-            modelSeed.useIQImbalance = useIQImbalance;
-            modelSeed.usePhaseNoise = usePhaseNoise;
-            modelSeed.useDPD = useDPD;
-            modelSeed.paModelName = amplifierModel;
-            modelSeed.lnaModelName = amplifierModel;
-            modelSeed.paSmoothFactor = 3;
-            modelSeed.lnaSmoothFactor = 3;
-            modelSeed.cancellerType = methodName;
-            modelSeed.numOfTrainingSymbols = learningSymbols;
-            modelSeed.INR = 60.dB;
-            // modelSeed.SNR = 50.dB;
-            modelSeed.DesiredLOSS = loss.dB;
-            modelSeed.onlyDesired = methodName == "Nop_X";
-            modelSeed.outputBER = true;
-            modelSeed.numofTapsOfSIChannel = numChTaps;
-            modelSeed.numOfTapsOfDesiredChannel = numChTaps;
+        // if(usePhaseNoise)
+        // foreach(learningSymbols; [200])
+        // foreach(pn3dBBWHz; iota(-20, 23, 2).map!(a => 10.0^^(a/10.0)))
+        // foreach(loss; [70])
+        // {
+        //     ModelSeed modelSeed;
+        //     modelSeed.pn3dBBWHz = pn3dBBWHz;
+        //     modelSeed.useIQImbalance = useIQImbalance;
+        //     modelSeed.usePhaseNoise = usePhaseNoise;
+        //     modelSeed.useDPD = (dpdOrder > 1);
+        //     modelSeed.orderOfDPD = dpdOrder;
+        //     modelSeed.paModelName = amplifierModel;
+        //     modelSeed.lnaModelName = amplifierModel;
+        //     modelSeed.paSmoothFactor = 3;
+        //     modelSeed.lnaSmoothFactor = 3;
+        //     modelSeed.cancellerType = methodName;
+        //     modelSeed.numOfTrainingSymbols = learningSymbols;
+        //     modelSeed.INR = 60.dB;
+        //     // modelSeed.SNR = 50.dB;
+        //     modelSeed.DesiredLOSS = loss.dB;
+            // modelSeed.onlyDesired = methodName == "Nop_X";
+        //     modelSeed.outputBER = true;
+        //     modelSeed.numofTapsOfSIChannel = numChTaps;
+        //     modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
-            auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_phasenoise_vs_sic", dir);
-            dirset[dir] = true;
-            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
-        }
+        //     auto dir = makeDirNameOfModelSeed(modelSeed);
+        //     dir = buildPath(parentDir, "results_phasenoise_vs_sic", dir);
+        //     dirset[dir] = true;
+        //     appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+        // }
     }
 
     import std.stdio;
@@ -468,6 +474,8 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         else
             model.SNR = modelSeed.SNR.get;
 
+        if(iTrial == 0) writefln!"SNR = %s"(model.SNR);
+
         if(modelSeed.INR.isNull)
             model.INR = modelSeed.txPower / NP / modelSeed.TXRXISO.get;
         else
@@ -502,6 +510,11 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         /* PAの設定 */
         {
             model.pa.modelName = modelSeed.paModelName;
+            if(model.pa.modelName == "Linear") {
+                model.useSTXPA = false;
+                model.useDTXPA = false;
+            }
+
             model.pa.TX_POWER = modelSeed.txPower;
             model.pa.GAIN = modelSeed.paGain;
             model.pa.Vsat = modelSeed.paVsat;
@@ -511,6 +524,10 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         /* LNAの設定 */
         {
             model.lna.modelName = modelSeed.lnaModelName;
+            if(model.pa.modelName == "Linear") {
+                model.useSRXLN = false;
+            }
+
             model.lna.GAIN = modelSeed.lnaGain;
             model.lna.Vsat = modelSeed.lnaVsatIn * modelSeed.lnaGain;   // 入力飽和電圧から出力飽和電圧への変換
             model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
@@ -766,6 +783,7 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
     jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
     jv["RINRs"] = resList.map!(a => a["RINR_dB"]).array();
     jv["INRs"] = resList.map!(a => a["INR_dB"]).array();
+    jv["TXPs"] = resList.map!(a => a["TXPower_dBm"]).array();
     if(modelSeed.outputBER){
         jv["bers"] = resList.map!(a => a["ber"]).array();
         jv["evms"] = resList.map!(a => a["evm"]).array();

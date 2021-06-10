@@ -128,7 +128,7 @@ void copyToComplexArray(in cfloat[] input, Complex!float[] output)
 in{
     assert(input.length <= output.length);
 }
-body{
+do{
     foreach(i, e; input) output[i] = complex!float(e.re, e.im);
 }
 

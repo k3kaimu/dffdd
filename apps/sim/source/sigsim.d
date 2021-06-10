@@ -166,12 +166,12 @@ final class SimulatedSignals
         depn[] = C(1);
 
         // 自端末の送信機のIQインバランス
-        if(_model.useSTXIQ) _txIQMixer.get()(xs, txiqs);
-        else                txiqs[] = xs[];
+        if(_model.useSTXIQ) _txIQMixer.get()(dpdxs, txiqs);
+        else                txiqs[] = dpdxs[];
 
         // 相手端末の送信機のIQインバランス
-        if(_model.useDTXIQ) _detxIQMixer.get()(ds, detxiqs);
-        else                detxiqs[] = ds[];
+        if(_model.useDTXIQ) _detxIQMixer.get()(dpdds, detxiqs);
+        else                detxiqs[] = dpdds[];
 
         // 自端末と相手端末の位相雑音を生成
         if(_model.useSTXPN) _pnGen1.get()(onesbuf, txpn);
@@ -245,7 +245,9 @@ final class SimulatedSignals
                 detxpas.copy(buffers[i]);
             else static if(m == "received")
                 rxqzs.copy(buffers[i]);
-            else static assert(0, m ~ " is illegal.");
+            // else static assert(0, m ~ " is illegal.");
+            else
+                mixin(m ~ `.copy(buffers[i]);`);
         }
     }
 
