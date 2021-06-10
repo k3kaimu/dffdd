@@ -68,7 +68,7 @@ struct QAM(C)
     in{
         assert(inputs.length % _k == 0);
     }
-    body{
+    do{
         outputs.length = inputs.length / _k;
 
         foreach(i; 0 .. outputs.length){
@@ -317,7 +317,7 @@ unittest
             }
 
             real ber = cnt / (total * 1.0);
-            assert(approxEqual(ber, berQAMFromSNR!scheme(dB), 0.2, 1));
+            assert(isClose(ber, berQAMFromSNR!scheme(dB), 0.2, 1));
         }
     }
 }

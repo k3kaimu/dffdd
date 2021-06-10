@@ -38,7 +38,7 @@ if(kind == Contiguous || kind == Canonical)
     in{
         assert(state.length!0 == nTaps && weight.length!0 == nTaps);
     }
-    body
+    do
     {
         this.state = state;
         this.weight = weight;
@@ -53,7 +53,7 @@ if(kind == Contiguous || kind == Canonical)
     in{
         assert(x.length == numOfFIR);
     }
-    body{
+    do{
         foreach_reverse(i; 1 .. state.length!0)
             state[i][] = state[i-1][];
 
@@ -106,7 +106,7 @@ unittest
     fir.update(Complex!float(1, 1));
     assert(fir.state[0, 0] == Complex!float(1, 1));
     assert(fir.weight[0, 0] == 0);
-    // assert(fir.power[0].approxEqual(2));
+    // assert(fir.power[0].isClose(2));
     assert(fir.output == 0);
 
     fir.weight[0, 0] = 1;

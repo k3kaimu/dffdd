@@ -240,7 +240,7 @@ final class PreambleDetector
         assert(haystack.length % (Constant.nOverSampling * 1024) == 0);
         assert(haystack.length >= Constant.nOverSampling * 1024 * 2);
     }
-    body{
+    do{
         immutable size_t sizeOfFFT = Constant.nOverSampling * 1024 * 2;
         immutable(Complex!float)[] needle;
 

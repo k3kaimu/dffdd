@@ -157,12 +157,12 @@ if(isFloatingPoint!F)
 unittest
 {
     // compare with numpy's result
-    assert(approxEqual(besselI0(0.0L),      1));
-    assert(approxEqual(besselI0(1.0L),      1.2660658777520082));
-    assert(approxEqual(besselI0(100.0L),    1.0737517071310738e+42));
+    assert(isClose(besselI0(0.0L),      1));
+    assert(isClose(besselI0(1.0L),      1.2660658777520082));
+    assert(isClose(besselI0(100.0L),    1.0737517071310738e+42));
 
-    assert(approxEqual(besselI0(0.1)-1,     0.002501562934095647));
-    assert(approxEqual(besselI0(0.01)-1,    2.5000156250509775e-05));
+    assert(isClose(besselI0(0.1)-1,     0.002501562934095647));
+    assert(isClose(besselI0(0.01)-1,    2.5000156250509775e-05));
 }
 
 
@@ -192,10 +192,10 @@ if(isFloatingPoint!F)
 unittest
 {
     // compare with numpy's result
-    assert(approxEqual(1-sinc(0.001),   1.6449332550516615e-06));
-    assert(approxEqual(1-sinc(0.0001),  1.644934066735715e-08));
-    assert(approxEqual(1-sinc(0.0002),  6.579736144818327e-08));
-    assert(approxEqual(sinc(0.1),       0.983631643083466));
+    assert(isClose(1-sinc(0.001),   1.6449332550516615e-06, 1e-4));
+    assert(isClose(1-sinc(0.0001),  1.644934066735715e-08, 1e-4));
+    assert(isClose(1-sinc(0.0002),  6.579736144818327e-08, 1e-4));
+    assert(isClose(sinc(0.1),       0.983631643083466, 1e-4));
 }
 
 
@@ -232,8 +232,8 @@ unittest
         return x * hypgeom21(1, 1, 2, -x);
     }
 
-    assert(approxEqual(mylog(1.01), log(1.01)));
-    assert(approxEqual(mylog(1.1), log(1.1)));
+    assert(isClose(mylog(1.01), log(1.01)));
+    assert(isClose(mylog(1.1), log(1.1)));
 }
 
 
@@ -297,7 +297,7 @@ unittest
         return x * poly(x^^2, alphas);
     }
 
-    assert(approxEqual(approxLambda0ast(0.1), intBesselI0(0.1)));
+    assert(isClose(approxLambda0ast(0.1), intBesselI0(0.1)));
 }
 
 
@@ -359,7 +359,7 @@ C laguerre(C)(C x, int n, C a = 0) if(isComplex!C || isFloatingPoint!C)
 
 unittest
 {
-    import std.math : approxEqual;
+    import std.math : isClose;
 
     // L_0^a(x) = 1
     auto l0a = delegate(real a, real x) { return 1.0L; };
@@ -385,7 +385,7 @@ unittest
         foreach(a; testAs)
         {
             foreach(int i, f; [l0a, l1a, l2a, l3a])
-                assert(laguerre(x, i, a).approxEqual(f(a, x)));
+                assert(laguerre(x, i, a).isClose(f(a, x)));
         }
 }
 
@@ -441,7 +441,12 @@ bool approxEqualC(C1, C2)(C1 x, C2 y)
             return .approxEqualC(x, complex(y, 0));
         else
         {
-            return std.math.approxEqual(x.re, y.re) && std.math.approxEqual(x.im, y.im);
+            if(x.sqAbs < 1e4) {
+                auto e = x - y;
+                return std.math.isClose(e.re, 0, 0, 1e-5) && std.math.isClose(e.im, 0, 0, 1e-5);
+            } else {
+                return std.math.isClose(x.re, y.re) && std.math.isClose(x.im, y.im);
+            }
         }
     }
 }

@@ -132,7 +132,7 @@ final class OFDMSymbolExchanger(Mod)
     in{
         assert(input.length % this.symInputLength == 0);
     }
-    body{
+    do{
         _mod.modulate(input, output);
 
         if(*_sw){
@@ -406,7 +406,7 @@ auto makeSignalLoggingCanceller(C, Canceller)(Canceller canceller, string result
             assert(input.length == received.length);
             assert(input.length == errors.length);
         }
-        body{
+        do{
             // errors[] = received[];
             _canc.apply!doLearning(input, received, errors);
 

@@ -904,9 +904,9 @@ unittest
     cg(input, output);
 
     import std.math;
-    assert(approxEqual(output[0], 0.6));
-    assert(approxEqual(output[1], 1.2));
-    assert(approxEqual(output[2], 1.8));
+    assert(isClose(output[0], 0.6));
+    assert(isClose(output[1], 1.2));
+    assert(isClose(output[2], 1.8));
 }
 
 

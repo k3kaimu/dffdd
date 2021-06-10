@@ -17,7 +17,7 @@ struct IIRFilter1(C)
     in{
         assert(x.length == o.length);
     }
-    body{
+    do{
         o[] = x[];
         foreach(ref e; o){
             auto ee = e;

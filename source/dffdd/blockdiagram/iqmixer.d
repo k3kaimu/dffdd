@@ -240,7 +240,7 @@ struct PhaseNoise(C)
     in{
         assert(x.length == o.length);
     }
-    body{
+    do{
         o[] = x[];
         
     }

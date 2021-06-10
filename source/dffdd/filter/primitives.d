@@ -193,24 +193,24 @@ unittest
     dist1(Complex!float(1, 1), outputs);
     foreach(i, e; [Complex!float(1, 1), Complex!float(1, -1)])
     {
-        assert(approxEqual(e.re, outputs[i].re));
-        assert(approxEqual(e.im, outputs[i].im));
+        assert(isClose(e.re, outputs[i].re));
+        assert(isClose(e.im, outputs[i].im));
     }
 
     auto dist3 = new SubSetOfPADistorter!(Complex!float, 3);
     dist3(Complex!float(1, 1), outputs);
     foreach(i, e; [Complex!float(1, 1), Complex!float(1, -1), Complex!float(2, 2), Complex!float(2, -2)])
     {
-        assert(approxEqual(e.re, outputs[i].re));
-        assert(approxEqual(e.im, outputs[i].im));
+        assert(isClose(e.re, outputs[i].re));
+        assert(isClose(e.im, outputs[i].im));
     }
 
     auto dist5 = new SubSetOfPADistorter!(Complex!float, 5);
     dist5(Complex!float(1, 1), outputs);
     foreach(i, e; [Complex!float(1, 1), Complex!float(1, -1), Complex!float(2, 2), Complex!float(2, -2), Complex!float(4, 4), Complex!float(4, -4)])
     {
-        assert(approxEqual(e.re, outputs[i].re));
-        assert(approxEqual(e.im, outputs[i].im));
+        assert(isClose(e.re, outputs[i].re));
+        assert(isClose(e.im, outputs[i].im));
     }
 }
 
@@ -301,8 +301,8 @@ unittest
     dist1(expi(PI_4), outputs);
     foreach(i, e; [expi(PI_4), expi(-PI_4)])
     {
-        assert(approxEqual(e.re, outputs[i].re));
-        assert(approxEqual(e.im, outputs[i].im));
+        assert(isClose(e.re, outputs[i].re));
+        assert(isClose(e.im, outputs[i].im));
     }
 
     auto dist3 = new PADistorter!(Complex!float, 3);
@@ -310,8 +310,8 @@ unittest
     foreach(i, e; [expi(PI_4)*2, expi(-PI_4)*2,
                    expi(PI_4*3)*8, expi(PI_4)*8, expi(-PI_4)*8, expi(-PI_4*3)*8])
     {
-        assert(approxEqual(e.re, outputs[i].re));
-        assert(approxEqual(e.im, outputs[i].im));
+        assert(isClose(e.re, outputs[i].re));
+        assert(isClose(e.im, outputs[i].im));
     }
 
     auto dist5 = new PADistorter!(Complex!float, 5);
@@ -320,8 +320,8 @@ unittest
                    expi(PI_4*3)*8, expi(PI_4)*8, expi(-PI_4)*8, expi(-PI_4*3)*8,
                    expi(PI_4*5)*32, expi(PI_4*3)*32, expi(PI_4)*32, expi(-PI_4)*32, expi(-PI_4*3)*32, expi(-PI_4*5)*32])
     {
-        assert(approxEqual(e.re, outputs[i].re));
-        assert(approxEqual(e.im, outputs[i].im));
+        assert(isClose(e.re, outputs[i].re));
+        assert(isClose(e.im, outputs[i].im));
     }
 }
 unittest

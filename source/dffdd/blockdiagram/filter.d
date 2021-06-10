@@ -143,7 +143,7 @@ unittest
     alias C = Complex!float;
 
     auto sig = [C(0), C(1), C(2), C(3)].connectTo!(FIRFilterConverter!C)([C(0), C(1)]);
-    assert(equal!((a, b) => approxEqual(a.re, b.re) && approxEqual(a.im, b.im))(sig, [C(0), C(0), C(1), C(2)]));
+    assert(equal!((a, b) => isClose(a.re, b.re) && isClose(a.im, b.im))(sig, [C(0), C(0), C(1), C(2)]));
 }
 
 

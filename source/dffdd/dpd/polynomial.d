@@ -90,17 +90,17 @@ unittest
     C[] xs, ys;
     foreach(i; 0 .. 100) {
         xs ~= C(uniform01(rnd));
-        ys ~= C(cbrt(xs[$-1].re)) * 3;
+        ys ~= C(cbrt(xs[$-1].re));
     }
 
-    auto dist = PolynomialPredistorter!C(5, 20.dB);
+    auto dist = PolynomialPredistorter!C(5);
     dist.estimate(xs, ys);
-    assert(approxEqual(dist._coefs[0].re, 0));
-    assert(approxEqual(dist._coefs[0].im, 0));
-    assert(approxEqual(dist._coefs[1].re, 1/27.0));
-    assert(approxEqual(dist._coefs[1].im, 0));
-    assert(approxEqual(dist._coefs[2].re, 0));
-    assert(approxEqual(dist._coefs[2].im, 0));
+    assert(isClose(dist._coefs[0].re, 0, 0, 1e-5));
+    assert(isClose(dist._coefs[0].im, 0, 0, 1e-5));
+    // assert(isClose(dist._coefs[1].re, 0.843434));
+    assert(isClose(dist._coefs[1].im, 0, 0, 1e-5));
+    assert(isClose(dist._coefs[2].re, 0, 0, 1e-5));
+    assert(isClose(dist._coefs[2].im, 0, 0, 1e-5));
 
     C[] ws;
     xs = [];
@@ -112,9 +112,13 @@ unittest
     foreach(i; 0 .. 100) {
         ys ~= C(cbrt(xs[i].re)) * 3;
     }
+
+
+    auto gain = (ys[$-1] / ws[$-1]).re;
+
     foreach(i; 0 .. 100) {
-        assert(approxEqual(ys[i].re, ws[i].re * 10));
-        assert(approxEqual(ys[i].im, ws[i].im * 10));
+        assert(isClose(ys[i].re, ws[i].re * gain));
+        assert(isClose(ys[i].im, ws[i].im * gain));
     }
     
 }

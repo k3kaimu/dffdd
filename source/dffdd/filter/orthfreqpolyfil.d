@@ -18,7 +18,7 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
     in{
         //assert(subcarieerMap.length == nFFT * nOS);
     }
-    body{
+    do{
         //_model = model;
         _fftw = makeFFTWObject(nFFT * nOS);
         //_taps = taps;
@@ -59,7 +59,7 @@ final class FrequencyHammersteinFilter(alias genAdaptor, BasisFuncs...)
             assert(tx[i] == tx[i + _nOS * _nFFT]);
       }
     }
-    body{
+    do{
         immutable symLen = _nOS * (_nFFT + _nCP),
                   cpLen = _nOS * _nCP;
 

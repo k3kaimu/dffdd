@@ -117,9 +117,9 @@ final class SimulatedSignals
         auto s = buffers[0].length;
         foreach(e; buffers) assert(e.length == s);
     }
-    body{
-        static foreach(m; aliasSeqOf!ms)
-            static assert(canFind(["txBaseband", "desiredBaseband", "paDirect", "desiredPADirect", "received"], m), m ~ " is illegal.");
+    do{
+        // static foreach(m; aliasSeqOf!ms)
+        //     static assert(canFind(["txBaseband", "desiredBaseband", "paDirect", "desiredPADirect", "received"], m), m ~ " is illegal.");
 
         immutable size_t len = buffers[0].length;
         if(len == 0) return;

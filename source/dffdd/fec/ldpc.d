@@ -173,7 +173,7 @@ if(isFloatingPoint!F)
         assert(info.length == _K);
         assert(encoded.length == _N);
     }
-    body {
+    do {
         static struct Storage {
             size_t M;
             ubyte[] parity;

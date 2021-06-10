@@ -25,9 +25,9 @@ real kaiserBetaFromStopbandAttdB(real attdB) pure nothrow @safe @nogc
 
 unittest
 {
-    assert(approxEqual(kaiserBetaFromStopbandAttdB(0), 0));
-    assert(approxEqual(kaiserBetaFromStopbandAttdB(22), 0.5842 + 0.07886));
-    assert(approxEqual(kaiserBetaFromStopbandAttdB(50), 4.55126));
+    assert(isClose(kaiserBetaFromStopbandAttdB(0), 0));
+    assert(isClose(kaiserBetaFromStopbandAttdB(22), 0.5842 + 0.07886));
+    assert(isClose(kaiserBetaFromStopbandAttdB(50), 4.55126));
 }
 
 
@@ -62,7 +62,7 @@ unittest
     ];
 
     foreach(i; 0 .. window.length)
-        assert(approxEqual(window[i], numpyResults[i]));
+        assert(isClose(window[i], numpyResults[i], 1e-3));
 
     window = kaiser!real(13, 14);
     numpyResults = [
@@ -72,7 +72,7 @@ unittest
         7.72686684e-06];
 
     foreach(i; 0 .. window.length)
-        assert(approxEqual(window[i], numpyResults[i]));
+        assert(isClose(window[i], numpyResults[i], 1e-3));
 }
 
 
