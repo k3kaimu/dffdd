@@ -110,7 +110,7 @@ void main()
 
     writefln!"EbN0: %s"(ebn0_dBList);
     writefln!"SNR:  %s"(ebn0_dBList.map!(a => a + 10*log10(1.0 * K / N * Nc)));
-    writefln!"EER:  %s"(berList);
+    writefln!"FER:  %s"(berList);
 }
 
 
