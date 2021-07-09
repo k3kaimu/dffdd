@@ -42,7 +42,7 @@ final class OverlapSaveRegenerator(C)
             assert(!isNaN(e.im));
         }
     }
-    body{
+    do{
         immutable batchLen = _freqResponse.length!0 / 2;
 
         output.length = tx.length;
@@ -79,7 +79,7 @@ final class OverlapSaveRegenerator(C)
             assert(!isNaN(e.im));
         }
     }
-    body{
+    do{
         immutable size_t size = tx.length;
         output[] = C(0);
 

@@ -32,7 +32,7 @@ final class OFDM(C)
     in{
         assert(inputs.length % this.symInputLength == 0);
     }
-    body{
+    do{
         _inpBuffer[] = C(0);
 
         if(outputs.length != inputs.length / this.symInputLength * this.symOutputLength)
@@ -81,7 +81,7 @@ final class OFDM(C)
     in{
         assert(inputs.length % this.symOutputLength == 0);
     }
-    body{
+    do{
         //outputs[] = C(0);
 
         auto mainLobeH = _inpBuffer[0 .. _nFFT/2];
@@ -156,8 +156,8 @@ unittest
     assert(demodsym.length == inps.length);
 
     foreach(i; 0 .. inps.length){
-        assert(approxEqual(inps[i].re, demodsym[i].re));
-        assert(approxEqual(inps[i].im, demodsym[i].im));
+        assert(isClose(inps[i].re, demodsym[i].re));
+        assert(isClose(inps[i].im, demodsym[i].im));
     }
 }
 
@@ -263,7 +263,7 @@ unittest
     // アップサンプリング率: 2
     auto ofdmMod = new OFDMWithStaticPilot!(Complex!float)(8, 3, 4, 2);
 
-    Complex!float[] inps = [Complex!float(1, 1), Complex!float(-1, -1), Complex!float(1, 0), Complex!float(0, 1)];
+    Complex!float[] inps = [Complex!float(1, 1), Complex!float(-1, -1), Complex!float(1, -1), Complex!float(-1, 1)];
     Complex!float[] res;
 
     // 変調
@@ -285,7 +285,7 @@ unittest
     assert(demodsym.length == inps.length);
 
     foreach(i; 0 .. inps.length){
-        assert(approxEqual(inps[i].re, demodsym[i].re));
-        assert(approxEqual(inps[i].im, demodsym[i].im));
+        assert(isClose(inps[i].re, demodsym[i].re));
+        assert(isClose(inps[i].im, demodsym[i].im));
     }
 }

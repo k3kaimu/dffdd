@@ -17,7 +17,7 @@ if(isInputRange!R && isUnsigned!(Unqual!(ElementType!R)))
 in{
     assert(nDigits <= (ElementType!R).sizeof * 8);
 }
-body{
+do{
     alias E = Unqual!(ElementType!R);
 
     static struct Result()
@@ -184,7 +184,7 @@ void oct2bin(Int)(string oct, Int[] bin, int skiplast, int flip)
 in{
     assert(bin.length <= oct.length * 3);
 }
-body{
+do{
     auto tmp = new Int[oct.length * 3];
     {
         auto sink = tmp;
@@ -216,7 +216,7 @@ void hex2bin(string oct, short[] bin, int skiplast, int flip)
 in{
     assert(bin.length <= oct.length * 4);
 }
-body{
+do{
     auto tmp = new short[oct.length * 4];
 
     {
@@ -254,7 +254,7 @@ if(isInputRange!R && isIntegral!I && is(Unqual!(ElementType!R) == bool))
 in{
     assert(nDigits <= I.sizeof * 8);
 }
-body{
+do{
     static struct BinaryDigitsPacker()
     {
         I front() const { return _front; }

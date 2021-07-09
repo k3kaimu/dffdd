@@ -288,7 +288,7 @@ final class OverlapSaveRegenerator2(C)
             assert(!isNaN(e.im));
         }
     }
-    body{
+    do{
         immutable batchLen = _nFFT / 2;
 
         output.length = tx.length;
@@ -325,7 +325,7 @@ final class OverlapSaveRegenerator2(C)
             assert(!isNaN(e.im));
         }
     }
-    body{
+    do{
         immutable size_t size = tx.length;
         output[] = C(0);
 
@@ -445,7 +445,7 @@ if(isBlockConverter!(Dist, C, C[]) && isFrequencyDomainMISOStateAdapter!(StateAd
             assert(!isNaN(e.im));
         }
     }
-    body{
+    do{
         immutable size_t blk = this.inputBlockLength;
         immutable size_t dim = _distorter.outputDim;
 
@@ -1534,7 +1534,7 @@ final class PreIQInvertionCanceller(C, Canceller)
         assert(input.length % this.inputBlockLength == 0);
         if(!_alreadyEstimateIQI) assert(doLearning);
     }
-    body{
+    do{
         if(_alreadyEstimateIQI){
             if(_remainTXs.length && doLearning){
                 auto txtemp = _remainTXs;
@@ -1601,7 +1601,7 @@ final class PreIQInvertionCanceller(C, Canceller)
     in{
         assert(!_alreadyEstimateIQI);
     }
-    body{
+    do{
         static if(doLearning){
             alias F = typeof(C.init.re);
 
@@ -1628,7 +1628,7 @@ final class PreIQInvertionCanceller(C, Canceller)
         assert(_trTXSyms.length == _nTrIQI);
         assert(_trRXSyms.length == _nTrIQI);
     }
-    body{
+    do{
         C[2][size_t] hlist;
         foreach(f, b; _scMap){
             if(!b) continue;

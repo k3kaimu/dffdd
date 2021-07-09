@@ -82,7 +82,7 @@ nothrow @trusted extern(C)
 bool approxEqualCpx(F)(Complex!F a, Complex!F b)
 {
     import std.math;
-    return std.math.approxEqual(a.re, b.re) && std.math.approxEqual(a.im, b.im);
+    return std.math.isClose(a.re, b.re) && std.math.isClose(a.im, b.im);
 }
 
 
@@ -153,7 +153,7 @@ in{
     assert(!matA.isTransposed);
     assert(ev.length == matA.length!0);
 }
-body{
+do{
   static if(is(R == float))
     return LAPACKE_cheev(Order.RowMajor, 'V', 'U', cast(uint)matA.length!0, cast(R[2]*)matA.ptr, matA.leadingDimension, ev.ptr);
   else
@@ -168,7 +168,7 @@ in{
     assert(!matA.isTransposed);
     assert(sv.length >= min(matA.length!0, matA.length!1));
 }
-body{
+do{
     int rankDest;
 
   static if(is(R == float))
@@ -187,7 +187,7 @@ E dot(E)(Slice!(E*, 1, Contiguous) x, Slice!(E*, 1, Contiguous) y)
 in{
     assert(x.length == y.length);
 }
-body{
+do{
   static if(is(E == float))
     return cblas_sdot(x.length, x.ptr, x._stride!0, y.ptr, y._stride!0);
   else static if(is(E == double))
@@ -221,7 +221,7 @@ E dotH(E)(Slice!(E*, 1, Contiguous) x, Slice!(E*, 1, Contiguous) y)
 in{
     assert(x.length == y.length);
 }
-body{
+do{
   static if(is(E == float) || is(E == double))
     return dot(x, y);
   else static if(is(typeof(E.init.re) == float))
@@ -252,8 +252,8 @@ unittest
          v2 = [Complex!float(0, 0), Complex!float(2, 0)].sliced(2);
     
     auto res = dotH(v1, v2);
-    assert(approxEqual(res.re, 2));
-    assert(approxEqual(res.im, -2));
+    assert(isClose(res.re, 2));
+    assert(isClose(res.im, -2));
 }
 
 
@@ -324,7 +324,7 @@ in{
     assert(!matA.isTransposed);
     assert(matA.length!0 == matA.length!1);
 }
-body{
+do{
     auto ipiv = new int[matA.length!0];
 
     immutable n = matA.length!0;
@@ -354,11 +354,11 @@ unittest
     mat[1, 1] = 1;
 
     gemi(mat);
-    assert(approxEqual(mat[0, 0].re, 1));
-    assert(approxEqual(mat[0, 1].re, 0));
-    assert(approxEqual(mat[1, 0].re, 0));
-    assert(approxEqual(mat[1, 1].re, 1));
-    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(approxEqual(mat[i, j].im, 0));
+    assert(isClose(mat[0, 0].re, 1));
+    assert(isClose(mat[0, 1].re, 0));
+    assert(isClose(mat[1, 0].re, 0));
+    assert(isClose(mat[1, 1].re, 1));
+    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(isClose(mat[i, j].im, 0));
 
 
     mat[0, 0] = 3;
@@ -368,11 +368,11 @@ unittest
     gemi(mat);
     //writeln(mat);
 
-    assert(approxEqual(mat[0, 0].re, 1));
-    assert(approxEqual(mat[0, 1].re, -2));
-    assert(approxEqual(mat[1, 0].re, -0.5));
-    assert(approxEqual(mat[1, 1].re, 1.5));
-    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(approxEqual(mat[i, j].im, 0));
+    assert(isClose(mat[0, 0].re, 1));
+    assert(isClose(mat[0, 1].re, -2));
+    assert(isClose(mat[1, 0].re, -0.5));
+    assert(isClose(mat[1, 1].re, 1.5));
+    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(isClose(mat[i, j].im, 0));
 }
 
 
@@ -526,10 +526,10 @@ unittest
     }
 
     auto est = lsEst.estimate();
-    assert(approxEqual(est[0].re, coefs[0].re));
-    assert(approxEqual(est[0].im, 0));
-    assert(approxEqual(est[1].re, coefs[1].re));
-    assert(approxEqual(est[1].im, 0));
+    assert(isClose(est[0].re, coefs[0].re));
+    assert(isClose(est[0].im, 0));
+    assert(isClose(est[1].re, coefs[1].re));
+    assert(isClose(est[1].im, 0));
 }
 
 
@@ -651,9 +651,9 @@ unittest
     auto estMMSE = leastSquareEstimateTikRegSimple(mat, measured, 0);
 
     foreach(i; 0 .. 3) {
-        import std.math : approxEqual;
-        assert(estLS[i].re.approxEqual(estMMSE[i].re));
-        assert(estLS[i].im.approxEqual(estMMSE[i].im));
+        import std.math : isClose;
+        assert(estLS[i].re.isClose(estMMSE[i].re));
+        assert(estLS[i].im.isClose(estMMSE[i].im));
     }
 }
 

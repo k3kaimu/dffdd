@@ -16,7 +16,7 @@ C[] convolution(FftObj, C)(FftObj fftObj, in C[] specA, in C[] specB, C[] dst)
 in{
     assert(specA.length == specB.length);
 }
-body{
+do{
     immutable size = specA.length;
     C[] bufbuf = new C[size];
 

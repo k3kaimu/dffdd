@@ -503,15 +503,27 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         infoResult["canceling_symbols_per_second"] = cancCNT * model.blockSize / model.ofdm.numOfSamplesOf1Symbol / ((cast(double)sw.peek.total!"usecs") / 1_000_000);
         // infoResult["cancellation_dB"] = sicv;
 
-        // 雑音電力を測る
+        // 雑音電力と送信電力を測る
         signals.ignoreSI = true;
         scope(exit) signals.ignoreSI = false;
         double sumNoisePower = 0;
+        double sumTXPower = 0;
+        double sumRXAntNoisePower = 0,
+               sumRXAntDesiredPower = 0;
+        auto rxvgas = recvs.dup;
+        auto rxds = recvs.dup;
         foreach(i; 0 .. cancCNT) {
-            signals.fillBuffer!(["received"])(refrs);
+            signals.fillBuffer!(["received", "paDirect", "rxvgas", "rxds"])(refrs, recvs, rxvgas, rxds);
             sumNoisePower += refrs.map!(a => a.sqAbs).sum();
+            sumTXPower += recvs.map!(a => a.sqAbs).sum();
+            sumRXAntNoisePower += rxvgas.map!(a => a.sqAbs).sum();
+            sumRXAntDesiredPower += rxds.map!(a => a.sqAbs).sum();
         }
         sumNoisePower /= cancCNT * model.blockSize;
+        sumTXPower /= cancCNT * model.blockSize;
+        sumRXAntNoisePower /= cancCNT * model.blockSize;
+        sumRXAntDesiredPower /= cancCNT * model.blockSize;
+
         double sumRemainSI = sumRemainPower - sumNoisePower;
         if(sumRemainSI < 0) sumRemainSI = 0;
         Gain RINR = Gain.fromPowerGain(sumRemainSI / sumNoisePower),
@@ -523,6 +535,10 @@ JSONValue mainImpl(string filterType)(Model model, string resultDir = null)
         infoResult["cancellation_dB"] = canc.asdB;
         infoResult["RINR_dB"] = RINR.asdB;
         infoResult["INR_dB"] = INR.asdB;
+        infoResult["TXPower_dBm"] = 10*log10(sumTXPower) + 30;
+        infoResult["NoisePower_dBm"] = 10*log10(sumNoisePower) + 30;
+        infoResult["RXAntNoisePower_dBm"] = 10*log10(sumRXAntNoisePower) + 30;
+        infoResult["RXAntDesiredPower_dBm"] = 10*log10(sumRXAntDesiredPower) + 30;
         if(resultDir !is null){
             File(buildPath(resultDir ,"INR_value.csv"), "w").writeln(INR.asdB);
             File(buildPath(resultDir ,"cancellation_value.csv"), "w").writeln(canc.asdB);
@@ -575,7 +591,8 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
     immutable nSC = model.ofdm.numOfSubcarrier;
     immutable nSYM = model.ofdm.numOfSamplesOf1Symbol;
 
-    auto ofdmMod = new dffdd.mod.ofdm.OFDMWithStaticPilot!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier-2, model.ofdm.scaleOfUpSampling);
+    // auto ofdmMod = new dffdd.mod.ofdm.OFDMWithStaticPilot!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier-2, model.ofdm.scaleOfUpSampling);
+    auto ofdmMod = new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling);
     auto qamMod = QAM!(Complex!float)(16);
 
     if(!model.withSI) signals.ignoreSI = true;
@@ -607,7 +624,7 @@ void simulateMeasureBEREVMImpl(Filter, Signals, FFTObject)(ref Filter filter, re
     channelFreqCorr[] = C(0);
     txFreqSqAbs[] = C(0);
     size_t numDesiredChannelTraining;
-    immutable maxNumDesiredChannelTraining = 10;    // 何シンボルでチャネルを学習するか
+    immutable maxNumDesiredChannelTraining = 1000;    // 何シンボルでチャネルを学習するか
 
     C[] receivedSCs = new C[nSC],
         referenceSCs = new C[nSC];

@@ -109,9 +109,9 @@ struct Gain
 unittest
 {
     import std.stdio;
-    assert(approxEqual(20.dB.asV, 10));
-    assert(approxEqual(Gain.fromPowerGain(100).asV, 10));
-    assert(approxEqual(Gain.fromVoltageGain(123).asV, 123));
+    assert(isClose(20.dB.asV, 10));
+    assert(isClose(Gain.fromPowerGain(100).asV, 10));
+    assert(isClose(Gain.fromVoltageGain(123).asV, 123));
 }
 
 
@@ -196,14 +196,14 @@ struct Voltage
 
 unittest
 {
-    assert(approxEqual((-10).dBm.volt, sqrt(IMPEDANCE)*0.01));
-    assert(approxEqual((10).dBm.volt, sqrt(IMPEDANCE)*0.1));
-    assert(approxEqual((10).dBm.dBm, 10));
-    assert(approxEqual((-10).dBm.dBm, -10));
+    assert(isClose((-10).dBm.volt, sqrt(IMPEDANCE)*0.01));
+    assert(isClose((10).dBm.volt, sqrt(IMPEDANCE)*0.1));
+    assert(isClose((10).dBm.dBm, 10));
+    assert(isClose((-10).dBm.dBm, -10));
 
     enum Voltage g1 = (-10).dBm;
-    assert(approxEqual(g1.volt, sqrt(IMPEDANCE)*0.01));
+    assert(isClose(g1.volt, sqrt(IMPEDANCE)*0.01));
 
     enum Voltage g2 = 10.dBm;
-    assert(approxEqual(g2.volt, sqrt(IMPEDANCE)*0.1));
+    assert(isClose(g2.volt, sqrt(IMPEDANCE)*0.1));
 }

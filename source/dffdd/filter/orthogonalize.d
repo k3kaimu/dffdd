@@ -255,24 +255,24 @@ unittest
     conv.convertMatrix[1, 1] = 1;
 
     auto res = conv([Complex!float(1, 1), Complex!float(0, 1)]);
-    assert(approxEqual(res[0].re, 1));
-    assert(approxEqual(res[0].im, 1));
-    assert(approxEqual(res[1].re, 0));
-    assert(approxEqual(res[1].im, 1));
+    assert(isClose(res[0].re, 1));
+    assert(isClose(res[0].im, 1));
+    assert(isClose(res[1].re, 0));
+    assert(isClose(res[1].im, 1));
 
     conv.convertMatrix[0, 1] = 1;
     res = conv([Complex!float(1, 1), Complex!float(0, 1)]);
-    assert(approxEqual(res[0].re, 1));
-    assert(approxEqual(res[0].im, 2));
-    assert(approxEqual(res[1].re, 0));
-    assert(approxEqual(res[1].im, 1));
+    assert(isClose(res[0].re, 1));
+    assert(isClose(res[0].im, 2));
+    assert(isClose(res[1].re, 0));
+    assert(isClose(res[1].im, 1));
 
     conv.convertMatrix[1, 0] = -1;
     res = conv([Complex!float(1, 1), Complex!float(0, 1)]);
-    assert(approxEqual(res[0].re, 1));
-    assert(approxEqual(res[0].im, 2));
-    assert(approxEqual(res[1].re, -1));
-    assert(approxEqual(res[1].im, 0));
+    assert(isClose(res[0].re, 1));
+    assert(isClose(res[0].im, 2));
+    assert(isClose(res[1].re, -1));
+    assert(isClose(res[1].im, 0));
 }
 
 
@@ -325,10 +325,10 @@ unittest
     auto conn = new ConvertedVectorDistorter!(Complex!float, typeof(dist), typeof(conv))(dist, conv);
 
     auto res = conn(Complex!float(1, 2));
-    assert(approxEqual(res[0].re, -1));
-    assert(approxEqual(res[0].im, -2));
-    assert(approxEqual(res[1].re, -3));
-    assert(approxEqual(res[1].im, -6));
+    assert(isClose(res[0].re, -1));
+    assert(isClose(res[0].im, -2));
+    assert(isClose(res[1].re, -3));
+    assert(isClose(res[1].im, -6));
 }
 
 
@@ -427,26 +427,26 @@ unittest
 
     auto cm = orth._conn.converter.convertMatrix;
 
-    assert(approxEqual(cm[0, 0].re, 1));
-    assert(approxEqual(cm[0, 1].re, 0));
-    assert(approxEqual(cm[1, 0].re, -2));
-    assert(approxEqual(cm[1, 1].re, 1));
+    assert(isClose(cm[0, 0].re, 1));
+    assert(isClose(cm[0, 1].re, 0));
+    assert(isClose(cm[1, 0].re, -2));
+    assert(isClose(cm[1, 1].re, 1));
 
-    assert(approxEqual(cm[0, 0].im, 0));
-    assert(approxEqual(cm[0, 1].im, 0));
-    assert(approxEqual(cm[1, 0].im, 0));
-    assert(approxEqual(cm[1, 1].im, 0));
+    assert(isClose(cm[0, 0].im, 0));
+    assert(isClose(cm[0, 1].im, 0));
+    assert(isClose(cm[1, 0].im, 0));
+    assert(isClose(cm[1, 1].im, 0));
 
     auto output = orth(input);
 
     //assert(output[0].re == input)
     //
     foreach(e; zip(input, output)){
-        assert(approxEqual(e[1][0].re, e[0].re));
-        assert(approxEqual(e[1][0].im, e[0].im));
+        assert(isClose(e[1][0].re, e[0].re));
+        assert(isClose(e[1][0].im, e[0].im));
 
-        assert(approxEqual(e[1][1].re, 1));
-        assert(approxEqual(e[1][1].im, 0));
+        assert(isClose(e[1][1].re, 1));
+        assert(isClose(e[1][1].im, 0));
     }
 }
 
@@ -471,7 +471,7 @@ final class OrthogonalizedSpectrumConverter(C, Orthogonalizer)
         foreach(e; input) assert(e.length == _dim);
         // foreach(e; output) assert(e.length == _dim);
     }
-    body{
+    do{
         output.length = input.length;
         foreach(i; 0 .. _convs.length)
             _convs[i](input[i], output[i]);

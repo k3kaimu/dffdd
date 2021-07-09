@@ -101,7 +101,7 @@ struct L1CACode
     in{
         assert(prn > 0);
     }
-    body{
+    do{
         _prn = prn;
         _i = 0;
         _j = codeLength - _delay[prn-1];

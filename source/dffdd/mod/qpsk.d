@@ -18,7 +18,7 @@ struct QPSK(C)
     in{
         assert(inputs.length % symInputLength == 0);
     }
-    body{
+    do{
         import std.math;
 
         if(outputs.length != inputs.length/2)

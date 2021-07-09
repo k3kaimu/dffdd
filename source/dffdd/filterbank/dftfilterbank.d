@@ -145,10 +145,10 @@ unittest
     auto sfb = new DFTSynthesisFilterBank!C(2, [C(0.5), C(0.5)]);
     sfb(outputs, inputs);
 
-    assert(inputs[0].re.approxEqual(1));
-    assert(inputs[1].re.approxEqual(2));
-    assert(inputs[0].im.approxEqual(0));
-    assert(inputs[1].im.approxEqual(0));
+    assert(inputs[0].re.isClose(1));
+    assert(inputs[1].re.isClose(2));
+    assert(inputs[0].im.isClose(0));
+    assert(inputs[1].im.isClose(0));
 }
 
 // 

@@ -97,7 +97,7 @@ if(StateORAdapter.length % 2 == 0)
         assert(tx.length == rx.length
             && tx.length == outputBuf.length);
     }
-    body{
+    do{
         foreach(i; 0 .. tx.length){
             C error = rx[i];
             C txv = tx[i];
@@ -160,7 +160,7 @@ if(StateORAdapter.length % 2 == 0)
         assert(tx.length == rx.length
             && tx.length == outputBuf.length);
     }
-    body{
+    do{
         foreach(i; 0 .. tx.length){
             C error = rx[i];
             C txv = tx[i];
@@ -242,7 +242,7 @@ if(isBlockConverter!(Dist, C, C[]))
         assert(input.length == errors.length);
         assert(input.length % this.inputBlockLength == 0);
     }
-    body{
+    do{
         immutable size_t blk = this.inputBlockLength;
 
         foreach(i; 0 .. input.length / blk){
@@ -321,7 +321,7 @@ if(isBlockConverter!(Dist, C, C[]))
         assert(input.length == errors.length);
         assert(input.length % this.inputBlockLength == 0);
     }
-    body{
+    do{
         immutable size_t blk = this.inputBlockLength;
 
         foreach(i; 0 .. input.length / blk){
@@ -376,7 +376,7 @@ if(isBlockConverter!(Dist, C, C[]))
     in{
         assert(numOfFIR == dist.outputDim);
     }
-    body {
+    do {
         _distorter = dist;
         _state = MultiFIRState!C(numOfFIR, numOfTaps);
 
@@ -399,7 +399,7 @@ if(isBlockConverter!(Dist, C, C[]))
         assert(input.length == errors.length);
         assert(input.length % this.inputBlockLength == 0);
     }
-    body{
+    do{
         immutable size_t blk = this.inputBlockLength;
 
         foreach(i; 0 .. input.length / blk){
@@ -518,7 +518,7 @@ if(isBlockConverter!(Dist, C, C[]))
             assert(!isNaN(e.im));
         }
     }
-    body{
+    do{
         immutable size_t blk = this.inputBlockLength;
         immutable size_t dim = _distorter.outputDim;
 
@@ -1066,7 +1066,7 @@ if(isBlockConverter!(Dist, C, C[]))
             assert(!isNaN(e.im));
         }
     }
-    body{
+    do{
         immutable size_t blk = this.inputBlockLength;
         immutable size_t dim = _distorter.outputDim;
 
@@ -1222,7 +1222,7 @@ final class SimpleFrequencyDomainDCMHammersteinFilterType1(C, Dist, alias genAda
         assert(input.length == desired.length);
         assert(input.length == errors.length);
     }
-    body{
+    do{
         immutable blen = this.inputBlockLength;
 
         foreach(i; 0 .. input.length / blen){

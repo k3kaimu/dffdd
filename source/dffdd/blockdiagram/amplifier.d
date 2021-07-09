@@ -310,7 +310,7 @@ struct SalehModelConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
     {
         if(output.length != input.length)
             output.length = input.length;
@@ -785,23 +785,23 @@ unittest
     auto interp = LinearInterpolatedAMAMConverter!C(xs, fs, Gain.fromVoltageGain(0.25), Voltage(4));
 
     interp(C(0), y);
-    assert(y.re.approxEqual(0));
+    assert(y.re.isClose(0));
 
     interp(C(2), y);
-    assert(y.re.approxEqual(0.5));
+    assert(y.re.isClose(0.5));
 
     interp(C(4), y);
-    assert(y.re.approxEqual(1));
+    assert(y.re.isClose(1));
     
     interp(C(6), y);
-    assert(y.re.approxEqual(3*1.5 - 2));
+    assert(y.re.isClose(3*1.5 - 2));
 
     interp(C(8), y);
-    assert(y.re.approxEqual(4));
+    assert(y.re.isClose(4));
 
     interp(C(9), y);
-    assert(y.re.approxEqual(4));
+    assert(y.re.isClose(4));
 
     interp(C(10), y);
-    assert(y.re.approxEqual(4));
+    assert(y.re.isClose(4));
 }

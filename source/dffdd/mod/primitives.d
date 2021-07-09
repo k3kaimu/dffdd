@@ -85,7 +85,7 @@ if(isModulator!Mod1 && isModulator!Mod2 && is(Mod1.OutputElementType == Mod2.Inp
         assert(inputs.length % this.symInputLength == 0);
         assert(outputs.length % this.symOutputLength == 0);
     }
-    body{
+    do{
         Mod1.OutputElementType[] buf;
         _mod1.modulate(inputs, buf);
         _mod2.modulate(buf, outputs);
@@ -99,7 +99,7 @@ if(isModulator!Mod1 && isModulator!Mod2 && is(Mod1.OutputElementType == Mod2.Inp
         assert(outputs.length % this.symInputLength == 0);
         assert(inputs.length % this.symOutputLength == 0);
     }
-    body{
+    do{
         Mod2.InputElementType[] buf;
         _mod2.demodulate(inputs, buf);
         _mod1.demodulate(buf, outputs);

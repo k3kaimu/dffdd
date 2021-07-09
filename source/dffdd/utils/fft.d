@@ -95,7 +95,7 @@ in{
     static if(hasLength!Ro)
         assert(output.length == obj.outputs!F.length);
 }
-body{
+do{
     fastCopy(input, obj.inputs!F);
     obj.fft!F();
     fastCopy(obj.outputs!F, output);
@@ -113,10 +113,10 @@ unittest
 
         .fft!F(fftObj, [complex!F(1, 1), complex!F(1, 1)], outs);
 
-        assert(approxEqual(outs[0].re, 2));
-        assert(approxEqual(outs[0].im, 2));
-        assert(approxEqual(outs[1].re, 0));
-        assert(approxEqual(outs[1].re, 0));
+        assert(isClose(outs[0].re, 2));
+        assert(isClose(outs[0].im, 2));
+        assert(isClose(outs[1].re, 0));
+        assert(isClose(outs[1].re, 0));
     }
 }
 
@@ -130,7 +130,7 @@ in{
     static if(hasLength!Ri)
         assert(input.length == obj.inputs!F.length);
 }
-body{
+do{
     fastCopy(input, obj.inputs!F);
     obj.fft!F();
 }
@@ -146,10 +146,10 @@ unittest
 
         .fftFrom!F(fftObj, [complex!F(1, 1), complex!F(1, 1)]);
 
-        assert(approxEqual(fftObj.outputs!F[0].re, 2));
-        assert(approxEqual(fftObj.outputs!F[0].im, 2));
-        assert(approxEqual(fftObj.outputs!F[1].re, 0));
-        assert(approxEqual(fftObj.outputs!F[1].re, 0));
+        assert(isClose(fftObj.outputs!F[0].re, 2));
+        assert(isClose(fftObj.outputs!F[0].im, 2));
+        assert(isClose(fftObj.outputs!F[1].re, 0));
+        assert(isClose(fftObj.outputs!F[1].re, 0));
     }
 }
 
@@ -163,7 +163,7 @@ in{
     static if(hasLength!Ro)
         assert(output.length == obj.outputs!F.length);
 }
-body{
+do{
     obj.fft!F();
     fastCopy(obj.outputs!F, output);
 }
@@ -181,10 +181,10 @@ unittest
 
         .fftTo!F(fftObj, outs);
 
-        assert(approxEqual(outs[0].re, 2));
-        assert(approxEqual(outs[0].im, 2));
-        assert(approxEqual(outs[1].re, 0));
-        assert(approxEqual(outs[1].re, 0));
+        assert(isClose(outs[0].re, 2));
+        assert(isClose(outs[0].im, 2));
+        assert(isClose(outs[1].re, 0));
+        assert(isClose(outs[1].re, 0));
     }
 }
 
@@ -202,7 +202,7 @@ in{
     static if(hasLength!Ro)
         assert(output.length == obj.outputs!F.length);
 }
-body{
+do{
     fastCopy(input, obj.inputs!F);
     obj.ifft!F();
     fastCopy(obj.outputs!F, output);
@@ -220,10 +220,10 @@ unittest
 
         .ifft!F(fftObj, [complex!F(2, 2), complex!F(0, 0)], outs);
 
-        assert(approxEqual(outs[0].re, 1));
-        assert(approxEqual(outs[0].im, 1));
-        assert(approxEqual(outs[1].re, 1));
-        assert(approxEqual(outs[1].re, 1));
+        assert(isClose(outs[0].re, 1));
+        assert(isClose(outs[0].im, 1));
+        assert(isClose(outs[1].re, 1));
+        assert(isClose(outs[1].re, 1));
     }
 }
 
@@ -238,7 +238,7 @@ in{
     static if(hasLength!Ri)
         assert(input.length == obj.inputs!F.length);
 }
-body{
+do{
     fastCopy(input, obj.inputs!F);
     obj.ifft!F();
 }
@@ -254,10 +254,10 @@ unittest
 
         .ifftFrom!F(fftObj, [complex!F(2, 2), complex!F(0, 0)]);
 
-        assert(approxEqual(fftObj.outputs!F[0].re, 1));
-        assert(approxEqual(fftObj.outputs!F[0].im, 1));
-        assert(approxEqual(fftObj.outputs!F[1].re, 1));
-        assert(approxEqual(fftObj.outputs!F[1].re, 1));
+        assert(isClose(fftObj.outputs!F[0].re, 1));
+        assert(isClose(fftObj.outputs!F[0].im, 1));
+        assert(isClose(fftObj.outputs!F[1].re, 1));
+        assert(isClose(fftObj.outputs!F[1].re, 1));
     }
 }
 
@@ -271,7 +271,7 @@ in{
     static if(hasLength!Ro)
         assert(output.length == obj.outputs!F.length);
 }
-body{
+do{
     obj.ifft!F();
     fastCopy(obj.outputs!F, output);
 }
@@ -289,10 +289,10 @@ unittest
 
         .ifftTo!F(fftObj, outs);
 
-        assert(approxEqual(outs[0].re, 1));
-        assert(approxEqual(outs[0].im, 1));
-        assert(approxEqual(outs[1].re, 1));
-        assert(approxEqual(outs[1].re, 1));
+        assert(isClose(outs[0].re, 1));
+        assert(isClose(outs[0].im, 1));
+        assert(isClose(outs[1].re, 1));
+        assert(isClose(outs[1].re, 1));
     }
 }
 
@@ -762,8 +762,8 @@ unittest
             auto libResult = fft.outputs!F;
             import std.stdio, std.algorithm;
             foreach(i; 0 .. 64){
-                assert(approxEqual(phobosResult[i].re, libResult[i].re));
-                assert(approxEqual(phobosResult[i].im, libResult[i].im));
+                assert(isClose(phobosResult[i].re, libResult[i].re, 1e-4));
+                assert(isClose(phobosResult[i].im, libResult[i].im, 1e-4));
             }
 
             auto fft2 = makeObjFunc!std_complex_t(64);
@@ -774,8 +774,8 @@ unittest
             fft2.fft!F();
             auto libResult2 = fft2.outputs!F;
             foreach(i; 0 .. 64){
-                assert(approxEqual(phobosResult[i].re, libResult2[i].re));
-                assert(approxEqual(phobosResult[i].im, libResult2[i].im));
+                assert(isClose(phobosResult[i].re, libResult2[i].re, 1e-4));
+                assert(isClose(phobosResult[i].im, libResult2[i].im, 1e-4));
             }
 
             auto fft3 = makeObjFunc!complex_t(64);
@@ -786,8 +786,8 @@ unittest
             fft3.fft!F();
             auto libResult3 = fft2.outputs!F;
             foreach(i; 0 .. 64){
-                assert(approxEqual(phobosResult[i].re, libResult3[i].re));
-                assert(approxEqual(phobosResult[i].im, libResult3[i].im));
+                assert(isClose(phobosResult[i].re, libResult3[i].re, 1e-4));
+                assert(isClose(phobosResult[i].im, libResult3[i].im, 1e-4));
             }
         }
 }
@@ -815,8 +815,8 @@ unittest
             fft.ifft!F();
             auto libResult = fft.outputs!F;
             foreach(i; 0 .. 64){
-                assert(approxEqual(phobosResult[i].re, libResult[i].re));
-                assert(approxEqual(phobosResult[i].im, libResult[i].im));
+                assert(isClose(phobosResult[i].re, libResult[i].re, 1e-4));
+                assert(isClose(phobosResult[i].im, libResult[i].im, 1e-4));
             }
 
             auto fft2 = makeObjFunc!std_complex_t(64);
@@ -827,8 +827,8 @@ unittest
             fft2.ifft!F();
             auto libResult2 = fft2.outputs!F;
             foreach(i; 0 .. 64){
-                assert(approxEqual(phobosResult[i].re, libResult2[i].re));
-                assert(approxEqual(phobosResult[i].im, libResult2[i].im));
+                assert(isClose(phobosResult[i].re, libResult2[i].re, 1e-4));
+                assert(isClose(phobosResult[i].im, libResult2[i].im, 1e-4));
             }
 
             auto fft3 = makeObjFunc!complex_t(64);
@@ -839,8 +839,8 @@ unittest
             fft3.ifft!F();
             auto libResult3 = fft3.outputs!F;
             foreach(i; 0 .. 64){
-                assert(approxEqual(phobosResult[i].re, libResult3[i].re));
-                assert(approxEqual(phobosResult[i].im, libResult3[i].im));
+                assert(isClose(phobosResult[i].re, libResult3[i].re, 1e-4));
+                assert(isClose(phobosResult[i].im, libResult3[i].im, 1e-4));
             }
         }
 }
@@ -860,8 +860,8 @@ unittest
     fftobj2.fftFrom!float(iota(64).map!(a => complex_t!float(a, a)));
 
     foreach(i; 0 .. 64){
-        assert(approxEqual(fftobj2.outputs!float[i].re, fftobj.outputs!float[i].re));
-        assert(approxEqual(fftobj2.outputs!float[i].im, fftobj.outputs!float[i].im));
+        assert(isClose(fftobj2.outputs!float[i].re, fftobj.outputs!float[i].re));
+        assert(isClose(fftobj2.outputs!float[i].im, fftobj.outputs!float[i].im));
     }
 }
 
@@ -939,27 +939,27 @@ unittest
     fftw.inputs!float[2] = C(1, 0);
     fftw.inputs!float[3] = C(1, 1);
     fftw.hartleyTransform!float();
-    assert(fftw.outputs!float[0].re.approxEqual((0 * cas4(0*0) + 0 * cas4(1*0) + 1 * cas4(2*0) + 1 * cas4(3*0))/2));
-    assert(fftw.outputs!float[1].re.approxEqual((0 * cas4(0*1) + 0 * cas4(1*1) + 1 * cas4(2*1) + 1 * cas4(3*1))/2));
-    assert(fftw.outputs!float[2].re.approxEqual((0 * cas4(0*2) + 0 * cas4(1*2) + 1 * cas4(2*2) + 1 * cas4(3*2))/2));
-    assert(fftw.outputs!float[3].re.approxEqual((0 * cas4(0*3) + 0 * cas4(1*3) + 1 * cas4(2*3) + 1 * cas4(3*3))/2));
+    assert(fftw.outputs!float[0].re.isClose((0 * cas4(0*0) + 0 * cas4(1*0) + 1 * cas4(2*0) + 1 * cas4(3*0))/2));
+    assert(fftw.outputs!float[1].re.isClose((0 * cas4(0*1) + 0 * cas4(1*1) + 1 * cas4(2*1) + 1 * cas4(3*1))/2));
+    assert(fftw.outputs!float[2].re.isClose((0 * cas4(0*2) + 0 * cas4(1*2) + 1 * cas4(2*2) + 1 * cas4(3*2))/2));
+    assert(fftw.outputs!float[3].re.isClose((0 * cas4(0*3) + 0 * cas4(1*3) + 1 * cas4(2*3) + 1 * cas4(3*3))/2));
 
-    assert(fftw.outputs!float[0].im.approxEqual((0 * cas4(0*0) + 1 * cas4(1*0) + 0 * cas4(2*0) + 1 * cas4(3*0))/2));
-    assert(fftw.outputs!float[1].im.approxEqual((0 * cas4(0*1) + 1 * cas4(1*1) + 0 * cas4(2*1) + 1 * cas4(3*1))/2));
-    assert(fftw.outputs!float[2].im.approxEqual((0 * cas4(0*2) + 1 * cas4(1*2) + 0 * cas4(2*2) + 1 * cas4(3*2))/2));
-    assert(fftw.outputs!float[3].im.approxEqual((0 * cas4(0*3) + 1 * cas4(1*3) + 0 * cas4(2*3) + 1 * cas4(3*3))/2));
+    assert(fftw.outputs!float[0].im.isClose((0 * cas4(0*0) + 1 * cas4(1*0) + 0 * cas4(2*0) + 1 * cas4(3*0))/2));
+    assert(fftw.outputs!float[1].im.isClose((0 * cas4(0*1) + 1 * cas4(1*1) + 0 * cas4(2*1) + 1 * cas4(3*1))/2));
+    assert(fftw.outputs!float[2].im.isClose((0 * cas4(0*2) + 1 * cas4(1*2) + 0 * cas4(2*2) + 1 * cas4(3*2))/2));
+    assert(fftw.outputs!float[3].im.isClose((0 * cas4(0*3) + 1 * cas4(1*3) + 0 * cas4(2*3) + 1 * cas4(3*3))/2));
 
     fftw.inputs!float[] = fftw.outputs!float[];
     fftw.hartleyTransform!float();
-    assert(fftw.outputs!float[0].re.approxEqual(0));
-    assert(fftw.outputs!float[1].re.approxEqual(0));
-    assert(fftw.outputs!float[2].re.approxEqual(1));
-    assert(fftw.outputs!float[3].re.approxEqual(1));
+    assert(fftw.outputs!float[0].re.isClose(0));
+    assert(fftw.outputs!float[1].re.isClose(0));
+    assert(fftw.outputs!float[2].re.isClose(1));
+    assert(fftw.outputs!float[3].re.isClose(1));
 
-    assert(fftw.outputs!float[0].im.approxEqual(0));
-    assert(fftw.outputs!float[1].im.approxEqual(1));
-    assert(fftw.outputs!float[2].im.approxEqual(0));
-    assert(fftw.outputs!float[3].im.approxEqual(1));
+    assert(fftw.outputs!float[0].im.isClose(0));
+    assert(fftw.outputs!float[1].im.isClose(1));
+    assert(fftw.outputs!float[2].im.isClose(0));
+    assert(fftw.outputs!float[3].im.isClose(1));
 }
 
 
@@ -1001,15 +1001,15 @@ unittest
     fftw.inputs!float[3] = C(4, 0);
     fftw.hilbertTransform!float();
 
-    assert(fftw.outputs!float[0].re.approxEqual(1));
-    assert(fftw.outputs!float[1].re.approxEqual(2));
-    assert(fftw.outputs!float[2].re.approxEqual(3));
-    assert(fftw.outputs!float[3].re.approxEqual(4));
+    assert(fftw.outputs!float[0].re.isClose(1));
+    assert(fftw.outputs!float[1].re.isClose(2));
+    assert(fftw.outputs!float[2].re.isClose(3));
+    assert(fftw.outputs!float[3].re.isClose(4));
 
-    assert(fftw.outputs!float[0].im.approxEqual(1));
-    assert(fftw.outputs!float[1].im.approxEqual(-1));
-    assert(fftw.outputs!float[2].im.approxEqual(-1));
-    assert(fftw.outputs!float[3].im.approxEqual(1));
+    assert(fftw.outputs!float[0].im.isClose(1));
+    assert(fftw.outputs!float[1].im.isClose(-1));
+    assert(fftw.outputs!float[2].im.isClose(-1));
+    assert(fftw.outputs!float[3].im.isClose(1));
 }
 
 
@@ -1044,7 +1044,7 @@ Complex!F[] fftWithSwap(FftObj, F)(FftObj fftObj, in Complex!F[] buf)
 in{
     assert(buf.length.isPowOf2);
 }
-body{
+do{
     Complex!F[] spec = new Complex!F[buf.length];
     fftObj.fft(buf, spec);
     foreach(i; 0 .. spec.length/2)
@@ -1060,7 +1060,7 @@ if(is(typeof(buf[0].re) : float) && is(typeof(buf[0].im) : float))
 in{
     assert(buf.length.isPowOf2);
 }
-body{
+do{
     alias F = typeof(buf[0].re);
 
     auto cpxBuf = new Complex!F[buf.length];
@@ -1106,8 +1106,8 @@ inout(C)[] convAuto(C)(inout(FrequencyDomain!C)[] array)
 
 //    auto carr2 = carr.convAuto!(Complex!float);
 //    foreach(i; 0 .. 10){
-//        assert(approxEqual(carr[i].re, carr2[i].re));
-//        assert(approxEqual(carr[i].im, carr2[i].im));
+//        assert(isClose(carr[i].re, carr2[i].re));
+//        assert(isClose(carr[i].im, carr2[i].im));
 //    }
 //}
 
@@ -1169,7 +1169,8 @@ unittest
     // 抽出した周波数応答からもとのインパルス応答を推定
     auto result = estimateImpulseResponseFromFrequencyResponse(64, 4, sampledFreqResp, freqIndexs, 0);
     foreach(i; 0 .. 4) {
-        assert(result[i].re.approxEqual(impResp[i].re));
-        assert(result[i].im.approxEqual(impResp[i].im));
+        auto e = result[i] - impResp[i];
+        assert(e.re.isClose(0, 0, 1e-6));
+        assert(e.im.isClose(0, 0, 1e-6));
     }
 }

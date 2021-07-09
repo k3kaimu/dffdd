@@ -45,7 +45,7 @@ unittest
     ];
 
     real[] coefs = desingSincPulse!real(12, 0.25);
-    assert(std.algorithm.equal!approxEqual(coefs, numpyResults));
+    assert(std.algorithm.equal!((a,b) => isClose(a-b, 0, 0, 1e-8))(coefs, numpyResults));
 }
 
 
@@ -87,7 +87,7 @@ unittest
     numpyResults[] /= sum(numpyResults);
 
     real[] res = designKaiserSincPulse!real(2, 6, 50);
-    assert(std.algorithm.equal!approxEqual(res, numpyResults));
+    assert(std.algorithm.equal!((a, b) => isClose(a-b, 0, 0, 1e-8))(res, numpyResults));
 }
 
 
@@ -250,7 +250,7 @@ unittest
     ];
 
     foreach(i; 0 .. coefs.length)
-        assert(approxEqual(coefs[i], testResults[i]));
+        assert(isClose(coefs[i] - testResults[i], 0, 0, 1e-5));
 }
 
 

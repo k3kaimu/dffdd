@@ -81,6 +81,8 @@ struct Model
     string uniqueId;
 
 
+    bool useDTXDPD = true;
+    bool useSTXDPD = true;
     bool useDTXIQ = true;
     bool useDTXPN = false;
     bool useDTXPA = true;
@@ -287,6 +289,14 @@ struct Model
     }
     IterativeFreqSIC iterativeFreqSIC;
 
+
+    struct DPD
+    {
+        size_t order;
+        size_t numOfTrainingSymbols = 10;
+    }
+    DPD dpd;
+
     void txPower(Voltage p) @property
     {
         this.pa.TX_POWER = p;
@@ -320,7 +330,8 @@ auto modOFDM(Model model)
     return chainedMod(
         //dffdd.mod.bpsk.BPSK.init,
         dffdd.mod.qam.QAM!(Complex!float)(16),
-        new dffdd.mod.ofdm.OFDMWithStaticPilot!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier-2, model.ofdm.scaleOfUpSampling),
+        // new dffdd.mod.ofdm.OFDMWithStaticPilot!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier-2, model.ofdm.scaleOfUpSampling),
+        new dffdd.mod.ofdm.OFDM!(Complex!float)(model.ofdm.numOfFFT, model.ofdm.numOfCP, model.ofdm.numOfSubcarrier, model.ofdm.scaleOfUpSampling),  
     );
 }
 
