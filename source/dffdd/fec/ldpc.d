@@ -309,6 +309,7 @@ unittest
     import dffdd.mod.bpsk;
     import dffdd.mod.qpsk;
     import dffdd.mod.qam;
+    import dffdd.mod.primitives;
 
     alias F = float;
     alias C = Complex!F;
