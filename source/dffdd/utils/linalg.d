@@ -305,7 +305,7 @@ void gemv(string opA = "", E)(E alpha, Slice!(E*, 2, Contiguous) matA, Slice!(E*
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, *cast(_cfloat*)&beta, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
+    cblas_zgemv(Order.RowMajor, transposeValue!opA(isTA), cast(int)matA.length!0, cast(int)matA.length!1, *cast(_cdouble*)&alpha, cast(_cdouble*)(&matA[0, 0]), cast(int)matA._stride!0, cast(_cdouble*)&(x[0]), cast(int)x._stride!0, *cast(_cdouble*)&beta, cast(_cdouble*)&(y[0]), cast(int)y._stride!0);
   }
   else
     static assert(0);
