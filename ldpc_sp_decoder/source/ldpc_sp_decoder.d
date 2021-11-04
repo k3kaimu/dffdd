@@ -21,10 +21,10 @@ version(LDC)
 
 version(DigitalMars)
 {
-    float4 _mm_minps_(float4 x, float4 y) pure @safe { return simd!(XMM.MINPS)(x, y); }
-    float4 _mm_maxps_(float4 x, float4 y) pure @safe { return simd!(XMM.MAXPS)(x, y); }
-    float8 _mm_minps_(float8 x, float8 y) pure @safe { return simd!(XMM.MINPS)(x, y); }
-    float8 _mm_maxps_(float8 x, float8 y) pure @safe { return simd!(XMM.MAXPS)(x, y); }
+    float4 _mm_minps_(float4 x, float4 y) pure @safe { return cast(float4)__simd(XMM.MINPS, x, y); }
+    float4 _mm_maxps_(float4 x, float4 y) pure @safe { return cast(float4)__simd(XMM.MAXPS, x, y); }
+    // float8 _mm_minps_(float8 x, float8 y) pure @safe { return simd!(XMM.MINPS)(x, y); }
+    // float8 _mm_maxps_(float8 x, float8 y) pure @safe { return simd!(XMM.MAXPS)(x, y); }
     enum int fastmath = 0;
 }
 
