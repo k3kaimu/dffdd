@@ -379,7 +379,7 @@ struct SoftLimitConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(InputElementType input, ref OutputElementType output) @nogc
     {
         immutable r = std.complex.abs(input),
                   u = input / r;    // unit vector
@@ -392,7 +392,7 @@ struct SoftLimitConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
     {
         if(output.length != input.length)
             output.length = input.length;
