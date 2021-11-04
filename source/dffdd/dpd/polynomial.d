@@ -8,8 +8,21 @@ import dffdd.utils.linalg;
 import dffdd.utils.unit;
 
 
+
+enum DPDMode : string
+{
+    Linearity = "ModeL",
+    EfficiencyAndLinearity = "ModeEL"
+}
+
+
+
 struct PolynomialPredistorter(C)
 {
+    private {
+        alias R = typeof(C.init.re);
+    }
+
     /**
     非線形次数と目標の利得を指定して構築
     */
@@ -23,13 +36,21 @@ struct PolynomialPredistorter(C)
     }
 
 
-    void estimate(in C[] transmitted, in C[] received)
+    /**
+    PAに入力した信号と，その時の出力信号，及び目標となる出力電力からDPDの係数を推定する．
+    目標電力がVoltage(0)に等しいときは，与えられた出力信号から平均電力を算出して，その値を目標にしてDPDの係数を推定する．
+    */
+    void estimate(in C[] transmitted, in C[] received, Voltage targetPower = Voltage(0))
     in(transmitted.length == received.length)
     do {
         immutable inputPower = transmitted.map!"a.re^^2 + a.im^^2".sum() / received.length;
         immutable outputPower = received.map!"a.re^^2 + a.im^^2".sum() / received.length;
+
+        if(targetPower == Voltage(0))
+            targetPower = Voltage.fromWatt(outputPower);
+
         immutable normCoefIN = sqrt(inputPower);
-        immutable normCoefOT = sqrt(outputPower);
+        immutable normCoefOT = sqrt(targetPower.watt);
         // immutable normCoef = 1;
 
         auto lsEst = LeastSquareEstimator!(C)(_coefs.length);
