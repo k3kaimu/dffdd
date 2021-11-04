@@ -379,7 +379,7 @@ struct SoftLimitConverter(C)
     }
 
 
-    void opCall(InputElementType input, ref OutputElementType output)
+    void opCall(InputElementType input, ref OutputElementType output) @nogc
     {
         immutable r = std.complex.abs(input),
                   u = input / r;    // unit vector
@@ -392,7 +392,7 @@ struct SoftLimitConverter(C)
     }
 
 
-    void opCall(in InputElementType[] input, ref OutputElementType[] output) @nogc
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
     {
         if(output.length != input.length)
             output.length = input.length;
@@ -653,6 +653,47 @@ unittest
 }
 
 
+
+/**
+ret[0]: input gain
+ret[1]: output gain
+*/
+private R[2] convertLinGainAndVsat(R)(R linGain, R Vsat, R targetLinGain, R targetVsat)
+{
+    return cast(R[2])[
+        Vsat / targetVsat * targetLinGain / linGain,
+        targetVsat / Vsat
+    ];
+}
+
+unittest
+{
+    alias C = Complex!double;
+
+    auto sf = SoftLimitConverter!C(0.dB, 30.dBm);
+    auto gs = convertLinGainAndVsat(0.dB.asV, 30.dBm.volt, 20.dB.asV, 0.dBm.volt);
+
+    C o;
+    sf(C(100), o);
+    assert(o == C(1));
+    sf(C(0.01), o);
+    assert(o == C(0.01));
+
+    C newx = C(100) * gs[0];
+    sf(newx, o);
+    o *= gs[1];
+    assert(o.re.isClose(C(0.001.sqrt)));
+    assert(o.im.isClose(0));
+
+    newx = C(0.0001) * gs[0];
+    sf(newx, o);
+    o *= gs[1];
+    assert(o.re.isClose(0.001));
+    assert(o.im.isClose(0));
+}
+
+
+
 /**
 与えられたAM/AM特性を線形補間する増幅器モデル
 */
@@ -805,3 +846,114 @@ unittest
     interp(C(10), y);
     assert(y.re.isClose(4));
 }
+
+
+/**
+多項式で近似された増幅器モデル
+*/
+struct PolynomialWithClipConverter(C)
+{
+    private {
+        alias R = typeof(C.init.re);
+    }
+
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(immutable(C)[] cs, Gain gain, Voltage osatV)
+    in(cs.length >= 1)
+    {
+        _cs = cs;
+        _targetGain = gain.asV;
+        _clipLevel = osatV.volt;
+
+        _convGains = convertLinGainAndVsat!R(_cs[0].abs, 1, gain.asV, osatV.volt);
+    }
+
+
+    void opCall(InputElementType input, ref OutputElementType output)
+    {
+        R inputAmp = std.complex.abs(input);
+        C u = input / inputAmp;
+        if(u.re.isNaN || u.im.isNaN) {
+            output = input * _targetGain;
+        } else {
+            import dffdd.math : poly;
+
+            immutable r = inputAmp * _convGains[0];
+            output = poly(C(r^^2), _cs) * r * _convGains[1] * u;
+        }
+
+        if(output.sqAbs > _clipLevel^^2) {
+            output = _clipLevel * u;
+        }
+    }
+
+
+    void opCall(in InputElementType[] input, ref OutputElementType[] output)
+    {
+        if(output.length != input.length)
+            output.length = input.length;
+
+        foreach(i, e; input)
+            this.opCall(e, output[i]);
+    }
+
+
+    Gain linearGain() const
+    {
+        return Gain.fromVoltageGain(_targetGain);
+    }
+
+
+    JSONValue dumpInfoToJSON() const
+    {
+        import std.base64 : Base64;
+        import msgpack;
+
+        return JSONValue([
+            "cs_msgpackbin_base64": JSONValue(Base64.encode(msgpack.pack(_cs))),
+            "gain": JSONValue(_targetGain),
+            "clipLevel": JSONValue(_clipLevel),
+        ]);
+    }
+
+
+    PolynomialWithClipConverter!C dup() const
+    {
+        return PolynomialWithClipConverter!C(_cs, Gain.fromVoltageGain(_targetGain), Voltage(_clipLevel));
+    }
+
+
+  private:
+    immutable(C)[] _cs;
+
+    R _targetGain;
+    R _clipLevel;
+    R[2] _convGains;
+}
+
+unittest
+{
+    alias R = double;
+    alias C = Complex!R;
+    
+
+    // linear
+    immutable(C)[] cs = [C(2)];
+
+    auto conv = PolynomialWithClipConverter!C(cs, 0.dB, 30.dBm);
+
+    C inp, outp;
+    inp = C(0.1);
+    conv(inp, outp);
+    assert(outp.re.isClose(0.1));
+    assert(outp.im.isClose(0));
+
+    inp = C(100);
+    conv(inp, outp);
+    assert(outp.re.isClose(1));
+    assert(outp.im.isClose(0));
+}
+

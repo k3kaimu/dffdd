@@ -131,6 +131,13 @@ struct Voltage
     }
 
 
+    static
+    Voltage fromWatt(real watt) pure nothrow @safe @nogc
+    {
+        return Voltage(sqrt(watt * IMPEDANCE));
+    }
+
+
     this(real v1V) pure nothrow @safe @nogc
     {
         _g1V = v1V;
