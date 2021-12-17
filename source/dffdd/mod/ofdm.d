@@ -5,7 +5,7 @@ import carbon.math;
 import dffdd.utils.fft;
 
 import std.math;
-import dffdd.math : isNarrowComplex;
+import dffdd.math.complex : isNarrowComplex;
 
 final class OFDM(C)
 if(isNarrowComplex!C)

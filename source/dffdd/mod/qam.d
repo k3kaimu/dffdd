@@ -9,7 +9,7 @@ import dffdd.mod.primitives;
 import dffdd.mod.bpsk;
 import dffdd.mod.qpsk;
 import dffdd.utils.unit;
-import dffdd.math : isNarrowComplex;
+import dffdd.math.complex : isNarrowComplex;
 
 
 Bit[][] getGrayCode(size_t N)

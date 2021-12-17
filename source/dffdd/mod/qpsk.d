@@ -3,7 +3,7 @@ module dffdd.mod.qpsk;
 import std.complex;
 
 import dffdd.mod.primitives : Bit;
-import dffdd.math : isNarrowComplex;
+import dffdd.math.complex : isNarrowComplex;
 
 struct QPSK(C)
 if(isNarrowComplex!C)

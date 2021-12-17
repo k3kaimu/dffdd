@@ -6,7 +6,7 @@ import std.math;
 import std.numeric;
 
 import dffdd.mod.primitives : Bit;
-import dffdd.math : isNarrowComplex;
+import dffdd.math.complex : isNarrowComplex;
 
 
 struct BPSK(C)

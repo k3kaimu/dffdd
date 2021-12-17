@@ -1,7 +1,6 @@
 module dffdd.utils.linalg;
 
 import cblas;
-import std.complex;
 import std.range;
 import std.traits;
 

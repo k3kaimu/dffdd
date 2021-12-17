@@ -1,66 +1,10 @@
 module dffdd.math.math;
 
-import std.complex;
+// import std.complex;
 import std.math;
 import std.traits;
-import std.meta : AliasSeq;
 
-import mir.complex;
-
-
-alias MirComplex = mir.complex.Complex;
-alias StdComplex = std.complex.Complex;
-alias mirComplex = mir.complex.complex;
-alias stdComplex = std.complex.complex;
-
-
-enum isComplex(T) = !isIntegral!T && !isFloatingPoint!T && is(typeof((T v){ auto a = v.re; auto b = v.im; }));
-enum isNarrowComplex(T) = isComplex!T && is(typeof(T.init.tupleof) == std.meta.AliasSeq!(typeof(T.init.re), typeof(T.init.re)))
-                        && (T t){
-                            t = T(cast(typeof(T.init.re)) 0, cast(typeof(T.init.re)) 1);
-                            if(!(t.re == 0 && t.im == 1))   return false;
-                            if(t.tupleof != AliasSeq!(cast(typeof(T.init.re)) 0, cast(typeof(T.init.re)) 1))
-                                return false;
-
-                            return true;
-                        }(T.init);
-
-
-unittest
-{
-    static assert(isComplex!(MirComplex!float));
-    static assert(isComplex!(MirComplex!double));
-    static assert(isComplex!(StdComplex!float));
-    static assert(isComplex!(StdComplex!double));
-    static assert(!isComplex!(float));
-    static assert(!isComplex!(double));
-
-    static assert(isNarrowComplex!(MirComplex!float));
-    static assert(isNarrowComplex!(MirComplex!double));
-    static assert(isNarrowComplex!(StdComplex!float));
-    static assert(isNarrowComplex!(StdComplex!double));
-    static assert(!isNarrowComplex!(float));
-    static assert(!isNarrowComplex!(double));
-
-    static struct Cpx { float re; float im; float dummy; }
-    static assert(!isNarrowComplex!Cpx);
-}
-
-
-inout(MirComplex!(typeof(C.init.re)))[] toMirComplexArray(C)(inout(C)[] input) @trusted
-if(isNarrowComplex!C)
-{
-    return (cast(inout(MirComplex!(typeof(C.init.re)))) input.ptr)[0 .. input.length];
-}
-
-
-inout(StdComplex!(typeof(C.init.re)))[] toStdComplexArray(C)(inout(C)[] input) @trusted
-if(isNarrowComplex!C)
-{
-    return (cast(inout(StdComplex!(typeof(C.init.re)))) input.ptr)[0 .. input.length];
-}
-
-
+import dffdd.math.complex;
 
 /**
 compute x^^y
