@@ -6,6 +6,7 @@ import std.range;
 import std.traits;
 
 import mir.ndslice;
+import dffdd.math;
 
 // enum Order
 // {
@@ -79,7 +80,8 @@ nothrow @trusted extern(C)
 }
 
 
-bool approxEqualCpx(F)(Complex!F a, Complex!F b)
+bool approxEqualCpx(C1, C2)(C1 a, C2 b)
+// if(isComplex!C1 && isComplex!C2)
 {
     import std.math;
     return std.math.isClose(a.re, b.re) && std.math.isClose(a.im, b.im);
@@ -194,7 +196,7 @@ do{
     return cblas_ddot(x.length, x.ptr, x._stride!0, y.ptr, y._stride!0);
   else static if(is(typeof(E.init.re) == float))
   {
-    auto ret = cblas_cdotu(cast(int)x.length, cast(cfloat*)x.ptr, cast(int)x._stride!0, cast(cfloat*)y.ptr, cast(int)y._stride!0);
+    auto ret = cblas_cdotu(cast(int)x.length, cast(MirComplex!float*)x.ptr, cast(int)x._stride!0, cast(MirComplex!float*)y.ptr, cast(int)y._stride!0);
 
     static if(is(E == cfloat))
         return ret.re + ret.im*1.0fi;
@@ -203,7 +205,7 @@ do{
   }
   else static if(is(typeof(E.init.re) == double))
   {
-    auto ret = cblas_zdotu(cast(int)x.length, cast(cdouble*)x.ptr, cast(int)x._stride!0, cast(cdouble*)y.ptr, cast(int)y._stride!0);
+    auto ret = cblas_zdotu(cast(int)x.length, cast(MirComplex!double*)x.ptr, cast(int)x._stride!0, cast(MirComplex!double*)y.ptr, cast(int)y._stride!0);
 
     static if(is(E == cdouble))
         return ret.re + ret.im*1.0i;
@@ -413,9 +415,10 @@ alias leastSquareEstimate = leastSquareEstimateColumnMajor;
 y[i] = sum_j mx[i, j] * a[j] のa[j]を最小二乗法で求める．
 結果は，y[0 .. P]に上書きされる．(P: mx.length!1)
 */
-Complex!R[] leastSquareEstimateRowMajor(R : double)(Slice!(Complex!R*, 2, Contiguous) mx, Complex!R[] y)
+C[] leastSquareEstimateRowMajor(C)(Slice!(C*, 2, Contiguous) mx, C[] y)
 {
     import std.algorithm : min, max;
+    alias R = typeof(C.init.re);
 
     static if(is(R == float))
         alias gelss = LAPACKE_cgelss;

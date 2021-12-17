@@ -3,8 +3,49 @@ module dffdd.math.math;
 import std.complex;
 import std.math;
 import std.traits;
+import std.meta : AliasSeq;
 
-import carbon.complex : isComplex;
+import mir.complex;
+
+
+alias MirComplex = mir.complex.Complex;
+alias StdComplex = std.complex.Complex;
+alias mirComplex = mir.complex.complex;
+alias stdComplex = std.complex.complex;
+
+
+enum isComplex(T) = !isIntegral!T && !isFloatingPoint!T && is(typeof((T v){ auto a = v.re; auto b = v.im; }));
+enum isNarrowComplex(T) = isComplex!T && is(typeof(T.init.tupleof) == std.meta.AliasSeq!(typeof(T.init.re), typeof(T.init.re)))
+                        && (T t){
+                            t = T(cast(typeof(T.init.re)) 0, cast(typeof(T.init.re)) 1);
+                            if(!(t.re == 0 && t.im == 1))   return false;
+                            if(t.tupleof != AliasSeq!(cast(typeof(T.init.re)) 0, cast(typeof(T.init.re)) 1))
+                                return false;
+
+                            return true;
+                        }(T.init);
+
+
+unittest
+{
+    static assert(isComplex!(MirComplex!float));
+    static assert(isComplex!(MirComplex!double));
+    static assert(isComplex!(StdComplex!float));
+    static assert(isComplex!(StdComplex!double));
+    static assert(!isComplex!(float));
+    static assert(!isComplex!(double));
+
+    static assert(isNarrowComplex!(MirComplex!float));
+    static assert(isNarrowComplex!(MirComplex!double));
+    static assert(isNarrowComplex!(StdComplex!float));
+    static assert(isNarrowComplex!(StdComplex!double));
+    static assert(!isNarrowComplex!(float));
+    static assert(!isNarrowComplex!(double));
+
+    static struct Cpx { float re; float im; float dummy; }
+    static assert(!isNarrowComplex!Cpx);
+}
+
 
 
 /**
@@ -412,8 +453,8 @@ unittest
 {
     //
     auto ps = [0, 1, 2, 3, 4, 5];
-    auto xs = [complex(0, 0), complex(0, 1), complex(1, 0), complex(1, 1),
-        complex(0.5, 0.5), complex(-0.5, -0.5), complex(0.5, -0.5), complex(-0.5, 0.5)];
+    auto xs = [stdComplex(0, 0), stdComplex(0, 1), stdComplex(1, 0), stdComplex(1, 1),
+        stdComplex(0.5, 0.5), stdComplex(-0.5, -0.5), stdComplex(0.5, -0.5), stdComplex(-0.5, 0.5)];
 
     foreach(p; ps)
     {
@@ -434,11 +475,11 @@ bool approxEqualC(C1, C2)(C1 x, C2 y)
         if((isComplex!C1 || isFloatingPoint!C1) && (isComplex!C2 || isFloatingPoint!C2))
 {
     static if(isFloatingPoint!C1)
-        return .approxEqualC(complex(x, 0), y);
+        return .approxEqualC(stdComplex(x, 0), y);
     else
     {
         static if(isFloatingPoint!C2)
-            return .approxEqualC(x, complex(y, 0));
+            return .approxEqualC(x, stdComplex(y, 0));
         else
         {
             if(x.sqAbs < 1e4) {
