@@ -19,7 +19,7 @@
         "libnlopt": "~>0.2.0",
         "lubeck": "~>1.1.3",
         "mir-blas": "~>1.1.4",
-        "ldpc-sp-decoder": { "path": "ldpc_sp_decoder" }
+        "dffdd_simd": { "path": "dffdd_simd" }
     },
 
     "subConfigurations": {

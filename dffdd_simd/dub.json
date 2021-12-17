@@ -1,0 +1,10 @@
+{
+	"authors": [
+		"Kazuki Komatsu"
+	],
+	"copyright": "Copyright © 2021, Kazuki Komatsu",
+	"description": "SIMD-vectorized modules for dffdd",
+	"license": "CC0",
+	"name": "dffdd_simd",
+	"_dflags": ["-mcpu=native"]
+}

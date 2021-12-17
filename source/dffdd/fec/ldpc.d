@@ -7,7 +7,7 @@ import std.traits : isFloatingPoint;
 
 import dffdd.fec.fec;
 import dffdd.mod.primitives : Bit;
-import ldpc_sp_decoder;
+import dffdd_simd.ldpc_sp_decoder;
 
 
 
@@ -36,8 +36,11 @@ class LdpcSpDecoder
     }
 
 
-    Bit[] decode(F)(in F[] inputP0P1, return ref Bit[] decoded)
-    {
+    Bit[] decode(F)(in F[] inputP0P1, return ref Bit[] decoded, F[] updatedP0P1 = null)
+    in{
+        assert(updatedP0P1 is null || updatedP0P1.length == inputP0P1.length);
+    }
+    do {
         decoded.length = inputP0P1.length / _N * _K;
 
         immutable numOfBlock = decoded.length / _K;
@@ -45,6 +48,7 @@ class LdpcSpDecoder
 
         const(F)[] remainP0p1 = inputP0P1;
         Bit[] remainDecoded = decoded;
+        F[] remainUpdatedP0P1 = updatedP0P1;
 
         // DMD does not support AVX version well.
         version(LDC) {
@@ -54,6 +58,14 @@ class LdpcSpDecoder
             foreach(i; 0 .. 8)
                 foreach(j; 0 .. _K)
                     remainDecoded[i*_K + j] = _sp_ws_avx.decoded_cw[i*_N + j];
+
+            if(updatedP0P1 !is null) {
+                foreach(i; 0 .. 8)
+                    foreach(j; 0 .. _N)
+                        remainUpdatedP0P1[i*_N + j] = _sp_ws_avx.updated_p0p1[j][i];
+                
+                remainUpdatedP0P1 = remainUpdatedP0P1[_N*8 .. $];
+            }
 
             remainP0p1 = remainP0p1[_N*8 .. $];
             remainDecoded = remainDecoded[_K*8 .. $];
@@ -68,6 +80,14 @@ class LdpcSpDecoder
                 foreach(j; 0 .. _K)
                     remainDecoded[i*_K + j] = _sp_ws_sse.decoded_cw[i*_N + j];
 
+            if(updatedP0P1 !is null) {
+                foreach(i; 0 .. 4)
+                    foreach(j; 0 .. _N)
+                        remainUpdatedP0P1[i*_N + j] = _sp_ws_sse.updated_p0p1[j][i];
+                
+                remainUpdatedP0P1 = remainUpdatedP0P1[_N*4 .. $];
+            }
+
             remainP0p1 = remainP0p1[_N*4 .. $];
             remainDecoded = remainDecoded[_K*4 .. $];
             remainBlock -= 4;
@@ -78,6 +98,13 @@ class LdpcSpDecoder
 
             foreach(i; 0 .. _K)
                     remainDecoded[i] = _sp_ws_one.decoded_cw[i];
+
+            if(updatedP0P1 !is null) {
+                foreach(j; 0 .. _N)
+                    remainUpdatedP0P1[j] = _sp_ws_one.updated_p0p1[j];
+                
+                remainUpdatedP0P1 = remainUpdatedP0P1[_N .. $];
+            }
 
             remainP0p1 = remainP0p1[_N .. $];
             remainDecoded = remainDecoded[_K .. $];
@@ -229,7 +256,14 @@ if(isFloatingPoint!F)
     override
     Bit[] decode(in F[] inputP0P1, return ref Bit[] decoded)
     {
-        return _decoder.decode(inputP0P1, decoded);
+        return _decoder.decode(inputP0P1, decoded, null);
+    }
+
+
+    Bit[] decode(in F[] inputP0P1, return ref Bit[] decoded, ref F[] updatedP0P1)
+    {
+        updatedP0P1.length = inputP0P1.length;
+        return _decoder.decode(inputP0P1, decoded, updatedP0P1);
     }
 
 
