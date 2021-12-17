@@ -65,7 +65,7 @@ if(isNarrowComplex!C)
 /**
 compute x^^y
 */
-F libm_pow(F)(F x, F y) pure nothrow @nogc
+F libm_pow(F)(F x, F y) /*pure*/ nothrow @nogc
 if(isFloatingPoint!F)
 {
     import core.stdc.math : powf, pow, powl;
@@ -88,7 +88,7 @@ if(isFloatingPoint!F)
 /**
 compute sqrt(x)
 */
-F libm_sqrt(F)(F x) pure nothrow @nogc
+F libm_sqrt(F)(F x) /*pure*/ nothrow @nogc
 if(isFloatingPoint!F)
 {
     import core.stdc.math : sqrtf, sqrt, sqrtl;
@@ -111,7 +111,7 @@ if(isFloatingPoint!F)
 /**
 compute cbrt(x)
 */
-F libm_cbrt(F)(F x) pure nothrow @nogc
+F libm_cbrt(F)(F x) /*pure*/ nothrow @nogc
 if(isFloatingPoint!F)
 {
     import core.stdc.math : cbrtf, cbrt, cbrtl;
@@ -503,5 +503,26 @@ bool approxEqualC(C1, C2)(C1 x, C2 y)
                 return std.math.isClose(x.re, y.re) && std.math.isClose(x.im, y.im);
             }
         }
+    }
+}
+
+
+
+typeof(C1.init * C2.init) poly(C1, C2)(C1 x, in C2[] A)
+{
+    static if(isFloatingPoint!C1 && isFloatingPoint!C2)
+        return std.math.poly(x, A);
+    else
+    {
+        // copy from std.math.poly
+        immutable size_t N = A.length;
+        typeof(return) r = A[N - 1];
+        foreach (i; 1 .. N)
+        {
+            r *= x;
+            r += A[N - 1 - i];
+        }
+
+        return r;
     }
 }

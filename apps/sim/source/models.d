@@ -20,6 +20,7 @@ import std.stdio;
 import std.typecons;
 import std.exception : enforce;
 
+import dffdd.dpd.polynomial;
 import dffdd.blockdiagram.adder;
 import dffdd.blockdiagram.amplifier;
 import dffdd.blockdiagram.decimator;
@@ -294,6 +295,7 @@ struct Model
     {
         size_t order;
         size_t numOfTrainingSymbols = 10;
+        DPDMode mode;
     }
     DPD dpd;
 

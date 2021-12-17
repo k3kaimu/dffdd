@@ -32,7 +32,9 @@ class LdpcSpDecoder
 
         _sp_ws_one = typeof(_sp_ws_one)(ldpc.outputLength, _row_mat);
         _sp_ws_sse = typeof(_sp_ws_sse)(ldpc.outputLength, _row_mat);
-        _sp_ws_avx = typeof(_sp_ws_avx)(ldpc.outputLength, _row_mat);
+
+        version(LDC)
+            _sp_ws_avx = typeof(_sp_ws_avx)(ldpc.outputLength, _row_mat);
     }
 
 
@@ -122,7 +124,10 @@ class LdpcSpDecoder
     uint _maxIter;
     SpDecoderWorkspace!float _sp_ws_one;
     SpDecoderWorkspace!(float[4]) _sp_ws_sse;
-    SpDecoderWorkspace!(float[8]) _sp_ws_avx;
+
+    version(LDC){
+        SpDecoderWorkspace!(float[8]) _sp_ws_avx;
+    }
 }
 
 

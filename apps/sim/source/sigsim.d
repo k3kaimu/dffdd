@@ -95,12 +95,20 @@ final class SimulatedSignals
         // 次にDPDの学習をする
         if(! _txDPD.isNull) {
             this.fillBuffer!(["txBaseband", "paDirect"])(txBaseband, paDirect);
-            _txDPD.get().estimate(txBaseband, paDirect);
+
+            if(_model.dpd.mode == DPDMode.Linearity)
+                _txDPD.get().estimate(txBaseband, paDirect, Voltage(0));
+            else
+                _txDPD.get().estimate(txBaseband, paDirect, _model.pa.TX_POWER);
         }
 
         if(! _detxDPD.isNull) {
             this.fillBuffer!(["desiredBaseband", "desiredPADirect"])(txBaseband, paDirect);
-            _detxDPD.get().estimate(txBaseband, paDirect);
+
+            if(_model.dpd.mode == DPDMode.Linearity)
+                _detxDPD.get().estimate(txBaseband, paDirect, Voltage(0));
+            else
+                _detxDPD.get().estimate(txBaseband, paDirect, _model.pa.TX_POWER);
         }
 
 
