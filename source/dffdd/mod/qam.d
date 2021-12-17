@@ -9,6 +9,7 @@ import dffdd.mod.primitives;
 import dffdd.mod.bpsk;
 import dffdd.mod.qpsk;
 import dffdd.utils.unit;
+import dffdd.math : isNarrowComplex;
 
 
 Bit[][] getGrayCode(size_t N)
@@ -33,6 +34,7 @@ Bit[][] getGrayCode(size_t N)
 
 
 struct QAM(C)
+if(isNarrowComplex!C)
 {
     alias InputElementType = Bit;
     alias OutputElementType = C;

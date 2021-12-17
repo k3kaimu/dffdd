@@ -3,8 +3,10 @@ module dffdd.mod.qpsk;
 import std.complex;
 
 import dffdd.mod.primitives : Bit;
+import dffdd.math : isNarrowComplex;
 
 struct QPSK(C)
+if(isNarrowComplex!C)
 {
     alias InputElementType = Bit;
     alias OutputElementType = C;

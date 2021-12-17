@@ -6,9 +6,11 @@ import std.math;
 import std.numeric;
 
 import dffdd.mod.primitives : Bit;
+import dffdd.math : isNarrowComplex;
 
 
 struct BPSK(C)
+if(isNarrowComplex!C)
 {
     alias InputElementType = Bit;
     alias OutputElementType = C;

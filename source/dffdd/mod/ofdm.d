@@ -5,8 +5,10 @@ import carbon.math;
 import dffdd.utils.fft;
 
 import std.math;
+import dffdd.math : isNarrowComplex;
 
 final class OFDM(C)
+if(isNarrowComplex!C)
 {
     alias InputElementType = C;
     alias OutputElementType = C;

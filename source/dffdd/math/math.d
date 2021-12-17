@@ -47,6 +47,20 @@ unittest
 }
 
 
+inout(MirComplex!(typeof(C.init.re)))[] toMirComplexArray(C)(inout(C)[] input) @trusted
+if(isNarrowComplex!C)
+{
+    return (cast(inout(MirComplex!(typeof(C.init.re)))) input.ptr)[0 .. input.length];
+}
+
+
+inout(StdComplex!(typeof(C.init.re)))[] toStdComplexArray(C)(inout(C)[] input) @trusted
+if(isNarrowComplex!C)
+{
+    return (cast(inout(StdComplex!(typeof(C.init.re)))) input.ptr)[0 .. input.length];
+}
+
+
 
 /**
 compute x^^y
