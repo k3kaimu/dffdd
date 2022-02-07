@@ -21,7 +21,7 @@ void main()
         R = K * 1.0 / N;
 
     auto ldpc = new BldpcIeee80211!float(N, K);
-    auto mod = BPSK!(Complex!float)();
+    auto mod = QAM!(Complex!float)(16);
 
     immutable Nc = mod.symInputLength;
 

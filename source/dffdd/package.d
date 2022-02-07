@@ -1,6 +1,7 @@
 module dffdd;
 
 public import dffdd.blockdiagram;
+public import dffdd.detector;
 public import dffdd.dsp;
 public import dffdd.fec;
 public import dffdd.filter;
