@@ -3,7 +3,7 @@ module dffdd.blockdiagram.noise;
 import std.math,
        std.random;
 
-import std.complex;
+import dffdd.math;
 
 import dffdd.utils.unit;
 
@@ -18,7 +18,7 @@ BoxMuller!Random boxMullerNoise()
 }
 
 
-struct BoxMuller(RNG)
+struct BoxMuller(RNG, C = StdComplex!real)
 {
     this(RNG urng)
     {
@@ -28,9 +28,9 @@ struct BoxMuller(RNG)
     }
 
 
-    Complex!real front() const @property
+    C front() const @property
     {
-        return sqrt(-2 * log(_x)) * Complex!real(cos(2*PI*_y), sin(2*PI*_y));
+        return cast(C)(sqrt(-2 * log(_x)) * C(cos(2*PI*_y), sin(2*PI*_y)));
     }
 
 
@@ -50,7 +50,7 @@ struct BoxMuller(RNG)
     }
 
 
-    BoxMuller!RNG save() @property
+    BoxMuller save() @property
     {
         typeof(return) dst = this;
 
@@ -73,7 +73,7 @@ real noisePower(real bandWidth, real tempK)
 }
 
 
-struct ThermalNoise
+struct ThermalNoise(C = StdComplex!real)
 {
     this(real sampFreq, real tempK, uint s = unpredictableSeed())
     {
@@ -83,9 +83,9 @@ struct ThermalNoise
     }
 
 
-    Complex!real front() const @property
+    C front() const @property
     {
-        return _rnd.front * _gain;
+        return cast(C)(_rnd.front * _gain);
     }
 
 
