@@ -74,7 +74,8 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
             }
 
             // 各チャネルの出力でIFFTをかける
-            _fftw.ifft!R();
+            _fftw.fft!R();
+            // _fftw.outputs!R[] = _fftw.inputs!R[];
             foreach(i, e; _fftw.outputs!R)
                 outputs[i] = e * _nchannel;
         }
@@ -82,7 +83,8 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
         {
             // 各チャネルで入力信号をFFTする
             _fftw.inputs!R[] = inputs[];
-            _fftw.fft!R();
+            _fftw.ifft!R();
+            // _fftw.outputs!R[] = _fftw.inputs!R[];
 
             // 各チャネルのFIRフィルタの状態を一つすすめる
             foreach(ic; 0 .. _nchannel)
@@ -197,7 +199,6 @@ unittest
 
     // reconstruction error is less than -40 dB.
     assert(10*log10(sum / P) < -40);
-    // writeln(10*log10(sum / P));
 }
 
 
@@ -252,17 +253,16 @@ final class OversampledDFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
             }
 
             ++_opCallCNT;
-
             _bank1(_buf1, _buf0);
-            foreach(i, e; _buf0)
-                outputs[i*2+1] = e;
+            foreach(ptrdiff_t i, e; _buf0)
+                outputs[((i*2-1) + $) % $] = e;
         }
         else
         {
             // split to odd and even elements
-            foreach(i; 0 .. _nchannel / 2){
+            foreach(ptrdiff_t i; 0 .. _nchannel / 2){
                 _buf0[i] = inputs[i*2];
-                _buf1[i] = inputs[i*2+1];
+                _buf1[i] = inputs[((i*2-1) + $) % $ ];
             }
 
             // even channel
@@ -289,6 +289,12 @@ final class OversampledDFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
     size_t numOfDelay() const @property
     {
         return _bank0.numOfDelay;
+    }
+
+
+    size_t numOfChannel() const @property
+    {
+        return this._nchannel;
     }
 
 
@@ -356,6 +362,68 @@ unittest
     assert(10*log10(sum / P) < -150);
 }
 
+
+final class OversampledDFTFilterBankModulator(C)
+{
+    alias InputElementType = C;
+    alias OutputElementType = C;
+
+
+    this(size_t nchannel, in C[] prototype)
+    {
+        this._analysis = new OversampledDFTAnalysisFilterBank!C(nchannel, prototype);
+        this._synthesis = new OversampledDFTSynthesisFilterBank!C(nchannel, prototype);
+    }
+
+
+    size_t symInputLength() const @property
+    {
+        return this._analysis.numOfChannel();
+    }
+
+
+    size_t symOutputLength() const @property
+    {
+        return this._analysis.numOfChannel() / 2;
+    }
+
+
+    ref OutputElementType[] modulate(in InputElementType[] inputs, return ref OutputElementType[] outputs)
+    in {
+        assert(inputs.length % this.symInputLength == 0);
+    }
+    do {
+        if(outputs.length != inputs.length / this.symInputLength * this.symOutputLength)
+            outputs.length = inputs.length / 2;
+        
+        foreach(i; 0 .. _inputs.length / this.symInputLength) {
+            _analysis(
+                inputs[i * this.symInputLength .. (i+1) * this.symInputLength],
+                outputs[i * this.symOutputLength .. (i+1) * this.symOutputLength]);
+        }
+    }
+
+    ref InputElementType[] demodulate(in OutputElementType[] inputs, return ref InputElementType[] outputs)
+    in {
+        assert(inputs.length % this.symOutputLength == 0);
+    }
+    do {
+        if(outputs.length != inputs.length / this.symOutputLength * this.symInputLength)
+            outputs.length = inputs.length / this.symOutputLength * this.symInputLength;
+
+        foreach(i; 0 .. _inputs.length / this.symOutputLength) {
+            _synthesis(
+                inputs[i * this.symOutputLength .. (i+1) * this.symOutputLength],
+                outputs[i * this.symInputLength .. (i+1) * this.symInputLength]
+            );
+        }
+    }
+
+
+  private:
+    OversampledDFTAnalysisFilterBank!C _analysis;
+    OversampledDFTSynthesisFilterBank!C _synthesis;
+}
 
 // unittest
 // {
