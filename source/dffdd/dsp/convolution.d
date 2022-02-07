@@ -12,7 +12,7 @@ import dffdd.utils.fft;
 /**
 
 */
-C[] convolution(FftObj, C)(FftObj fftObj, in C[] specA, in C[] specB, C[] dst)
+C[] convolution(FftObj, C)(FftObj fftObj, in C[] specA, in C[] specB, ref C[] dst)
 in{
     assert(specA.length == specB.length);
 }
@@ -45,7 +45,7 @@ do{
 C[] convolutionPower(FftObj, C)(FftObj fftObj,
                                 in C[] specA,
                                 in C[] specB,
-                                C[] dst)
+                                ref C[] dst)
 {
     dst = convolution(fftObj, specA, specB, dst);
     foreach(ref e; dst)
@@ -74,7 +74,7 @@ ConvResult!size_t findConvolutionPeak(FftObj, C)(
                     FftObj fftObj,
                     in C[] sendSpec,
                     in C[] recvSpec,
-                    C[] convDst,
+                    ref C[] convDst,
                     real dBThreshold = 20,
                     bool onlyHalf = false)
 {
