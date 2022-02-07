@@ -25,9 +25,9 @@ unittest
               [C(-4),  C(24), C(-41)]];
 
     auto res = qrDecomp(data);
-    writeln(res.Q);
-    writeln(res.R);
-    res.Q.mtimes(res.R).writeln();
+    // writeln(res.Q);
+    // writeln(res.R);
+    // res.Q.mtimes(res.R).writeln();
 }
 
 

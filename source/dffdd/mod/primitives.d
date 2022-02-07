@@ -798,7 +798,7 @@ unittest
     assert(x1.expect([1.0, 2, 3, 4]).isClose((1 + 2 + 3 + 4) / 4.0));
 
     x1 &= ProbVector!(float, 4)([0, 0, 1, 0]);
-    writeln(x1.expect([1.0, 2, 3, 4]));
+    // writeln(x1.expect([1.0, 2, 3, 4]));
     assert(x1.expect([1.0, 2, 3, 4]).isClose(3));
 
     x1 &= ProbVector!(float, 4)([1, 0, 0, 0]);
