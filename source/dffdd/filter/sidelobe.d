@@ -402,7 +402,7 @@ final class SidelobeIterativeWLNL(C, size_t P)
         // if(_use3rdSidelobe)
         {
             import mir.ndslice;
-            import lubeck;
+            import kaleidic.lubeck;
 
             Complex!R[] vecY = new Complex!R[](targetFS.length * _nTr);
             auto matX = slice!(Complex!R)(targetFS.length * _nTr, (P-1) * 2);
