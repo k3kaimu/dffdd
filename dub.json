@@ -17,7 +17,8 @@
         "cblas": "~>2.3.1",
         "mir-algorithm": "~>3.9.12",
         "libnlopt": "~>0.2.0",
-        "lubeck": "~>1.5.0",
+        "lubeck": { "path": "../lubeck" },
+        "mir-lapack": "~>1.2.8",
         "mir-blas": "~>1.1.13",
         "dffdd_simd": { "path": "dffdd_simd" }
     },
