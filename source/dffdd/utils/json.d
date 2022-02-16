@@ -603,7 +603,7 @@ unittest{
     auto s1 = S1(12, "foo", 2.0, [1, 2, 3, 4]);
     auto jv = S1.toJSONValue(s1);
 
-    auto jvtext = parseJSON(`{"gloF":12345,"strB":"Custom Convertor-String : foo","fltC":2,"gloG":"Custom Convertor-String : global variable","intA":12,"aasE":{"4":5,"1":2,"2":3,"3":4},"arrD":[1,2,3,4]}`);
+    auto jvtext = parseJSON(`{"gloF":12345,"strB":"Custom Convertor-String : foo","fltC":2.0,"gloG":"Custom Convertor-String : global variable","intA":12,"aasE":{"4":5,"1":2,"2":3,"3":4},"arrD":[1,2,3,4]}`);
     assert(toJSON(jv) == toJSON(jvtext));
 
     auto s2 = S1.fromJSONValueImpl(jv);
