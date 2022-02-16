@@ -23,8 +23,8 @@ F[] desingSincPulse(F = real)(size_t ntaps, real cutoff) pure nothrow @safe
 {
     F[] sincpulse = new F[ntaps];
     foreach(i; 0 .. ntaps) {
-        immutable F x = (i - ntaps/F(2)) * 2 * cutoff;
-        sincpulse[i] = sinc(x) * 2 * cutoff;
+        immutable F x = (i - ntaps/F(2)) * cutoff;
+        sincpulse[i] = sinc(x) * cutoff;
     }
 
     sincpulse[] /= sum(sincpulse);
@@ -44,7 +44,7 @@ unittest
         -1.00883854e-01,  -1.85320633e-17,   6.05303122e-02
     ];
 
-    real[] coefs = desingSincPulse!real(12, 0.25);
+    real[] coefs = desingSincPulse!real(12, 0.5);
     assert(std.algorithm.equal!((a,b) => isClose(a-b, 0, 0, 1e-8))(coefs, numpyResults));
 }
 
@@ -55,7 +55,7 @@ See also: https://jp.mathworks.com/help/dsp/ref/designmultiratefir.html
 F[] designKaiserSincPulse(F)(size_t nchannel, size_t polyphaseTaps, real attdB, real cutoffCoef = 1, real beta = real.nan) pure nothrow @safe
 {
     immutable size_t N = nchannel * polyphaseTaps;
-    auto sincpulse = desingSincPulse!F(N, 0.5L/(nchannel * cutoffCoef));
+    auto sincpulse = desingSincPulse!F(N, cutoffCoef/nchannel);
 
     if(beta.isNaN)
         beta = kaiserBetaFromStopbandAttdB(attdB);
@@ -86,7 +86,7 @@ unittest
 
     numpyResults[] /= sum(numpyResults);
 
-    real[] res = designKaiserSincPulse!real(2, 6, 50);
+    real[] res = designKaiserSincPulse!real(2, 6, 50, 1);
     assert(std.algorithm.equal!((a, b) => isClose(a-b, 0, 0, 1e-8))(res, numpyResults));
 }
 
@@ -156,7 +156,7 @@ F[] designRootRaisedERF(F = real)(size_t nchannel, size_t polyphaseTaps, F k = F
         }
     }
 
-    return designPrototypeFromFreqDomainWindow!F(2*nchannel, polyphaseTaps/2, (F x) => erfc(k*x)*0.5, cutoffCoef);
+    return designPrototypeFromFreqDomainWindow!F(nchannel, polyphaseTaps, (F x) => erfc(k*x)*0.5, cutoffCoef);
 }
 
 unittest
@@ -164,7 +164,7 @@ unittest
     import std.range;
     import mir.ndslice.dynamic;
 
-    auto coeff = designRootRaisedERF(32, 32);
+    auto coeff = designRootRaisedERF(32, 32, real.nan, 0.5);
 
     auto testResult = 
         [2.26E-09, 4.42E-09, 5.90E-09, -1.20E-08, -7.56E-08, -2.05E-07, -2.37E-07, 2.74E-06, 1.11E-05, -2.49E-05, -0.000111495, 0.000219418, 0.000564861, -0.001469149, -0.001504252, 0.009080523, 0.017713452, 0.009080523, -0.001504252, -0.001469149, 0.000564861, 0.000219418, -0.000111495, -2.49E-05, 1.11E-05, 2.74E-06, -2.37E-07, -2.05E-07, -7.56E-08, -1.20E-08, 5.90E-09, 4.42E-09,
@@ -212,10 +212,10 @@ unittest
 /**
 See also: https://en.wikipedia.org/wiki/Root-raised-cosine_filter
 */
-F[] designRootRaisedCosine(F = real)(size_t nchannel, size_t polyPhaseTaps, F beta = 0.5)
+F[] designRootRaisedCosine(F = real)(size_t nchannel, size_t polyPhaseTaps, F beta = 0.5, F cutoffCoef = 1)
 {
     immutable size_t N = nchannel * polyPhaseTaps;
-    immutable F M = F(nchannel);
+    immutable F M = F(nchannel) / cutoffCoef;
 
     
     F[] coefs = new F[N];
