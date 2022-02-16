@@ -1,7 +1,7 @@
 module dffdd.math.complex;
 
 
-import std.meta : AliasSeq;
+import std.meta;
 import std.complex;
 import std.traits;
 
@@ -27,6 +27,8 @@ enum isNarrowComplex(T) = isComplex!T && is(typeof(T.init.tupleof) == std.meta.A
 
                             return true;
                         }(T.init);
+
+enum isComplex(T, F) = isComplex!T && is(typeof(T.init.re) == F);
 
 
 unittest
@@ -201,7 +203,7 @@ if(isNarrowComplex!C)
 C expi(C)(real x)
 if(isNarrowComplex!C)
 {
-    auto y = std.complex.expi(StdComplex!(RealPartType!C)(x.re, x.im));
+    auto y = std.complex.expi(x);
     return C(y.re, y.im);
 }
 

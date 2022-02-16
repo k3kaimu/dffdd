@@ -1,7 +1,7 @@
 module dffdd.utils.fft;
 
 import std.algorithm : swap;
-import std.complex;
+// import std.complex;
 import std.math;
 import std.numeric;
 import std.stdio : File;
@@ -11,7 +11,7 @@ import std.meta : AliasSeq;
 import std.typecons : RefCounted, Tuple, tuple;
 
 import carbon.math;
-import carbon.complex;
+import dffdd.math.complex;
 import carbon.memory : fastPODCopy;
 
 
@@ -455,9 +455,9 @@ struct FFTWObjectImpl(alias Cpx)
     {
         initialize!F();
 
-        static if(is(F == float)) return _float_in;
-        else static if(is(F == double)) return _double_in;
-        else static if(is(F == real)) return _real_in;
+        static if(is(F == float)) return cast(Cpx!F[])cast(void[])_float_in;
+        else static if(is(F == double)) return cast(Cpx!F[])cast(void[])_double_in;
+        else static if(is(F == real)) return cast(Cpx!F[])cast(void[])_real_in;
     }
 
 
@@ -465,9 +465,9 @@ struct FFTWObjectImpl(alias Cpx)
     {
         initialize!F();
 
-        static if(is(F == float)) return _float_out;
-        else static if(is(F == double)) return _double_out;
-        else static if(is(F == real)) return _real_out;
+        static if(is(F == float)) return cast(Cpx!F[])cast(void[])_float_out;
+        else static if(is(F == double)) return cast(Cpx!F[])cast(void[])_double_out;
+        else static if(is(F == real)) return cast(Cpx!F[])cast(void[])_real_out;
     }
 
 
@@ -500,15 +500,15 @@ struct FFTWObjectImpl(alias Cpx)
     fftw_plan _doubleInvPlan;
     fftwl_plan _realInvPlan;
 
-    Cpx!float[] _float_in;
-    Cpx!float[] _float_out;
-    Cpx!double[] _double_in;
-    Cpx!double[] _double_out;
-    Cpx!real[] _real_in;
-    Cpx!real[] _real_out;
+    StdComplex!float[] _float_in;
+    StdComplex!float[] _float_out;
+    StdComplex!double[] _double_in;
+    StdComplex!double[] _double_out;
+    StdComplex!real[] _real_in;
+    StdComplex!real[] _real_out;
 
     static
-    auto makePlanAndArray(F)(size_t n, Cpx!F* input, Cpx!F* output) @nogc
+    auto makePlanAndArray(F)(size_t n, StdComplex!F* input, StdComplex!F* output) @nogc
     {
         auto newInput = input;
         auto newOutput = output;
@@ -526,24 +526,24 @@ struct FFTWObjectImpl(alias Cpx)
         {
           static if(is(F == float))
           {
-            if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
-            if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
+            if(newInput is null) newInput = cast(StdComplex!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
+            if(newOutput is null) newOutput = cast(StdComplex!F*)forceNoGC!fftwf_malloc(F.sizeof * 2 * n);
             checkMemory();
             auto planFwd = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
             auto planInv = forceNoGC!fftwf_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
           else static if(is(F == double))
           {
-            if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
-            if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
+            if(newInput is null) newInput = cast(StdComplex!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
+            if(newOutput is null) newOutput = cast(StdComplex!F*)forceNoGC!fftw_malloc(F.sizeof * 2 * n);
             checkMemory();
             auto planFwd = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
             auto planInv = forceNoGC!fftw_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
           }
           else static if(is(F == real))
           {
-            if(newInput is null) newInput = cast(Cpx!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
-            if(newOutput is null) newOutput = cast(Cpx!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
+            if(newInput is null) newInput = cast(StdComplex!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
+            if(newOutput is null) newOutput = cast(StdComplex!F*)forceNoGC!fftwl_malloc(F.sizeof * 2 * n);
             checkMemory();
             auto planFwd = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_FORWARD, FFTW_ESTIMATE);
             auto planInv = forceNoGC!fftwl_plan_dft_1d(cast(int)n, cast(Complex!F*)newInput, cast(Complex!F*)newOutput, FFTW_BACKWARD, FFTW_ESTIMATE);
@@ -587,9 +587,8 @@ alias FFTWObject(alias Cpx) = RefCounted!(FFTWObjectImpl!Cpx);
 ///
 unittest
 {
-    static assert(isFFTObject!(FFTWObject!(Complex)));
-    static assert(isFFTObject!(FFTWObject!(std_complex_t)));
-    static assert(isFFTObject!(FFTWObject!(complex_t)));
+    static assert(isFFTObject!(FFTWObject!(StdComplex)));
+    static assert(isFFTObject!(FFTWObject!(MirComplex)));
 }
 
 
@@ -710,9 +709,8 @@ final class PhobosFFTObject(alias Cpx)
 ///
 unittest
 {
-    static assert(isFFTObject!(PhobosFFTObject!(Complex)));
-    static assert(isFFTObject!(PhobosFFTObject!(std_complex_t)));
-    static assert(isFFTObject!(PhobosFFTObject!(complex_t)));
+    static assert(isFFTObject!(PhobosFFTObject!(StdComplex)));
+    static assert(isFFTObject!(PhobosFFTObject!(MirComplex)));
 }
 
 
@@ -751,10 +749,10 @@ unittest
     foreach(makeObjFunc; AliasSeq!(makePhobosFFTObject, makeFFTWObject))
         foreach(F; AliasSeq!(float, double, real))
         {
-            auto fft = makeObjFunc!Complex(64);
-            Complex!F[] inps = fft.inputs!F;
+            auto fft = makeObjFunc!StdComplex(64);
+            StdComplex!F[] inps = fft.inputs!F;
             foreach(i; 0 .. 64)
-                inps[i] = Complex!F(i, i);
+                inps[i] = StdComplex!F(i, i);
 
             auto phobosResult = std.numeric.fft(inps);
 
@@ -766,25 +764,25 @@ unittest
                 assert(isClose(phobosResult[i].im, libResult[i].im, 1e-4));
             }
 
-            auto fft2 = makeObjFunc!std_complex_t(64);
-            std_complex_t!F[] inps2 = fft2.inputs!F;
-            foreach(x; 0 .. 64)
-                inps2[x] = x + x*1i;
+            // auto fft2 = makeObjFunc!std_complex_t(64);
+            // std_complex_t!F[] inps2 = fft2.inputs!F;
+            // foreach(x; 0 .. 64)
+            //     inps2[x] = x + x*1i;
 
-            fft2.fft!F();
-            auto libResult2 = fft2.outputs!F;
-            foreach(i; 0 .. 64){
-                assert(isClose(phobosResult[i].re, libResult2[i].re, 1e-4));
-                assert(isClose(phobosResult[i].im, libResult2[i].im, 1e-4));
-            }
+            // fft2.fft!F();
+            // auto libResult2 = fft2.outputs!F;
+            // foreach(i; 0 .. 64){
+            //     assert(isClose(phobosResult[i].re, libResult2[i].re, 1e-4));
+            //     assert(isClose(phobosResult[i].im, libResult2[i].im, 1e-4));
+            // }
 
-            auto fft3 = makeObjFunc!complex_t(64);
-            complex_t!F[] inps3 = fft3.inputs!F;
+            auto fft3 = makeObjFunc!MirComplex(64);
+            MirComplex!F[] inps3 = fft3.inputs!F;
             foreach(x; 0 .. 64)
-                inps3[x] = x + x*1i;
+                inps3[x] = MirComplex!F(x, x);
 
             fft3.fft!F();
-            auto libResult3 = fft2.outputs!F;
+            auto libResult3 = fft3.outputs!F;
             foreach(i; 0 .. 64){
                 assert(isClose(phobosResult[i].re, libResult3[i].re, 1e-4));
                 assert(isClose(phobosResult[i].im, libResult3[i].im, 1e-4));
@@ -797,10 +795,10 @@ unittest
     foreach(makeObjFunc; AliasSeq!(makePhobosFFTObject, makeFFTWObject))
         foreach(F; AliasSeq!(float, double, real))
         {
-            auto fft = makeObjFunc!Complex(64);
-            Complex!F[] inps = fft.inputs!F;
+            auto fft = makeObjFunc!StdComplex(64);
+            StdComplex!F[] inps = fft.inputs!F;
             foreach(i; 0 .. 64)
-                inps[i] = Complex!F(i, i);
+                inps[i] = StdComplex!F(i, i);
 
             auto phobosResult = std.numeric.inverseFft(inps);
 
@@ -811,25 +809,25 @@ unittest
                 assert(isClose(phobosResult[i].im, libResult[i].im, 1e-4));
             }
 
-            auto fft2 = makeObjFunc!std_complex_t(64);
-            std_complex_t!F[] inps2 = fft2.inputs!F;
-            foreach(x; 0 .. 64)
-                inps2[x] = x + x*1i;
+            // auto fft2 = makeObjFunc!std_complex_t(64);
+            // std_complex_t!F[] inps2 = fft2.inputs!F;
+            // foreach(x; 0 .. 64)
+            //     inps2[x] = x + x*1i;
 
-            fft2.ifft!F();
-            auto libResult2 = fft2.outputs!F;
-            foreach(i; 0 .. 64){
-                assert(isClose(phobosResult[i].re, libResult2[i].re, 1e-4));
-                assert(isClose(phobosResult[i].im, libResult2[i].im, 1e-4));
-            }
+            // fft2.ifft!F();
+            // auto libResult2 = fft2.outputs!F;
+            // foreach(i; 0 .. 64){
+            //     assert(isClose(phobosResult[i].re, libResult2[i].re, 1e-4));
+            //     assert(isClose(phobosResult[i].im, libResult2[i].im, 1e-4));
+            // }
 
-            auto fft3 = makeObjFunc!complex_t(64);
-            complex_t!F[] inps3 = fft3.inputs!F;
+            auto fft3 = makeObjFunc!MirComplex(64);
+            MirComplex!F[] inps3 = fft3.inputs!F;
             foreach(x; 0 .. 64)
-                inps3[x] = cpx!(complex_t, float)(x, x);
+                inps3[x] = MirComplex!F(x, x);
 
             fft3.ifft!F();
-            auto libResult3 = fft3.outputs!F;
+            auto libResult3 = cast(StdComplex!F[])cast(void[])fft3.outputs!F;
             foreach(i; 0 .. 64){
                 assert(isClose(phobosResult[i].re, libResult3[i].re, 1e-4));
                 assert(isClose(phobosResult[i].im, libResult3[i].im, 1e-4));
@@ -841,15 +839,15 @@ unittest
 {
     import std.algorithm;
 
-    auto fftobj = makeFFTWObject!complex_t(64);
+    auto fftobj = makeFFTWObject!Complex(64);
     auto ips = fftobj.inputs!float;
     foreach(x; 0 .. 64)
-        ips[x] = cpx!(complex_t, float)(x, x);
+        ips[x] = Complex!float(x, x);
 
     fftobj.fft!float();
 
-    auto fftobj2 = makeFFTWObject!complex_t(64);
-    fftobj2.fftFrom!float(iota(64).map!(a => complex_t!float(a, a)));
+    auto fftobj2 = makeFFTWObject!Complex(64);
+    fftobj2.fftFrom!float(iota(64).map!(a => Complex!float(a, a)));
 
     foreach(i; 0 .. 64){
         assert(isClose(fftobj2.outputs!float[i].re, fftobj.outputs!float[i].re));
@@ -1135,7 +1133,7 @@ C[] estimateImpulseResponseFromFrequencyResponse(C, Freqs)(size_t dftsize, size_
     C[][] matW = new C[][](freqResp.length, impsize);
     foreach(i, f; freqIndexs.enumerate)
         foreach(j; 0 .. impsize)
-            matW[i][j] = std.complex.expi(-2*PI/dftsize * f * j);
+            matW[i][j] = expi!C(-2*PI/dftsize * f * j);
 
     return leastSquareEstimateTikRegSimple(matW, freqResp, diagonalLoading);
 }
