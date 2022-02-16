@@ -794,14 +794,6 @@ unittest
 
 unittest
 {
-    import std.stdio;
-
-    cfloat[] buf = new cfloat[64];
-    foreach(x; 0 .. 64){
-        buf[x] = x + x*1i;
-        assert(buf[x] == x + x*1i);
-    }
-
     foreach(makeObjFunc; AliasSeq!(makePhobosFFTObject, makeFFTWObject))
         foreach(F; AliasSeq!(float, double, real))
         {
@@ -1111,7 +1103,7 @@ inout(C)[] convAuto(C)(inout(FrequencyDomain!C)[] array)
 //    }
 //}
 
-
+version(none)
 deprecated
 cfloat[] rawReadComplex(File file, cfloat[] buf)
 {
@@ -1119,6 +1111,7 @@ cfloat[] rawReadComplex(File file, cfloat[] buf)
 }
 
 
+version(none)
 deprecated
 Complex!float[] rawReadComplex(File file, cfloat[] buf, Complex!float[] output)
 {
