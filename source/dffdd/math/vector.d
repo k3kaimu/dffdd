@@ -1,5 +1,7 @@
 module dffdd.math.vector;
 
+import std.traits;
+
 import mir.ndslice;
 import dffdd.math.linalg;
 import std.experimental.allocator;
@@ -42,7 +44,7 @@ enum isVectorLike(T) = is(typeof((T t, size_t i){
 
 struct VectoredSlice(Iterator, SliceKind kind)
 {
-    alias ElementType = typeof(typeof(this).init.opIndex(0));
+    alias ElementType = Unqual!(typeof(typeof(this).init.opIndex(0)));
 
 
     this(Slice!(Iterator, 1, kind) s)
@@ -78,7 +80,7 @@ struct VectoredSlice(Iterator, SliceKind kind)
 
 
     import dffdd.math.exprtemplate;
-    mixin VectorOperators!(["S*V", "V*S", "V+V"]);
+    mixin VectorOperators!(["S*V", "V*S", "V+V", "V=S", "V=V"]);
 
 
   private:
@@ -118,9 +120,14 @@ unittest
     assert(mul1[1] == 2);
     assert(mul1[2] == 2);
 
-    auto vec2 = iota([3], 0, 1).map!"a*2".vector;
+    auto vec2 = iota([3], 0, 1).map!"a*2".as!int.vector;
     auto add2 = mul1 + vec2;
     assert(add2[0] == 2);
     assert(add2[1] == 4);
     assert(add2[2] == 6);
+
+    vec1[] = add2;
+    assert(vec1[0] == 2);
+    assert(vec1[1] == 4);
+    assert(vec1[2] == 6);
 }

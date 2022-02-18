@@ -1,8 +1,12 @@
 module dffdd.math.matrix;
 
+import std.experimental.allocator;
+import std.traits;
+
+
 import mir.ndslice;
 import dffdd.math.linalg;
-import std.experimental.allocator;
+import dffdd.math.vector;
 
 
 MatrixedSlice!(Iterator, kind) matrixed(Iterator, SliceKind kind)(Slice!(Iterator, 2, kind) slice)
@@ -42,7 +46,7 @@ enum isMatrixLike(T) = is(typeof((T t, size_t i){
 
 struct MatrixedSlice(Iterator, SliceKind kind)
 {
-    alias ElementType = typeof(opIndex(0, 0));
+    alias ElementType = Unqual!(typeof(opIndex(0, 0)));
 
     this(Slice!(Iterator, 2, kind) s)
     {
@@ -80,7 +84,14 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     }
 
 
-    mixin MatrixOperators!(["M*V"]);
+    auto T()
+    {
+        return _slice.transposed.matrixed;
+    }
+
+
+    import dffdd.math.exprtemplate;
+    mixin MatrixOperators!(["M*M", "M*V", "M*S", ".H", "M=M"]);
 
 
   private:
