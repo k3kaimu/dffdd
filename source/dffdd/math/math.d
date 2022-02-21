@@ -75,6 +75,29 @@ if(isFloatingPoint!F)
 }
 
 
+/**
+compute exp(x)
+*/
+F libm_exp(F)(F x) /*pure*/ nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : expf, exp, expl;
+
+    static if(is(F == float))
+    {
+        return expf(x);
+    }
+    else static if(is(F == double))
+    {
+        return exp(x);
+    }
+    else
+    {
+        return expl(x);
+    }
+}
+
+
 version(LDC)
 {
     pragma(LDC_intrinsic, "llvm.pow.f#")
@@ -83,18 +106,22 @@ version(LDC)
     F llvm_powi(F)(F x, int y) pure nothrow @nogc;
     pragma(LDC_intrinsic, "llvm.sqrt.f#")
     F llvm_sqrt(F)(F x) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.exp.f#")
+    F llvm_exp(F)(F x) pure nothrow @nogc;
 
 
     alias fast_pow = llvm_pow;
     alias fast_powi = llvm_powi;
     alias fast_sqrt = llvm_sqrt;
     alias fast_cbrt = libm_cbrt;
+    alias fast_exp = llvm_exp;
 }
 else
 {
     alias fast_pow = libm_pow;
     alias fast_sqrt = libm_sqrt;
     alias fast_cbrt = libm_cbrt;
+    alias fast_exp = libm_exp;
 
     F fast_powi(F)(F x, int y) pure nothrow @nogc
     {
