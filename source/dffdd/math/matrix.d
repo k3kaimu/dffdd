@@ -3,10 +3,10 @@ module dffdd.math.matrix;
 import std.experimental.allocator;
 import std.traits;
 
-
 import mir.ndslice;
 import dffdd.math.linalg;
 import dffdd.math.vector;
+import dffdd.math.exprtemplate : isExpressionTemplate;
 
 
 MatrixedSlice!(Iterator, kind) matrixed(Iterator, SliceKind kind)(Slice!(Iterator, 2, kind) slice)
@@ -33,7 +33,7 @@ auto matrix(Iterator, SliceKind kind)(Slice!(Iterator, 2, kind) s)
 }
 
 
-enum isMatrixLike(T) = is(typeof((T t, size_t i){
+enum isMatrixLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
     T.ElementType e = t[i, i];
     size_t rowlen = t.length!0;
     size_t collen = t.length!1;
@@ -46,11 +46,17 @@ enum isMatrixLike(T) = is(typeof((T t, size_t i){
 
 struct MatrixedSlice(Iterator, SliceKind kind)
 {
-    alias ElementType = Unqual!(typeof(opIndex(0, 0)));
+    alias ElementType = Unqual!(typeof(Slice!(Iterator, 2, kind).init[0, 0]));
+    enum size_t exprTreeDepth = 0;
 
     this(Slice!(Iterator, 2, kind) s)
     {
         _slice = s;
+
+        static if(is(Iterator == ElementType*))
+        {
+            _tmp = slice!ElementType(s.shape);
+        }
     }
 
 
@@ -91,11 +97,34 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
 
     import dffdd.math.exprtemplate;
-    mixin MatrixOperators!(["M*M", "M*V", "M*S", ".H", "M=M"]);
+    mixin(definitionsOfMatrixOperators(["defaults", "M*M", "M*V", "M*S", ".H"]));
+
+
+    static if(is(Iterator == ElementType*))
+    {
+        auto opSliceAssign(M)(M mat)
+        if(isMattrixLike!M)
+        in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
+        {
+            mat.evalTo(_tmp, matvecAllocator);
+            _slice[] = _tmp;
+        }
+
+        auto opSliceAssign(S)(S scalar)
+        if(!isMatrixLike!S && !isVectorLike!S)
+        {
+            this._slice[] = scalar;
+        }
+    }
 
 
   private:
     Slice!(Iterator, 2, kind) _slice;
+
+    static if(is(Iterator == ElementType*))
+    {
+        Slice!(ElementType*, 2, Contiguous) _tmp;
+    }
 }
 
 

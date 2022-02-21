@@ -1,5 +1,6 @@
 module dffdd.math.exprtemplate;
 
+import std.algorithm : max, min;
 import std.experimental.allocator;
 import std.typecons;
 import std.traits;
@@ -17,16 +18,24 @@ alias matvecAllocator = theAllocator;
 
 
 
+enum isExpressionTemplate(T) = is(typeof(T.exprTreeDepth) : size_t);
+enum exprTreeDepth(T) = T.exprTreeDepth;
+
+enum hasMemoryView(T) = is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 1, kind), SliceKind kind)
+                     || (is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 2, kind), SliceKind kind) && (kind == Contiguous || kind == Canonical));
+
 /** 
  * 
  */
 auto makeViewOrNewSlice(Vec, Alloc)(const Vec vec, ref Alloc alloc)
 if(isVectorLike!Vec)
 {
-    static if(is(Unqual!(typeof(vec.sliced())) == Slice!(Vec.ElementType*, 1, kind), SliceKind kind))
+    static if(hasMemoryView!Vec)
         return tuple!("view", "isAllocated")(vec.sliced.lightConst, false);
     else
     {
+        // import std.stdio;
+        // writeln("Allocate");
         Slice!(Vec.ElementType*, 1, Contiguous) newslice = alloc.makeArray!(Vec.ElementType)(vec.length).sliced;
         vec.evalTo(newslice, alloc);
         return tuple!("view", "isAllocated")(newslice, true);
@@ -51,16 +60,34 @@ unittest
 auto makeViewOrNewSlice(Mat, Alloc)(const Mat mat, ref Alloc alloc)
 if(isMatrixLike!Mat)
 {
-    static if(is(Unqual!(typeof(mat.sliced())) == Slice!(Mat.ElementType*, 2, kind), SliceKind kind)
-      && (kind == Contiguous || kind == Canonical))
+    static if(hasMemoryView!Mat)
     {
         return tuple!("view", "isAllocated")(mat.sliced, false);
     }
     else
     {
-        Slice!(Mat.ElementType*, 2, Contiguous) newslice = alloc.makeArray!(Mat.ElementType)(mat.length!0 * mat.length!1).sliced(mat.length!0, mat.length!1);
-        mat.evalTo(newslice, alloc);
-        return tuple!("view", "isAllocated")(newslice, true);
+        static if(is(Unqual!(typeof(Mat.init.sliced())) == Slice!(Mat.ElementType*, 2, kind), SliceKind kind) && (kind == Universal))
+        {
+            auto s = mat.sliced;
+            if(s._stride!0 == 1 || s._stride!1 == 1)
+                return tuple!("view", "isAllocated")(s.lightConst, false);
+            else
+            {
+                // import std.stdio;
+                // writeln("Allocate Universal");
+                Slice!(Mat.ElementType*, 2, Contiguous) newslice = alloc.makeArray!(Mat.ElementType)(mat.length!0 * mat.length!1).sliced(mat.length!0, mat.length!1);
+                mat.evalTo(newslice, alloc);
+                return tuple!("view", "isAllocated")(newslice.universal.lightConst, true);
+            }
+        }
+        else
+        {
+            // import std.stdio;
+            // writeln("Allocate");
+            Slice!(Mat.ElementType*, 2, Contiguous) newslice = alloc.makeArray!(Mat.ElementType)(mat.length!0 * mat.length!1).sliced(mat.length!0, mat.length!1);
+            mat.evalTo(newslice, alloc);
+            return tuple!("view", "isAllocated")(newslice, true);
+        }
     }
 }
 
@@ -77,14 +104,143 @@ unittest
     assert(s2.view == [[0, 1], [2, 3]]);
     assert(s2.isAllocated == true);
     theAllocator.dispose(s2.view.iterator);
+
+    auto mat3 = mat1.T;
+    auto s3 = mat3.makeViewOrNewSlice(theAllocator);
+    assert(s3.view == [[1, 1], [1, 1]]);
+    assert(s3.isAllocated == false);
 }
 
+
+/+
+auto allSameVector(E)(size_t n, E value)
+{
+    return AllSameElements!(E, 1)([n], value);
+}
+
+
+auto allSameMatrix(E)(size_t n, size_t m, E value)
+{
+    return AllSameElements!(E, 2)([n, m], value);
+}
+
+
+struct AllSameElements(E, size_t Dim)
+if(is(typeof(value) : E) && (Dim == 1 || Dim == 2))
+{
+    alias ElementType = E;
+    enum size_t exprTreeDepth = 1;
+
+    this(size_t[Dim] len, E value){
+        this._len = len;
+        this._value = value;
+    }
+
+
+  static if(Dim == 1)
+  {
+    size_t length() const { return this._len[0]; }
+
+    E opIndex(size_t) const
+    {
+        return _value;
+    }
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    in(dst.length == this.length)
+    {
+        dst[] = _value;
+    }
+  }
+  else
+  {
+    size_t length(size_t d)() const { return this._len[d]; }
+
+    E opIndex(size_t, size_t) const
+    {
+        return _value;
+    }
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+    {
+        dst[] = _value;
+    }
+
+    auto T() {
+        return AllSameElements!(E, Dim)([_len[1], _len[0]], _value);
+    }
+
+    auto H() {
+      static if(is(typeof(E.init.re)))
+      {
+        return AllSameElements!(E, Dim)([_len[1], _len[0]], conj(_value));
+      }
+      else
+      {
+         return AllSameElements!(E, Dim)([_len[1], _len[0]], value); 
+      }
+    }
+  }
+
+  static if(Dim == 1)
+  {
+    mixin(definitionsOfVectorOperators(["defaults"]));
+    mixin VectorOperators!(["V+V"]) OpImpls;
+
+    auto _opB_Impl_(string op, V)(V vec)
+    if(isVectorLike!V && (op == "+" || op == "-"))
+    in(this._length == vec._length)
+    {
+        static if(is(V == AllSameElements!(E1, 1), E1)) {
+            return allSameVector(this._length, this._value + vec._value);
+        } else {
+            return OpImpls._opB_Impl_(vec);
+        }
+    }
+
+    auto _opB_Impl_(string op : "*", S)(S scalar)
+    if(!isMatrixLike!S && !isVectorLike!S)
+    {
+        return allSameVector(this._length, this._value * scalar);
+    }
+  }
+  else
+  {
+    mixin(definitionsOfMatrixOperators(["defaults", "M*V"]));
+    mixin MatrixOperators!(["M+M"]) OpImpls;
+
+    auto _opB_Impl_(string op, V)(V vec)
+    if(isVectorLike!V && (op == "+" || op == "-"))
+    in(this._length == vec._length)
+    {
+        static if(is(V == AllSameElements!(E1, 2), E1)) {
+            return allSameMatrix(this._length, this._value + vec._value);
+        } else {
+            return OpImpls._opB_Impl_(vec);
+        }
+    }
+
+    auto _opB_Impl_(string op : "*", S)(S scalar)
+    if(!isMatrixLike!S && !isVectorLike!S)
+    {
+        return allSameMatrix(this._length, this._value * scalar);
+    }
+  }
+
+
+  private:
+    size_t[Dim] _length;
+    E _value;
+}
++/
 
 
 struct ConstAll(E, E value, size_t Dim)
 if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
 {
     alias ElementType = E;
+    enum size_t exprTreeDepth = 1;
 
 
     this(size_t[Dim] len...){ this._len = len; }
@@ -126,6 +282,15 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
     }
   }
 
+  static if(Dim == 1)
+  {
+    mixin(definitionsOfVectorOperators(["defaults", "V+V", "V*S"]));
+  }
+  else
+  {
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*M", "M*V", "M*S"]));
+  }
+
 
   private:
     size_t[Dim] _len;
@@ -154,12 +319,25 @@ ZeroMatrix!E zeros(E)(size_t n, size_t m)
 }
 
 
+ConstAll!(E, E(1), 1) ones(E)(size_t n)
+{
+    return ConstAll!(E, E(1), 1)(n);
+}
+
+
+ConstAll!(E, E(1), 2) ones(E)(size_t n, size_t m)
+{
+    return ConstAll!(E, E(1), 2)(n, m);
+}
+
+
 enum isZeros(T) = is(Unqual!T == ZeroMatrix!(T.ElementType)) || is(Unqual!T == ZeroVector!(T.ElementType));
 
 
 struct ConstEye(E, E value)
 {
     alias ElementType = E;
+    enum size_t exprTreeDepth = 1;
 
 
     this(size_t len){ this._len = len; }
@@ -187,6 +365,9 @@ struct ConstEye(E, E value)
     auto T() {
         return this;
     }
+
+
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*M", "M*V", "M*S"]));
 
 
   private:
@@ -223,6 +404,7 @@ enum isIdentity(T) = is(Unqual!T == Identity!(T.ElementType));
 struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
 {
     alias ElementType = typeof(S.init * MatA.ElementType.init * MatB.ElementType.init + S.init * MatC.ElementType.init);
+    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB, MatC))) + 1;
 
 
     this(S alpha, MatA matA, MatB matB, S beta, MatC matC)
@@ -292,25 +474,17 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     }
 
 
-    mixin MatrixOperators!(["M*V", "M+M"]) OpImpls;
-    mixin(definitionsOfMatrixOperators(["M*M", ".H", ".T"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M*M", ".H", ".T"]));
 
 
-    auto opBinary(string op : "*", U)(U u)
+    auto _opB_Impl_(string op : "*", U)(U u)
     if(!isMatrixLike!U && !isVectorLike!U && is(typeof(U.init * S.init)))
     {
         return matrixGemm(_alpha * u, _matA, _matB, _beta * u, _matC);
     }
 
 
-    auto opBinaryRight(string op : "*", U)(U u)
-    if(!isMatrixLike!U && !isVectorLike!U && is(typeof(U.init * S.init)))
-    {
-        return matrixGemm(_alpha * u, _matA, _matB, _beta * u, _matC);
-    }
-
-
-    auto opBinary(string op : "*", V)(V vec)
+    auto _opB_Impl_(string op : "*", V)(V vec)
     if(isVectorLike!V)
     in(vec.length == this.length!1)
     {
@@ -318,20 +492,33 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     }
 
 
-    auto opBinary(string op : "+", M)(M mat)
-    if(isMatrixLike!M)
+  static if(isZeros!MatC)
+  {
+    auto _opB_Impl_(string op, M)(M mat)
+    if(isMatrixLike!M && (op == "+" || op == "-"))
     in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
     {
-        static if(isZeros!MatC)
-        {
-            static if(is(M == MatrixAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
-                return matrixGemm(_alpha, _matA, _matB, mat._alpha, mat._matA);
-            else
-                return matrixGemm(_alpha, _matA, _matB, ElementType(1), mat);
-        }
+        static if(is(M == MatrixAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
+            return matrixGemm(_alpha, _matA, _matB, op == "+" ? mat._alpha : -mat._alpha, mat._matA);
         else
-            return OpImpls.opBinary!op(mat);
+            return matrixGemm(_alpha, _matA, _matB, ElementType(op == "+" ? 1 : -1), mat);
     }
+
+
+    auto _opBR_Impl_(string op, M)(M mat)
+    if(isMatrixLike!M && (op == "+" || op == "-"))
+    in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
+    {
+        static if(is(M == MatrixAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
+            return matrixGemm(op == "+" ? _alpha : -_alpha, _matA, _matB, mat._alpha, mat._matA);
+        else
+            return matrixGemm(op == "+" ? _alpha : -alpha, _matA, _matB, ElementType(1), mat);
+    }
+  }
+  else
+  {
+    mixin(definitionsOfMatrixOperators(["M+M"]));
+  }
 
 
   private:
@@ -406,6 +593,7 @@ struct MatrixVectorMulGEMV(T, MatA, VecB, VecC)
 if(isMatrixLike!MatA && isVectorLike!VecB)
 {
     alias ElementType = typeof(T.init * MatA.ElementType.init * VecB.ElementType.init + T.init * VecC.ElementType.init);
+    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, VecB, VecC))) + 1;
 
 
     this(T alpha, MatA matA, VecB vecB, T beta, VecC vecC)
@@ -471,14 +659,17 @@ if(isMatrixLike!MatA && isVectorLike!VecB)
     }
 
 
-    auto opBinary(string op : "*", S)(S val)
+    mixin(definitionsOfVectorOperators(["defaults"]));
+
+
+    auto _opB_Impl_(string op : "*", S)(S val)
     if(is(T :  ElementType))
     {
         return vectorGemv(_alpha * val, _matA, _vecB, _beta * val, _vecC);
     }
 
 
-    auto opBinaryRight(string op : "*", S)(S val)
+    auto _opBR_Impl_(string op : "*", S)(S val)
     if(is(T : ElementType))
     {
         return vectorGemv(_alpha * val, _matA, _vecB, _beta * val, _vecC);
@@ -487,15 +678,24 @@ if(isMatrixLike!MatA && isVectorLike!VecB)
 
     static if(isZeros!VecC)
     {
-        auto opBinary(string op : "+", V)(V vec)
+        auto _opB_Impl_(string op, V)(V vec)
         if(isVectorLike!V)
         in(vec.length == this.length)
         {
-            // pragma(msg, V);
             static if(is(V == VectorAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
-                return vectorGemv(_alpha, _matA, _vecB, vec._alpha, vec._vecA);
+                return vectorGemv(_alpha, _matA, _vecB, op == "+" ? vec._alpha : -vec._alpha, vec._vecA);
             else
-                return vectorGemv(_alpha, _matA, _vecB, ElementType(1), vec);
+                return vectorGemv(_alpha, _matA, _vecB, ElementType(op == "+" ? 1 : -1), vec);
+        }
+
+        auto _opBR_Impl_(string op, V)(V vec)
+        if(isVectorLike!V)
+        in(vec.length == this.length)
+        {
+            static if(is(V == VectorAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
+                return vectorGemv(op == "+" ? _alpha : -_alpha, _matA, _vecB, vec._alpha, vec._vecA);
+            else
+                return vectorGemv(op == "+" ? _alpha : -_alpha, _matA, _vecB, ElementType(1), vec);
         }
     }
     else
@@ -552,7 +752,8 @@ unittest
 struct MatrixAxpby(S, MatA, MatB)
 if(isMatrixLike!MatA && isMatrixLike!MatB)
 {
-    alias ElementType = typeof(S.init * MatA.ElementType.init + S.init * MatB.ElementType.init);    
+    alias ElementType = typeof(S.init * MatA.ElementType.init + S.init * MatB.ElementType.init);
+    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB))) + 1;
 
 
     this(S alpha, MatA matA, S beta, MatB matB)
@@ -579,47 +780,59 @@ if(isMatrixLike!MatA && isMatrixLike!MatB)
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
-        auto viewA = _matA.makeViewOrNewSlice(alloc);
-        scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+        static if(!hasMemoryView!MatA && hasMemoryView!MatB)
+        {
+            matrixAxpby(_beta, _matB, _alpha, _matA).evalTo(dst, alloc);
+        }
+        else
+        {
+            auto viewA = _matA.makeViewOrNewSlice(alloc);
+            scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
 
-        _matB.evalTo(dst, alloc);
-        dst[] *= _beta;
+            _matB.evalTo(dst, alloc);
+            dst[] *= _beta;
 
-        foreach(i; 0 .. this.length!0)
-            foreach(j; 0 .. this.length!1)
-                dst[i, j] += _alpha * viewA.view[i, j];
+            foreach(i; 0 .. this.length!0)
+                foreach(j; 0 .. this.length!1)
+                    dst[i, j] += _alpha * viewA.view[i, j];
+        }
     }
 
 
     mixin MatrixOperators!(["M+M",]) OpImpls;
-    mixin(definitionsOfMatrixOperators(["M*M", "M*V", ".H", ".T"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M*M", "M*V", ".H", ".T"]));
 
 
-    auto opBinary(string op : "*", U)(U u)
+    auto _opB_Impl_(string op : "*", U)(U u)
     if(!isVectorLike!U && !isMatrixLike!U && is(typeof(U.init * S.init)))
     {
         return matrixAxpby(_alpha * u, _matA, _beta * u, _matB);
     }
 
 
-    auto opBinaryRight(string op : "*", U)(U u)
+    auto _opBR_Impl_(string op : "*", U)(U u)
     if(!isVectorLike!U && !isMatrixLike!U && is(typeof(U.init * S.init)))
     {
         return matrixAxpby(_alpha * u, _matA, _beta * u, _matB);
     }
 
 
-    auto opBinary(string op : "+", M)(M mat)
-    if(isMatrixLike!M)
+  static if(isZeros!MatB)
+  {
+    auto _opB_Impl_(string op, M)(M mat)
+    if(isMatrixLike!M && (op == "+" ||  op == "-"))
     in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
     {
-        static if(isZeros!MatB)
-        {
-            return matrixAxpby(_alpha, _matA, S(0), mat);
-        }
+        static if(is(M == MatrixAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
+            return matrixAxpby(_alpha, _matA, op == "+" ? mat._alpha : -mat._alpha, mat._matA);
         else
-            return OpImpls.opBinary!op(mat);
+            return matrixAxpby(_alpha, _matA, S(op == "+" ? 1 : -1), mat);
     }
+  }
+  else
+  {
+    mixin(definitionsOfMatrixOperators(["M+M"]));
+  }
 
 
   private:
@@ -674,6 +887,7 @@ struct VectorAxpby(T, VecA, VecB)
 if(isVectorLike!VecA && isVectorLike!VecB)
 {
     alias ElementType = typeof(T.init * VecA.ElementType.init + T.init * VecB.ElementType.init);
+    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(VecA, VecB))) + 1;
 
 
     this(T alpha, VecA vecA, T beta, VecB vecB)
@@ -701,44 +915,61 @@ if(isVectorLike!VecA && isVectorLike!VecB)
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
     in(dst.length == this.length)
     {
-        auto viewA = _vecA.makeViewOrNewSlice(alloc);
-        scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+        static if(!hasMemoryView!VecA && hasMemoryView!VecB)
+        {
+            vectorAxpby(_beta, _vecB, _alpha, _vecA).evalTo(dst, alloc);
+        }
+        else
+        {
+            auto viewA = _vecA.makeViewOrNewSlice(alloc);
+            scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
 
-        _vecB.evalTo(dst, alloc);
-        dst[] *= _beta;
+            _vecB.evalTo(dst, alloc);
+            dst[] *= _beta;
 
-        foreach(i; 0 .. this.length)
-            dst[i] += _alpha * viewA.view[i];
+            foreach(i; 0 .. this.length)
+                dst[i] += _alpha * viewA.view[i];
+        }
     }
 
 
-    mixin VectorOperators!(["V+V"]) OpImpls;
+    mixin VectorOperators!(["defaults", "V+V"]) OpImpls;
 
 
-    auto opBinary(string op : "*", U)(U u)
+    auto _opB_Impl_(string op : "*", U)(U u)
     if(!isVectorLike!U && !isMatrixLike!U && is(typeof(U.init * T.init)))
     {
-        return vectorAxpby(_alpha * u, _matA, _beta * u, _matB);
+        return vectorAxpby(_alpha * u, _vecA, _beta * u, _vecB);
     }
 
 
-    auto opBinaryRight(string op : "*", U)(U u)
+    auto _opBR_Impl_(string op : "*", U)(U u)
     if(!isVectorLike!U && !isMatrixLike!U && is(typeof(U.init * T.init)))
     {
-        return vectorAxpby(_alpha * u, _matA, _beta * u, _matB);
+        return vectorAxpby(_alpha * u, _vecA, _beta * u, _vecB);
     }
 
 
     static if(isZeros!VecB)
     {
-        auto opBinary(string op : "+", V)(V vec)
-        if(isVectorLike!V)
+        auto _opB_Impl_(string op, V)(V vec)
+        if(isVectorLike!V && (op == "+" || op == "-"))
         in(vec.length == vec.length)
         {
             static if(is(V == VectorAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
-                return vectorAxpby(_alpha, _vecA, vec._alpha, vec._vecA);
+                return vectorAxpby(_alpha, _vecA, op == "+" ? vec._alpha : -vec._alpha, vec._vecA);
             else
-                return vectorAxpby(_alpha, _vecA, T(1), vec);
+                return vectorAxpby(_alpha, _vecA, T(op == "+" ? 1 : -1), vec);
+        }
+
+        auto _opBR_Impl_(string op, V)(V vec)
+        if(isVectorLike!V && (op == "+" || op == "-"))
+        in(vec.length == vec.length)
+        {
+            static if(is(V == VectorAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
+                return vectorAxpby(op == "+" ? _alpha : -_alpha, _vecA, vec._alpha, vec._vecA);
+            else
+                return vectorAxpby(op == "+" ? _alpha : -_alpha, _vecA, T(1), vec);
         }
     }
     else
@@ -791,6 +1022,7 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
 {
     import std.functional : unaryFun;
     alias ElementType = typeof(unaryFun!fn(Mat.ElementType.init));
+    enum size_t exprTreeDepth = Mat.exprTreeDepth + 1;
 
 
     this(Mat mat)
@@ -820,7 +1052,7 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
     }
 
 
-    mixin MatrixOperators!(["M*V", "M+M", ".T", ".H"]);
+    mixin MatrixOperators!(["defaults", "M*V", "M+M", ".T", ".H"]);
   }
   else
   {
@@ -843,7 +1075,7 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
     }
 
 
-    mixin VectorOperators!(["S*V", "V*S", "V+V"]);
+    mixin VectorOperators!(["defaults", "S*V", "V*S", "V+V"]);
   }
 
 
@@ -886,6 +1118,7 @@ struct Transposed(Mat)
 if(isMatrixLike!Mat)
 {
     alias ElementType = Mat.ElementType;
+    enum size_t exprTreeDepth = Mat.exprTreeDepth + 1;
 
     this(Mat mat)
     {
@@ -925,7 +1158,7 @@ if(isMatrixLike!Mat)
     }
 
 
-    mixin MatrixOperators!(["M*V", "M+M", ".H"]);
+    mixin MatrixOperators!(["defaults", "M*V", "M+M", ".H"]);
 
 
   private:
@@ -978,36 +1211,84 @@ string definitionsOfVectorOperators(string[] list)
     import dffdd.math.vector;
     };
 
-    if(canFind(list, "S*V"))
+
+    if(canFind(list, "defaults"))
     dst ~= q{
-        auto opBinary(string op : "*", S)(S scalar)
-        if(!isVectorLike!S && !isMatrixLike!S && is(typeof(S.init * ElementType.init)))
+        auto opBinary(string op, X)(X rhs)
+        if(op == "+" || op == "-" || op == "*")
         {
-            return vectorAxpby(scalar, this, S(0), zeros!S(this.length));
+            static if(is(typeof(this._opB_Impl_!op(rhs))) && is(typeof(rhs._opBR_Impl_!op(this))))
+            {
+                alias T1 = typeof(this._opB_Impl_!op(rhs));
+                alias T2 = typeof(rhs._opBR_Impl_!op(this));
+                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                    return this._opB_Impl_!op(rhs);
+                else
+                    return rhs._opBR_Impl_!op(this);
+            }
+            else static if(is(typeof(this._opB_Impl_!op(rhs))))
+            {
+                return this._opB_Impl_!op(rhs);
+            }
+            else static if(is(typeof(rhs._opBR_Impl_!op(this))))
+            {
+                return rhs._opBR_Impl_!op(this);
+            }
+            else static assert(0, "Operator '(LHS) " ~ op ~ " (RHS)' is not defined with (LHS) = " ~ typeof(this).stringof ~ ", and (RHS) = " ~ X.stringof);
+        }
+
+
+        auto opBinaryRight(string op, X)(X rhs)
+        if(op == "+" || op == "-" || op == "*")
+        {
+            static if(is(typeof(this._opBR_Impl_!op(rhs))) && is(typeof(rhs._opB_Impl_!op(this))))
+            {
+                alias T1 = typeof(this._opBR_Impl_!op(rhs));
+                alias T2 = typeof(rhs._opB_Impl_!op(this));
+                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                    return this._opBR_Impl_!op(rhs);
+                else
+                    return rhs._opB_Impl_!op(this);
+            }
+            else static if(is(typeof(this._opBR_Impl_!op(rhs))))
+            {
+                return this._opBR_Impl_!op(rhs);
+            }
+            else static if(is(typeof(rhs._opB_Impl_!op(this))))
+            {
+                return rhs._opB_Impl_!op(this);
+            }
+            else static assert(0, "Operator '(LHS) " ~ op ~ " (RHS)' is not defined with (LHS) = " ~ X.stringof ~ ", and (RHS) = " ~ typeof(this).stringof);
         }
     };
 
 
-    if(canFind(list, "V*S"))
+    if(canFind(list, "V*S") || canFind(list, "S*V"))
     dst ~= q{
-        auto opBinaryRight(string op : "*", S)(S scalar)
+        auto _opB_Impl_(string op : "*", S)(S scalar)
         if(!isVectorLike!S && !isMatrixLike!S && is(typeof(S.init * ElementType.init)))
         {
-            return vectorAxpby(scalar, this, S(0), zeros!T(this.length));
+            return vectorAxpby(scalar, this, S(0), zeros!ElementType(this.length));
+        }
+
+        auto _opBR_Impl_(string op : "*", S)(S scalar)
+        if(!isVectorLike!S && !isMatrixLike!S && is(typeof(S.init * ElementType.init)))
+        {
+            return vectorAxpby(scalar, this, S(0), zeros!ElementType(this.length));
         }
     };
 
 
     if(canFind(list, "V+V"))
     dst ~= q{
-        auto opBinary(string op : "+", V)(V vec)
-        if(isVectorLike!V)
+        auto _opB_Impl_(string op, V)(V vec)
+        if(isVectorLike!V && (op == "+" || op == "-"))
         in(vec.length == this.length)
         {
             static if(isZeros!V)
                 return this;
             else
-                return vectorAxpby(ElementType(1), this, ElementType(1), vec);
+                return vectorAxpby(ElementType(1), this, ElementType(op == "+" ? 1 : -1), vec);
         }
     };
 
@@ -1060,9 +1341,62 @@ string definitionsOfMatrixOperators(string[] list)
     };
 
 
+    if(canFind(list, "defaults"))
+    dst ~= q{
+        auto opBinary(string op, X)(X rhs)
+        if(op == "+" || op == "-" || op == "*")
+        {
+            static if(is(typeof(this._opB_Impl_!op(rhs))) && is(typeof(rhs._opBR_Impl_!op(this))))
+            {
+                pragma(msg, typeof(this));
+                pragma(msg, X);
+                alias T1 = typeof(this._opB_Impl_!op(rhs));
+                alias T2 = typeof(rhs._opBR_Impl_!op(this));
+                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                    return this._opB_Impl_!op(rhs);
+                else
+                    return rhs._opBR_Impl_!op(this);
+            }
+            else static if(is(typeof(this._opB_Impl_!op(rhs))))
+            {
+                return this._opB_Impl_!op(rhs);
+            }
+            else static if(is(typeof(rhs._opBR_Impl_!op(this))))
+            {
+                return rhs._opBR_Impl_!op(this);
+            }
+            else static assert(0, "Operator '(LHS) " ~ op ~ " (RHS)' is not defined with (LHS) = " ~ typeof(this).stringof ~ ", and (RHS) = " ~ X.stringof);
+        }
+
+
+        auto opBinaryRight(string op, X)(X rhs)
+        if(op == "+" || op == "-" || op == "*")
+        {
+            static if(is(typeof(this._opBR_Impl_!op(rhs))) && is(typeof(rhs._opB_Impl_!op(this))))
+            {
+                alias T1 = typeof(this._opBR_Impl_!op(rhs));
+                alias T2 = typeof(rhs._opB_Impl_!op(this));
+                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                    return this._opBR_Impl_!op(rhs);
+                else
+                    return rhs._opB_Impl_!op(this);
+            }
+            else static if(is(typeof(this._opBR_Impl_!op(rhs))))
+            {
+                return this._opBR_Impl_!op(rhs);
+            }
+            else static if(is(typeof(rhs._opB_Impl_!op(this))))
+            {
+                return rhs._opB_Impl_!op(this);
+            }
+            else static assert(0, "Operator '(LHS) " ~ op ~ " (RHS)' is not defined with (LHS) = " ~ X.stringof ~ ", and (RHS) = " ~ typeof(this).stringof);
+        }
+    };
+
+
     if(canFind(list, "M*M"))
     dst ~= q{
-        auto opBinary(string op : "*", M)(M mat)
+        auto _opB_Impl_(string op : "*", M)(M mat)
         if(isMatrixLike!M)
         in(mat.length!0 == this.length!1)
         {
@@ -1076,9 +1410,16 @@ string definitionsOfMatrixOperators(string[] list)
     };
 
 
-    if(canFind(list, "M*S"))
+    if(canFind(list, "M*S") || canFind(list, "S*M"))
     dst ~= q{
-        auto opBinary(string op : "*", S)(S scalar)
+        auto _opB_Impl_(string op : "*", S)(S scalar)
+        if(!isVectorLike!S && !isMatrixLike!S && is(typeof(S.init * ElementType.init)))
+        {
+            return matrixAxpby(scalar, this, S(0), zeros!ElementType(this.length!0, this.length!1));
+        }
+
+
+        auto _opBR_Impl_(string op : "*", S)(S scalar)
         if(!isVectorLike!S && !isMatrixLike!S && is(typeof(S.init * ElementType.init)))
         {
             return matrixAxpby(scalar, this, S(0), zeros!ElementType(this.length!0, this.length!1));
@@ -1088,17 +1429,17 @@ string definitionsOfMatrixOperators(string[] list)
 
     if(canFind(list, "M+M"))
     dst ~= q{
-        auto opBinary(string op : "+", M)(M mat)
-        if(isMatrixLike!M)
+        auto _opB_Impl_(string op, M)(M mat)
+        if(isMatrixLike!M && (op == "+" || op =="-"))
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
             static if(isZeros!M)
                 return this;
             else {
                 static if(is(M == MatrixAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
-                    return matrixAxpby(ElementType(1), this, mat._alpha, mat._matA);
+                    return matrixAxpby(ElementType(1), this, op == "+" ? mat._alpha : -mat._alpha, mat._matA);
                 else
-                    return matrixAxpby(ElementType(1), this, S(1), mat);
+                    return matrixAxpby(ElementType(1), this, S(op == "+" ? 1 : -1), mat);
             }
         }
     };
@@ -1106,7 +1447,7 @@ string definitionsOfMatrixOperators(string[] list)
 
     if(canFind(list, "M*V"))
     dst ~= q{
-        auto opBinary(string op : "*", V)(V vec)
+        auto _opB_Impl_(string op : "*", V)(V vec)
         if(isVectorLike!V)
         in(vec.length == this.length!1)
         {

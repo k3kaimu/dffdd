@@ -5,6 +5,7 @@ import std.traits;
 import mir.ndslice;
 import dffdd.math.linalg;
 import std.experimental.allocator;
+import dffdd.math.exprtemplate : isExpressionTemplate;
 
 
 
@@ -32,7 +33,7 @@ auto vector(Iterator, SliceKind kind)(Slice!(Iterator, 1, kind) s)
 }
 
 
-enum isVectorLike(T) = is(typeof((T t, size_t i){
+enum isVectorLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
     T.ElementType e = t[i];
     size_t len = t.length;
 
@@ -44,12 +45,18 @@ enum isVectorLike(T) = is(typeof((T t, size_t i){
 
 struct VectoredSlice(Iterator, SliceKind kind)
 {
-    alias ElementType = Unqual!(typeof(typeof(this).init.opIndex(0)));
+    alias ElementType = Unqual!(typeof(Slice!(Iterator, 1, kind).init[0]));
+    enum size_t exprTreeDepth = 0;
 
 
     this(Slice!(Iterator, 1, kind) s)
     {
         _slice = s;
+
+        static if(is(Iterator == ElementType*))
+        {
+            _tmp = slice!ElementType(s.length);
+        }
     }
 
 
@@ -80,11 +87,33 @@ struct VectoredSlice(Iterator, SliceKind kind)
 
 
     import dffdd.math.exprtemplate;
-    mixin VectorOperators!(["S*V", "V*S", "V+V", "V=S", "V=V"]);
+    mixin(definitionsOfVectorOperators(["defaults", "V*S", "V+V"]));
+
+    static if(is(Iterator == ElementType*))
+    {
+        auto opSliceAssign(V)(V vec)
+        if(isVectorLike!V)
+        in(vec.length == this.length)
+        {
+            vec.evalTo(_tmp, matvecAllocator);
+            _slice[] = _tmp;
+        }
+
+        auto opSliceAssign(S)(S scalar)
+        if(!isMatrixLike!S && !isVectorLike!S)
+        {
+            this._slice[] = scalar;
+        }
+    }
 
 
   private:
     Slice!(Iterator, 1, kind) _slice;
+
+    static if(is(Iterator == ElementType*))
+    {
+        Slice!(ElementType*, 1, Contiguous) _tmp;
+    }
 }
 
 
