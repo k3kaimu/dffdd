@@ -64,7 +64,13 @@ struct VectoredSlice(Iterator, SliceKind kind)
 
 
     Slice!(Iterator, 1, kind) sliced() { return _slice; }
-    const(Slice!(Iterator, 1, kind)) sliced() const { return _slice; }
+    auto sliced() const { return _slice.lightConst; }
+
+
+    auto lightConst() const
+    {
+        return this.sliced.lightConst.vectored;
+    }
 
 
     auto ref opIndex(size_t n)
@@ -82,7 +88,7 @@ struct VectoredSlice(Iterator, SliceKind kind)
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
     in(dst.length == this.length)
     {
-        dst[] = _slice[];
+        dst[] = _slice.lightConst.as!(const(T));
     }
 
 

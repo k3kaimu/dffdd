@@ -358,7 +358,10 @@ struct ConstEye(E, E value)
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
-        dst[] = value;
+        import mir.ndslice : diagonal;
+
+        dst[] = T(0);
+        dst.diagonal[] = T(value);
     }
 
 
@@ -1166,7 +1169,7 @@ if(isMatrixLike!Mat)
 }
 
 
-Transposed!Mat matrixTransposed(Mat)(Mat mat)
+Transposed!Mat matrixTransposed(Mat)(in Mat mat)
 {
     return Transposed!Mat(mat);
 }

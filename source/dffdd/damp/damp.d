@@ -1,6 +1,6 @@
 module dffdd.damp.damp;
 
-import std.math : sqrt, isClose;
+import std.math : sqrt, isClose, SQRT2, SQRT1_2;
 import std.numeric : stddot = dotProduct;
 import std.algorithm : stdmap = map;
 import std.traits : isFloatingPoint, isArray;
@@ -13,12 +13,15 @@ import dffdd.math.exprtemplate : hasMemoryView;
 import mir.ndslice : SliceKind, Contiguous;
 
 
-Tuple!(F, "value", F, "drv") softThrBayesOpt(alias arrP, alias arrR, F)(F x, F sigma, F delta)
-if(isArray!(typeof(arrP)) && isArray!(typeof(arrR)) && isFloatingPoint!F && arrP.length >= 2 && arrP.length == arrR.length)
+Tuple!(F, "value", F, "drv") softThrBayesOpt(alias arrP_, alias arrR_, F)(F x, F sigma, F delta)
+if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && arrP_.length >= 2 && arrP_.length == arrR_.length)
 {
     import std.math : isNaN, abs;
     import std.algorithm : min;
     import dffdd.math.math : fast_exp;
+
+    enum F[] arrP = cast(F[])arrP_;
+    enum F[] arrR = arrR_;
 
     version(none)
     {
@@ -60,18 +63,23 @@ unittest
 }
 
 
-alias softThrBayesOpt2PAM(F) = softThrBayesOpt!([0.5, 0.5], [-1, 1], F);
-alias softThrBayesOpt4PAM(F) = softThrBayesOpt!([0.25, 0.25, 0.25, 0.25], [-3, -1, 1, 3], F);
-alias softThrBayesOpt8PAM(F) = softThrBayesOpt!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7, -5, -3, -1, 1, 3, 5, 7], F);
+alias softThrBayesOpt2PAM_BPSK(F) = softThrBayesOpt!([0.5, 0.5], [-1, 1], F);
+alias softThrBayesOpt2PAM_QPSK(F) = softThrBayesOpt!([0.5, 0.5], [-SQRT1_2, SQRT1_2], F);
+alias softThrBayesOpt4PAM_16QAM(F) = softThrBayesOpt!([0.25, 0.25, 0.25, 0.25], [-3/sqrt(10.0L), -1/sqrt(10.0L), 1/sqrt(10.0L), 3/sqrt(10.0L)], F);
+alias softThrBayesOpt8PAM_64QAM(F) = softThrBayesOpt!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7/sqrt(42.0L), -5/sqrt(42.0L), -3/sqrt(42.0L), -1/sqrt(42.0L), 1/sqrt(42.0L), 3/sqrt(42.0L), 5/sqrt(42.0L), 7/sqrt(42.0L)], F);
 
+pragma(msg, typeof(softThrBayesOpt8PAM_64QAM!float));
 
 // Tuple!(F[], "x_hat", F[], "arrMSE")
 
 Vector!(F, Contiguous)
     BODAMP(alias prox, F, VecY, MatA)
-        (in VecY y, MatA A, in F delta, in F theta0, uint nIteration)
+        (in VecY y_, in MatA A_, in F delta, in F theta0, size_t nIteration)
 if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!MatA && hasMemoryView!MatA && is(VecY.ElementType : F) && is(MatA.ElementType : F))
 {
+    auto y = y_.lightConst;
+    auto A = A_.lightConst;
+
     // Mが観測数，Nが未知変数の数
     immutable size_t M = A.length!0,
                      N = A.length!1;
@@ -161,3 +169,64 @@ unittest
     assert(xhat2[9].isClose(+1, 1e-3));
 }
 
+
+// unittest
+// {
+//     import std.stdio;
+
+
+//     import mir.ndslice;
+
+//     auto A = [0.154508497187474,  -0.404508497187474,   0.500000000000000, -0.404508497187474,  0.154508497187474,    0.154508497187474,  -0.404508497187474,   0.500000000000000, -0.404508497187473,  0.154508497187473,
+//     0.226995249869773,  -0.493844170297569,   0.353553390593274, 0.0782172325201156,  -0.445503262094184,   0.445503262094184, -0.0782172325201147, -0.353553390593274,  0.493844170297569,    -0.226995249869773,
+//     0.445503262094184,  0.0782172325201155,   -0.353553390593274,    -0.493844170297569, -0.226995249869773,  0.226995249869773,    0.493844170297569,  0.353553390593274,    -0.0782172325201148,    -0.445503262094184,
+//     0.475528258147577,  0.293892626146237,    3.06161699786838e-17,   -0.293892626146237,    -0.475528258147577, -0.475528258147577,  -0.293892626146237,   -9.18485099360515e-17, 0.293892626146236,   0.475528258147577,
+//     0.353553390593274,  0.353553390593274,    0.353553390593274,  0.353553390593274,    0.353553390593274,  0.353553390593274,    0.353553390593274,  0.353553390593274,    0.353553390593274,  0.353553390593274,
+//     0.293892626146237,  -0.475528258147577,   -9.18485099360515e-17, 0.475528258147577,   -0.293892626146236,    -0.293892626146237, 0.475528258147577,   2.75545529808155e-16,  -0.475528258147577,   0.293892626146237,
+//     0.493844170297569,  0.445503262094184,    0.353553390593274,  0.226995249869773,    0.0782172325201155, -0.0782172325201154, -0.226995249869773,  -0.353553390593274,   -0.445503262094184,    -0.493844170297569,
+//     0.353553390593274,  -0.353553390593274,   -0.353553390593274,    0.353553390593274,  0.353553390593274,    -0.353553390593273, -0.353553390593274,  0.353553390593273,    0.353553390593274,  -0.353553390593273,
+//     ].sliced(8, 10).matrixed;
+
+//     auto y = [
+//         -1.28215055669155,
+//         -1.66816398020785,
+//         -0.754100947195077,
+//         -0.383613576155461,
+//         0.0283159355873546,
+//         0.632749822786152,
+//         0.0594063301905325,
+//         -0.479439519212030].sliced.vectored;
+
+//     auto delta = 0.8;
+//     enum arrP = [0.5, 0, 0.5];
+//     enum double[] arrR = [-SQRT1_2, 0, SQRT1_2];
+//     auto theta0 = sqrt(stddot(arrP, arrR.stdmap!"a^^2"));
+
+//     int nIteration = 2;
+//     import std.stdio;
+
+//     auto xhat1 = BODAMP!((e, v, d) => softThrBayesOpt!(arrP, arrR)(e, v, d))(y, A, delta, theta0, 3);
+//     writeln(xhat1.sliced);
+//     // assert(xhat1[0].isClose(-0.9729, 1e-3));
+//     // assert(xhat1[1].isClose(+0.9744, 1e-3));
+//     // assert(xhat1[2].isClose(-0.9220, 1e-3));
+//     // assert(xhat1[3].isClose(+0.9716, 1e-3));
+//     // assert(xhat1[4].isClose(+0.8439, 1e-3));
+//     // assert(xhat1[5].isClose(-0.9594, 1e-3));
+//     // assert(xhat1[6].isClose(+0.9440, 1e-3));
+//     // assert(xhat1[7].isClose(-0.8160, 1e-3));
+//     // assert(xhat1[8].isClose(-0.9436, 1e-3));
+//     // assert(xhat1[9].isClose(+0.8961, 1e-3));
+
+//     // auto xhat2 = BODAMP!((e, v, d) => softThrBayesOpt!(arrP, arrR)(e, v, d))(y, A, delta, theta0, 20);
+//     // assert(xhat2[0].isClose(-1, 1e-3));
+//     // assert(xhat2[1].isClose(+1, 1e-3));
+//     // assert(xhat2[2].isClose(-1, 1e-3));
+//     // assert(xhat2[3].isClose(+1, 1e-3));
+//     // assert(xhat2[4].isClose(+1, 1e-3));
+//     // assert(xhat2[5].isClose(-1, 1e-3));
+//     // assert(xhat2[6].isClose(+1, 1e-3));
+//     // assert(xhat2[7].isClose(-1, 1e-3));
+//     // assert(xhat2[8].isClose(-1, 1e-3));
+//     // assert(xhat2[9].isClose(+1, 1e-3));
+// }

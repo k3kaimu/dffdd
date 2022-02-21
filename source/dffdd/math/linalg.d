@@ -5,6 +5,7 @@ import std.experimental.allocator;
 
 import dffdd.math.complex;
 import dffdd.math.vector;
+import dffdd.math.matrix;
 import dffdd.math.exprtemplate : makeViewOrNewSlice, matvecAllocator;
 
 import mir.ndslice;
@@ -356,4 +357,236 @@ do
         cast(MirComplex!E*)c.iterator,
         cast(cblas.blasint) c.matrixStride,
     );
+}
+
+
+/**
+複素行列を以下のような実数行列へ変換します
+[[R  -I],
+ [I   R]]
+ここで，RはRe{M}でIはIm{M}です
+*/
+RealMatrixRIIRStructure!Mat toRealRIIR(Mat)(Mat mat)
+if(isMatrixLike!Mat && isComplex!(Mat.ElementType))
+{
+    return RealMatrixRIIRStructure!Mat(mat);
+}
+
+
+struct RealMatrixRIIRStructure(Mat)
+if(isMatrixLike!Mat && isComplex!(Mat.ElementType))
+{
+    alias ElementType = typeof(Mat.ElementType.init.re);
+    enum exprTreeDepth = Mat.exprTreeDepth + 1;
+
+
+    this(Mat mat)
+    {
+        _mat = mat;
+    }
+
+
+    size_t length(size_t dim)() const {
+        return _mat.length!dim * 2;
+    }
+
+
+    ElementType opIndex(size_t i, size_t j) const
+    {
+        if(i < _mat.length!0 && j < _mat.length!1)
+            return _mat[i, j].re;
+        else if(i < _mat.length!0 && j >= _mat.length!1)
+            return -_mat[i, j - _mat.length!1].im;
+        else if(i >= _mat.length!0 && j < _mat.length!1)
+            return _mat[i - _mat.length!0, j].im;
+        else
+            return _mat[i - _mat.length!0, j - _mat.length!1].re;
+    }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+    {
+        auto viewA = _mat.makeViewOrNewSlice(alloc);
+        scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+
+        auto v = viewA.view.lightConst;
+        immutable N = v.length!0,
+                  M = v.length!1;
+
+        dst[0 .. N  , 0 .. M  ] = v.map!"a.re";
+        dst[0 .. N  , M .. M*2] = v.map!"-a.im";
+        dst[N .. N*2, 0 .. M  ] = v.map!"a.im";
+        dst[N .. N*2, M .. M*2] = v.map!"a.re";
+    }
+
+
+    import dffdd.math.exprtemplate;
+    mixin(definitionsOfMatrixOperators(["M+M", "M*M", "M*V", "M*S", ".T", ".H"]));
+    
+
+  private:
+    Mat _mat;
+}
+
+unittest
+{
+    alias C = MirComplex!float;
+    auto cmat = [C(1, 2)].sliced(1, 1).matrixed;
+    auto rmat = cmat.toRealRIIR;
+    assert(rmat[0, 0] == 1);
+    assert(rmat[0, 1] == -2);
+    assert(rmat[1, 0] == 2);
+    assert(rmat[1, 1] == 1);
+
+    auto s = slice!float(2, 2);
+    rmat.evalTo(s, matvecAllocator);
+    assert(s == [[1, -2], [2, 1]]);
+}
+
+
+
+/**
+複素ベクトルを[R I]という実数ベクトルへ変換します．
+*/
+RealVectorRIStructure!Vec toRealRI(Vec)(Vec vec)
+if(isVectorLike!Vec && isComplex!(Vec.ElementType))
+{
+    return RealVectorRIStructure!Vec(vec);
+}
+
+
+struct RealVectorRIStructure(Vec)
+if(isVectorLike!Vec && isComplex!(Vec.ElementType))
+{
+    alias ElementType = typeof(Vec.ElementType.init.re);
+    enum exprTreeDepth = Vec.exprTreeDepth + 1;
+
+
+    this(Vec vec)
+    {
+        _vec = vec;
+    }
+
+
+    size_t length() const {
+        return _vec.length * 2;
+    }
+
+
+    ElementType opIndex(size_t i) const
+    {
+        if(i < _vec.length)
+            return _vec[i].re;
+        else
+            return _vec[i - _vec.length].im;
+    }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    in(dst.length == this.length)
+    {
+        auto viewA = _vec.makeViewOrNewSlice(alloc);
+        scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+
+        auto v = viewA.view.lightConst;
+        immutable N = v.length;
+
+        dst[0 .. N  ] = v.map!"a.re";
+        dst[N .. N*2] = v.map!"a.im";
+    }
+
+
+    import dffdd.math.exprtemplate;
+    mixin(definitionsOfVectorOperators(["V+V", "V*S"]));
+
+  private:
+    Vec _vec;
+}
+
+
+unittest
+{
+    alias C = MirComplex!float;
+    auto cvec = [C(1, 2)].sliced(1).vectored;
+    auto rvec = cvec.toRealRI;
+    assert(rvec[0] == 1);
+    assert(rvec[1] == 2);
+
+    auto s = slice!float(2);
+    rvec.evalTo(s, matvecAllocator);
+    assert(s == [1, 2]);
+}
+
+
+
+/**
+実数ベクトルを複素ベクトルへ変換します
+*/
+ComplexVectorFromRIStructure!(C!(Vec.ElementType), Vec) fromRealRI(alias C = MirComplex, Vec)(Vec vec)
+if(isVectorLike!Vec && !isComplex!(Vec.ElementType))
+in(vec.length % 2 == 0)
+{
+    return ComplexVectorFromRIStructure!(C!(Vec.ElementType), Vec)(vec);
+}
+
+
+struct ComplexVectorFromRIStructure(C, Vec)
+if(isVectorLike!Vec && !isComplex!(Vec.ElementType) && isComplex!C)
+{
+    alias ElementType = C;
+    enum exprTreeDepth = Vec.exprTreeDepth + 1;
+
+
+    this(Vec vec)
+    {
+        _vec = vec;
+    }
+
+
+    size_t length() const {
+        return _vec.length / 2;
+    }
+
+
+    ElementType opIndex(size_t i) const
+    {
+        return C(_vec[i], _vec[i + _vec.length/2]);
+    }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    in(dst.length == this.length)
+    {
+        auto viewA = _vec.makeViewOrNewSlice(alloc);
+        scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+
+        auto v = viewA.view.lightConst;
+        immutable N = v.length;
+
+        dst[] += v[0 .. $/2].map!(a => C(a, 0));
+        dst[] += v[$/2 .. $].map!(a => C(0, a));
+    }
+
+
+    import dffdd.math.exprtemplate;
+    mixin(definitionsOfVectorOperators(["V+V", "V*S"]));
+
+  private:
+    Vec _vec;
+}
+
+unittest
+{
+    alias C = MirComplex!float;
+    auto cvec = [C(1, 2)].sliced(1).vectored;
+    auto rvec = cvec.toRealRI;
+    assert(rvec[0] == 1);
+    assert(rvec[1] == 2);
+
+    auto cvec2 = rvec.fromRealRI;
+    assert(cvec2[0] == C(1, 2));
+    auto s = slice!C(1);
+    cvec2.evalTo(s, matvecAllocator);
+    assert(s == [C(1, 2)]);
 }

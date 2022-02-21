@@ -68,7 +68,13 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
 
     Slice!(Iterator, 2, kind) sliced() { return _slice; }
-    const(Slice!(Iterator, 2, kind)) sliced() const { return _slice; }
+    auto sliced() const { return _slice.lightConst; }
+
+
+    auto lightConst() const
+    {
+        return this.sliced.lightConst.matrixed;
+    }
 
 
     auto ref opIndex(size_t i, size_t j)
@@ -96,6 +102,12 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     }
 
 
+    auto T() const
+    {
+        return _slice.lightConst.transposed.matrixed;
+    }
+
+
     import dffdd.math.exprtemplate;
     mixin(definitionsOfMatrixOperators(["defaults", "M*M", "M*V", "M*S", ".H"]));
 
@@ -103,7 +115,7 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     static if(is(Iterator == ElementType*))
     {
         auto opSliceAssign(M)(M mat)
-        if(isMattrixLike!M)
+        if(isMatrixLike!M)
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
             mat.evalTo(_tmp, matvecAllocator);
