@@ -13,24 +13,6 @@ import dffdd.mod;
 import dffdd.math;
 
 
-unittest
-{
-    import std.stdio;
-    // alias C = Complex!double;
-    alias C = MirComplex!double;
-    import kaleidic.lubeck;
-    auto data = slice!C(3, 3);
-    data[] = [[C(12), C(-51),   C(4)],
-              [C(6), C(167), C(-68)],
-              [C(-4),  C(24), C(-41)]];
-
-    auto res = qrDecomp(data);
-    // writeln(res.Q);
-    // writeln(res.R);
-    // res.Q.mtimes(res.R).writeln();
-}
-
-
 struct GaBPWorkspace(C, Mod)
 if(is(Mod == BPSK!C) || is(Mod == QPSK!C))
 {
@@ -215,7 +197,7 @@ class GaBPDetector(C, Mod, GaBPDetectorMode mode)
     alias InputElementType = C;
 
   static if(mode == GaBPDetectorMode.toBit)
-    alias OutputElementType = Y;
+    alias OutputElementType = Bit;
   else static if(mode == GaBPDetectorMode.toSoftSymbol)
     alias OutputElementType = C;
   else
