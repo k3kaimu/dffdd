@@ -659,3 +659,32 @@ unittest
             assert(mul[i, j].im.isClose(mat[i, j].im));
         }
 }
+
+
+// unittest
+// {
+//     import std.math : isClose;
+
+//     alias C = MirComplex!double;
+//     auto mat = matrix!C(3, 2);
+//     mat.sliced()[] =
+//         [[C(1), C(2)],
+//          [C(3), C(4)],
+//          [C(5), C(6)]];
+
+//     auto matQ = matrix!C(3, 3);
+//     auto matR = matrix!C(3, 2);
+
+//     mat.qrDecomp(matQ, matR);
+
+//     import std.stdio;
+//     writeln(matQ.sliced);
+//     writeln(matR.sliced);
+//     auto mul = matrix!C(3, 3);
+//     mul[] = matQ * matR;
+//     foreach(i; 0 .. 3)
+//         foreach(j; 0 .. 3) {
+//             assert(mul[i, j].re.isClose(mat[i, j].re));
+//             assert(mul[i, j].im.isClose(mat[i, j].im));
+//         }
+// }
