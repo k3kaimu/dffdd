@@ -361,6 +361,42 @@ unittest
 
 
 
+/**変調器の全Constellationを返します．mod.symOutputLength == 1でないといけません
+*/
+Mod.OutputElementType[] allConstellationPoints(Mod)(Mod mod)
+if(isModulator!Mod)
+in(mod.symOutputLength == 1)
+{
+    alias C = Mod.OutputElementType;
+
+    size_t nbits = mod.symInputLength;
+
+    C[] sym = new C[1];
+    Bit[] bs = new Bit[nbits];
+    C[] points = [];
+    foreach(n; 0 .. 1 << nbits) {
+        foreach(k; 0 .. nbits)
+            bs[k] = (n & (1 << k)) ? 1 : 0;
+
+        mod.modulate(bs, sym);
+        points ~= sym[0];
+    }
+
+    return points;
+}
+
+unittest
+{
+    import dffdd.mod.bpsk;
+    import dffdd.mod.qpsk;
+    import dffdd.mod.qam;
+
+    alias C = Complex!float;
+
+    assert(BPSK!C().allConstellationPoints == [C(1, 0), C(-1, 0)]);
+    assert(QPSK!C().allConstellationPoints
+        == [C(SQRT1_2, SQRT1_2), C(-SQRT1_2, SQRT1_2), C(SQRT1_2, -SQRT1_2), C(-SQRT1_2, -SQRT1_2)]);
+}
 
 
 
@@ -372,16 +408,7 @@ struct P0P1Calculator(C, F)
         _nbits = mod.symInputLength;
         _p0 = new F[_nbits];
         _p1 = new F[_nbits];
-
-        C[] sym = new C[1];
-        Bit[] bits = new Bit[_nbits];
-        foreach(n; 0 .. 1 << _nbits) {
-            foreach(k; 0 .. _nbits)
-                bits[k] = (n & (1 << k)) ? 1 : 0;
-
-            mod.modulate(bits, sym);
-            _points ~= sym[0];
-        }
+        _points = mod.allConstellationPoints();
     }
 
 
