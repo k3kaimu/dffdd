@@ -25,7 +25,7 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
     alias OutputElementType = C;
 
 
-    this(Mat)(Mod mod, in Mat chMat, size_t maxIter = 20)
+    this(Mat)(Mod mod, in Mat chMat, size_t maxIter = 20, F damp1_1 = 1, F damp1_2 = 1, F damp2_1 = 1, F damp2_2 = 1)
     if(isMatrixLike!Mat)
     {
         _mod = mod;
@@ -33,6 +33,10 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
         _chMat[] = chMat.toRealRIIR;
         _delta = _chMat.length!0 * 1.0 / _chMat.length!1;
         _maxIter = maxIter;
+        _damp1_1 = damp1_1;
+        _damp1_2 = damp1_2;
+        _damp2_1 = damp2_1;
+        _damp2_2 = damp2_2;
     }
 
 
@@ -54,27 +58,29 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
         auto inpvecs = vector!F(M * 2);
         foreach(n; 0 .. received.length / M) {
             inpvecs[] = received[M * n  .. M * (n+1)].sliced.vectored.toRealRI;
+            // import std.stdio;
+            // writeln(inpvecs.sliced);
             Vector!(F, Contiguous) res;
 
             switch(_mod.symInputLength) {
                 case 2: // QPSK
                     res = BODAMP!(softThrBayesOpt2PAM_QPSK!F, F)
-                        (inpvecs, _chMat, _delta, 0.5, _maxIter);
+                        (inpvecs, _chMat, _delta, 0.5, _maxIter, _damp1_1, _damp1_2, _damp2_1, _damp2_2);
                     break;
                 case 4: // 16QAM
                     res = BODAMP!(softThrBayesOpt4PAM_16QAM!F, F)
-                        (inpvecs, _chMat, _delta, 0.5, _maxIter);
+                        (inpvecs, _chMat, _delta, 0.5, _maxIter, _damp1_1, _damp1_2, _damp2_1, _damp2_2);
                     break;
                 case 6: // 64QAM
                     res = BODAMP!(softThrBayesOpt8PAM_64QAM!F, F)
-                        (inpvecs, _chMat, _delta, 0.5, _maxIter);
+                        (inpvecs, _chMat, _delta, 0.5, _maxIter, _damp1_1, _damp1_2, _damp2_1, _damp2_2);
                     break;
                 default: {
                     import std.conv;
                     assert(0, "Unsupported modulation scheme: " ~ _mod.to!string);
                 }
-
             }
+            // writeln(res);
             detected[N * n .. N * (n+1)].sliced.vectored[] = res.fromRealRI;
         }
 
@@ -82,10 +88,14 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
     }
 
 
-  private:
+//   private:
     Mod _mod; 
     Matrix!(F, Contiguous) _chMat;
     double _delta;
+    double _damp1_1;
+    double _damp1_2;
+    double _damp2_1;
+    double _damp2_2;
     size_t _maxIter;
 }
 
@@ -106,7 +116,9 @@ unittest
     assert(dst[0].im.isClose(recv[0].im));
     assert(dst[1].re.isClose(recv[1].re));
     assert(dst[1].im.isClose(recv[1].im));
+    
 }
+
 
 // unittest
 // {
