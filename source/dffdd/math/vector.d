@@ -33,6 +33,21 @@ auto vector(Iterator, SliceKind kind)(Slice!(Iterator, 1, kind) s)
 }
 
 
+auto makeVector(T, Alloc)(ref Alloc alloc, size_t size)
+{
+    T[] arr = alloc.makeArray!(T)(size);
+    return arr.sliced.vectored;
+}
+
+
+auto makeVector(T, Alloc)(ref Alloc alloc, size_t size, T init)
+{
+    T[] arr = alloc.makeArray!(T)(size);
+    arr[] = init;
+    return arr.sliced.vectored;
+}
+
+
 enum isVectorLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
     T.ElementType e = t[i];
     size_t len = t.length;

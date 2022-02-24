@@ -33,6 +33,21 @@ auto matrix(Iterator, SliceKind kind)(Slice!(Iterator, 2, kind) s)
 }
 
 
+auto makeMatrix(T, Alloc)(ref Alloc alloc, size_t row, size_t col)
+{
+    T[] arr = alloc.makeArray!(T)(row * col);
+    return arr.sliced(row, col).matrixed;
+}
+
+
+auto makeMatrix(T, Alloc)(ref Alloc alloc, size_t row, size_t col, T init)
+{
+    T[] arr = alloc.makeArray!(T)(row * col);
+    arr[] = init;
+    return arr.sliced(row, col).matrixed;
+}
+
+
 enum isMatrixLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
     T.ElementType e = t[i, i];
     size_t rowlen = t.length!0;
@@ -86,6 +101,18 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     auto opIndex(size_t i, size_t j) const
     {
         return _slice[i, j];
+    }
+
+
+    auto rowVec(size_t r)
+    {
+        return _slice[r, 0 .. $].vectored;
+    }
+
+
+    auto colVec(size_t c)
+    {
+        return _slice[0 .. $, c].vectored;
     }
 
 
