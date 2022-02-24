@@ -21,7 +21,8 @@ alias matvecAllocator = theAllocator;
 enum isExpressionTemplate(T) = is(typeof(T.exprTreeDepth) : size_t);
 enum exprTreeDepth(T) = T.exprTreeDepth;
 
-enum hasMemoryView(T) = is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 1, kind), SliceKind kind)
+enum hasMemoryView(T) = (is(typeof(T.init.sliced().lightScope())) && hasMemoryView!(typeof(T.init.sliced().lightScope())))
+                     || is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 1, kind), SliceKind kind)
                      || (is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 2, kind), SliceKind kind) && (kind == Contiguous || kind == Canonical));
 
 /** 
@@ -31,7 +32,9 @@ auto makeViewOrNewSlice(Vec, Alloc)(const Vec vec, ref Alloc alloc)
 if(isVectorLike!Vec)
 {
     static if(hasMemoryView!Vec)
-        return tuple!("view", "isAllocated")(vec.sliced.lightConst, false);
+    {
+        return tuple!("view", "isAllocated")(vec.sliced.lightScope.lightConst, false);
+    }
     else
     {
         // import std.stdio;
@@ -62,7 +65,7 @@ if(isMatrixLike!Mat)
 {
     static if(hasMemoryView!Mat)
     {
-        return tuple!("view", "isAllocated")(mat.sliced, false);
+        return tuple!("view", "isAllocated")(mat.sliced.lightScope.lightConst, false);
     }
     else
     {
