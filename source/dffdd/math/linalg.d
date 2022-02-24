@@ -619,3 +619,43 @@ unittest
     cmul.evalTo(s, matvecAllocator);
     assert(s == [C(1, 2) * C(1, 2)]);
 }
+
+
+void qrDecomp(MatA, C, SliceKind kindQ, SliceKind kindR, Alloc)(in MatA matA, MatrixedSlice!(C*, kindQ) matQ, MatrixedSlice!(C*, kindR) matR, ref Alloc alloc = matvecAllocator)
+in(matA.length!0 == matQ.length!0)
+in(matQ.length!0 == matQ.length!1)
+in(matA.length!0 == matR.length!0)
+in(matA.length!1 == matR.length!1)
+{
+    import kaleidic.lubeck2 : qr;
+
+    auto viewA = makeViewOrNewSlice(matA, alloc);
+    scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+
+    auto qrResult = qr(viewA.view);
+    matQ.sliced()[] = qrResult.Q;
+    matR.sliced()[] = qrResult.R;
+}
+
+unittest
+{
+    import std.math : isClose;
+
+    alias C = MirComplex!double;
+    auto mat = matrix!C(3, 3);
+    mat.sliced()[] = [[C(12), C(-51),   C(4)],
+              [C(6), C(167), C(-68)],
+              [C(-4),  C(24), C(-41)]];
+
+    auto matQ = matrix!C(3, 3);
+    auto matR = matrix!C(3, 3);
+
+    mat.qrDecomp(matQ, matR);
+    auto mul = matrix!C(3, 3);
+    mul[] = matQ * matR;
+    foreach(i; 0 .. 3)
+        foreach(j; 0 .. 3) {
+            assert(mul[i, j].re.isClose(mat[i, j].re));
+            assert(mul[i, j].im.isClose(mat[i, j].im));
+        }
+}
