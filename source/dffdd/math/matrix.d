@@ -122,10 +122,34 @@ struct MatrixedSlice(Iterator, SliceKind kind)
             _slice[] = _tmp;
         }
 
+
+        auto opSliceOpAssign(string op, M)(M mat)
+        if(isMatrixLike!M && (op == "+" || op == "-"))
+        in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
+        {
+            mat.evalTo(_tmp, matvecAllocator);
+
+            static if(op == "+")
+                _slice[] += _tmp;
+            else
+                _slice[] -= _tmp;
+        }
+
+
         auto opSliceAssign(S)(S scalar)
         if(!isMatrixLike!S && !isVectorLike!S)
         {
             this._slice[] = scalar;
+        }
+
+
+        auto opSliceOpAssign(string op, S)(S scalar)
+        if(!isMatrixLike!S && !isVectorLike!S && (op == "+" || op == "-"))
+        {
+            static if(op == "+")
+                this._slice[] += scalar;
+            else
+                this._slice[] -= scalar;
         }
     }
 

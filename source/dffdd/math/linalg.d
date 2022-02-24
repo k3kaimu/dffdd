@@ -144,8 +144,12 @@ in(vecA.length == vecB.length)
     }
     else
     {
-        alias Ret = typeof(vecA[0] * vecB[0]);
-        return reduce!(a => a + conj(b) * c)(Ret(0), vecA.sliced.as!Ret, vecB.sliced.as!Ret);
+        alias Ret = Unqual!(typeof(vecA[0] * vecB[0]));
+
+        static if(isComplex!Ret)
+            return reduce!((a, b, c) => a + conj(b) * c)(Ret(0), vecA.sliced.as!Ret, vecB.sliced.as!Ret);
+        else
+            return reduce!((a, b, c) => a + b * c)(Ret(0), vecA.sliced.as!Ret, vecB.sliced.as!Ret);
     }
 }
 
@@ -422,7 +426,7 @@ if(isMatrixLike!Mat && isComplex!(Mat.ElementType))
 
 
     import dffdd.math.exprtemplate;
-    mixin(definitionsOfMatrixOperators(["M+M", "M*M", "M*V", "M*S", ".T", ".H"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*M", "M*V", "M*S", ".T", ".H"]));
     
 
   private:
@@ -498,7 +502,7 @@ if(isVectorLike!Vec && isComplex!(Vec.ElementType))
 
 
     import dffdd.math.exprtemplate;
-    mixin(definitionsOfVectorOperators(["V+V", "V*S"]));
+    mixin(definitionsOfVectorOperators(["defaults", "V+V", "V*S"]));
 
   private:
     Vec _vec;
@@ -564,13 +568,13 @@ if(isVectorLike!Vec && !isComplex!(Vec.ElementType) && isComplex!C)
         auto v = viewA.view.lightConst;
         immutable N = v.length;
 
-        dst[] += v[0 .. $/2].map!(a => C(a, 0));
-        dst[] += v[$/2 .. $].map!(a => C(0, a));
+        dst[] += v[0 .. $/2].map!(a => T(a, 0));
+        dst[] += v[$/2 .. $].map!(a => T(0, a));
     }
 
 
     import dffdd.math.exprtemplate;
-    mixin(definitionsOfVectorOperators(["V+V", "V*S"]));
+    mixin(definitionsOfVectorOperators(["defaults", "V+V", "V*S"]));
 
   private:
     Vec _vec;
@@ -589,4 +593,29 @@ unittest
     auto s = slice!C(1);
     cvec2.evalTo(s, matvecAllocator);
     assert(s == [C(1, 2)]);
+}
+
+
+unittest
+{
+    alias C = MirComplex!float;
+    auto cmat = [C(1, 2)].sliced(1, 1).matrixed;
+    auto rmat = cmat.toRealRIIR;
+    assert(rmat[0, 0] == 1);
+    assert(rmat[0, 1] == -2);
+    assert(rmat[1, 0] == 2);
+    assert(rmat[1, 1] == 1);
+
+    auto cvec = [C(1, 2)].sliced(1).vectored;
+    auto rvec = cvec.toRealRI;
+    assert(rvec[0] == 1);
+    assert(rvec[1] == 2);
+
+    auto rmul = rmat * rvec;
+    auto cmul = rmul.fromRealRI;
+    assert(cmul[0] == C(1, 2) * C(1, 2));
+
+    auto s = slice!C(1);
+    cmul.evalTo(s, matvecAllocator);
+    assert(s == [C(1, 2) * C(1, 2)]);
 }

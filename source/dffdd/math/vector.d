@@ -105,10 +105,34 @@ struct VectoredSlice(Iterator, SliceKind kind)
             _slice[] = _tmp;
         }
 
+
+        auto opSliceOpAssign(string op, V)(V vec)
+        if(isVectorLike!V && (op == "+" || op == "-"))
+        in(vec.length == this.length)
+        {
+            vec.evalTo(_tmp, matvecAllocator);
+
+            static if(op == "+")
+                _slice[] += _tmp;
+            else
+                _slice[] -= _tmp;
+        }
+
+
         auto opSliceAssign(S)(S scalar)
         if(!isMatrixLike!S && !isVectorLike!S)
         {
             this._slice[] = scalar;
+        }
+
+
+        auto opSliceOpAssign(string op, S)(S scalar)
+        if(!isMatrixLike!S && !isVectorLike!S && (op == "+" || op == "-"))
+        {
+            static if(op == "+")
+                this._slice[] += scalar;
+            else
+                this._slice[] -= scalar;
         }
     }
 
