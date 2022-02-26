@@ -99,8 +99,6 @@ if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!
     wprox[] = w.sliced.map!(e => prox(e, theta, delta));
 
     foreach(iter; 1 .. nIteration) {
-        // F damp2 = 0.2 * iter / nIteration + 0.2 * (1 - 1.0 * iter / nIteration);
-        // F damp1 = 0.05 * iter / nIteration + 1.0 * (1 - 1.0 * iter / nIteration);
         F damp2 = damp2_2 * iter / nIteration + damp2_1 * (1 - 1.0 * iter / nIteration);
         F damp1 = damp1_2 * iter / nIteration + damp1_1 * (1 - 1.0 * iter / nIteration);
 
