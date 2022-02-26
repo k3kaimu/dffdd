@@ -17,8 +17,7 @@ import dffdd.math.linalg : isBlasType;
 alias matvecAllocator = theAllocator;
 
 
-
-enum isExpressionTemplate(T) = is(typeof(T.exprTreeDepth) : size_t);
+enum isExpressionTemplate(T) = is(typeof(T.exprTreeDepth) : float);
 enum exprTreeDepth(T) = T.exprTreeDepth;
 
 enum hasMemoryView(T) = (is(typeof(T.init.sliced().lightScope())) && hasMemoryView!(typeof(T.init.sliced().lightScope())))
@@ -132,7 +131,7 @@ struct AllSameElements(E, size_t Dim)
 if(is(typeof(value) : E) && (Dim == 1 || Dim == 2))
 {
     alias ElementType = E;
-    enum size_t exprTreeDepth = 1;
+    enum float exprTreeDepth = 1;
 
     this(size_t[Dim] len, E value){
         this._len = len;
@@ -243,7 +242,7 @@ struct ConstAll(E, E value, size_t Dim)
 if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
 {
     alias ElementType = E;
-    enum size_t exprTreeDepth = 1;
+    enum float exprTreeDepth = 1;
 
 
     this(size_t[Dim] len...){ this._len = len; }
@@ -340,7 +339,7 @@ enum isZeros(T) = is(Unqual!T == ZeroMatrix!(T.ElementType)) || is(Unqual!T == Z
 struct ConstEye(E, E value)
 {
     alias ElementType = E;
-    enum size_t exprTreeDepth = 1;
+    enum float exprTreeDepth = 1;
 
 
     this(size_t len){ this._len = len; }
@@ -373,7 +372,55 @@ struct ConstEye(E, E value)
     }
 
 
-    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*M", "M*V", "M*S"]));
+    static if(value == 1)
+    {
+        auto _opB_Impl_(string op : "*", V)(V vec)
+        if(isVectorLike!V)
+        in(vec.length == this.length!1)
+        {
+            return vec;
+        }
+
+        auto _opB_Impl_(string op : "*", M)(M mat)
+        if(isMatrixLike!M)
+        in(mat.length!1 == this.length!0)
+        {
+            return mat;
+        }
+
+        auto _opBR_Impl_(string op : "*", M)(M mat)
+        if(isMatrixLike!M)
+        in(mat.length!0 == this.length!1)
+        {
+            return mat;
+        }
+    }
+    else
+    {
+        auto _opB_Impl_(string op : "*", V)(V vec)
+        if(isVectorLike!V)
+        in(vec.length == this.length!1)
+        {
+            return vec * value;
+        }
+
+        auto _opB_Impl_(string op : "*", M)(M mat)
+        if(isMatrixLike!M)
+        in(mat.length!1 == this.length!0)
+        {
+            return mat * value;
+        }
+
+        auto _opBR_Impl_(string op : "*", M)(M mat)
+        if(isMatrixLike!M)
+        in(mat.length!0 == this.length!1)
+        {
+            return mat * value;
+        }
+    }
+
+
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
 
 
   private:
@@ -410,7 +457,7 @@ enum isIdentity(T) = is(Unqual!T == Identity!(T.ElementType));
 struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
 {
     alias ElementType = typeof(S.init * MatA.ElementType.init * MatB.ElementType.init + S.init * MatC.ElementType.init);
-    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB, MatC))) + 1;
+    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB, MatC))) + 1;
 
 
     this(S alpha, MatA matA, MatB matB, S beta, MatC matC)
@@ -599,7 +646,7 @@ struct MatrixVectorMulGEMV(T, MatA, VecB, VecC)
 if(isMatrixLike!MatA && isVectorLike!VecB)
 {
     alias ElementType = typeof(T.init * MatA.ElementType.init * VecB.ElementType.init + T.init * VecC.ElementType.init);
-    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, VecB, VecC))) + 1;
+    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, VecB, VecC))) + 1;
 
 
     this(T alpha, MatA matA, VecB vecB, T beta, VecC vecC)
@@ -759,7 +806,7 @@ struct MatrixAxpby(S, MatA, MatB)
 if(isMatrixLike!MatA && isMatrixLike!MatB)
 {
     alias ElementType = typeof(S.init * MatA.ElementType.init + S.init * MatB.ElementType.init);
-    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB))) + 1;
+    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB))) + 1;
 
 
     this(S alpha, MatA matA, S beta, MatB matB)
@@ -893,7 +940,7 @@ struct VectorAxpby(T, VecA, VecB)
 if(isVectorLike!VecA && isVectorLike!VecB)
 {
     alias ElementType = typeof(T.init * VecA.ElementType.init + T.init * VecB.ElementType.init);
-    enum size_t exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(VecA, VecB))) + 1;
+    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(VecA, VecB))) + 1;
 
 
     this(T alpha, VecA vecA, T beta, VecB vecB)
@@ -1028,7 +1075,7 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
 {
     import std.functional : unaryFun;
     alias ElementType = typeof(unaryFun!fn(Mat.ElementType.init));
-    enum size_t exprTreeDepth = Mat.exprTreeDepth + 1;
+    enum float exprTreeDepth = Mat.exprTreeDepth + 1;
 
 
     this(Mat mat)
@@ -1058,7 +1105,7 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
     }
 
 
-    mixin MatrixOperators!(["defaults", "M*V", "M+M", ".T", ".H"]);
+    mixin MatrixOperators!(["defaults", "M*M", "M*V", "M+M", ".T", ".H"]);
   }
   else
   {
@@ -1124,7 +1171,7 @@ struct Transposed(Mat)
 if(isMatrixLike!Mat)
 {
     alias ElementType = Mat.ElementType;
-    enum size_t exprTreeDepth = Mat.exprTreeDepth + 1;
+    enum float exprTreeDepth = Mat.exprTreeDepth + 1;
 
     this(Mat mat)
     {

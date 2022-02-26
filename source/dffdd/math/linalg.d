@@ -627,12 +627,12 @@ in(matQ.length!0 == matQ.length!1)
 in(matA.length!0 == matR.length!0)
 in(matA.length!1 == matR.length!1)
 {
-    import kaleidic.lubeck2 : qr;
+    import kaleidic.lubeck : qrDecomp;
 
     auto viewA = makeViewOrNewSlice(matA, alloc);
     scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
 
-    auto qrResult = qr(viewA.view);
+    auto qrResult = qrDecomp(viewA.view.as!C.slice);
     matQ.sliced()[] = qrResult.Q;
     matR.sliced()[] = qrResult.R;
 }
