@@ -191,9 +191,7 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 }
 
 
-
 alias Matrix(T, SliceKind kind) = MatrixedSlice!(T*, kind);
-
 
 
 unittest
@@ -221,3 +219,5 @@ unittest
     assert(s[1, 0] == 4);
     assert(s[1, 1] == 6);
 }
+
+
