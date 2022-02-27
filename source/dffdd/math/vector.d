@@ -61,7 +61,7 @@ enum isVectorLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
 struct VectoredSlice(Iterator, SliceKind kind)
 {
     alias ElementType = Unqual!(typeof(Slice!(Iterator, 1, kind).init[0]));
-    enum float exprTreeDepth = 0;
+    enum float exprTreeCost = 0;
 
 
     this(Slice!(Iterator, 1, kind) s)

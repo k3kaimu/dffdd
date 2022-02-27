@@ -381,7 +381,7 @@ struct RealMatrixRIIRStructure(Mat)
 if(isMatrixLike!Mat && isComplex!(Mat.ElementType))
 {
     alias ElementType = typeof(Mat.ElementType.init.re);
-    enum exprTreeDepth = Mat.exprTreeDepth + 1;
+    enum exprTreeCost = Mat.exprTreeCost + 1;
 
 
     this(Mat mat)
@@ -464,7 +464,7 @@ struct RealVectorRIStructure(Vec)
 if(isVectorLike!Vec && isComplex!(Vec.ElementType))
 {
     alias ElementType = typeof(Vec.ElementType.init.re);
-    enum exprTreeDepth = Vec.exprTreeDepth + 1;
+    enum exprTreeCost = Vec.exprTreeCost + 1;
 
 
     this(Vec vec)
@@ -539,7 +539,7 @@ struct ComplexVectorFromRIStructure(C, Vec)
 if(isVectorLike!Vec && !isComplex!(Vec.ElementType) && isComplex!C)
 {
     alias ElementType = C;
-    enum exprTreeDepth = Vec.exprTreeDepth + 1;
+    enum exprTreeCost = Vec.exprTreeCost + 1;
 
 
     this(Vec vec)

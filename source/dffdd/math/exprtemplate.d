@@ -1,6 +1,6 @@
 module dffdd.math.exprtemplate;
 
-import std.algorithm : max, min;
+import std.algorithm : max, min, sum;
 import std.experimental.allocator;
 import std.typecons;
 import std.traits;
@@ -18,8 +18,11 @@ import dffdd.math.linalg : isBlasType;
 alias matvecAllocator = theAllocator;
 
 
-enum isExpressionTemplate(T) = is(typeof(T.exprTreeDepth) : float);
-enum exprTreeDepth(T) = T.exprTreeDepth;
+enum float EXPR_COST_N = 10;
+
+
+enum isExpressionTemplate(T) = is(typeof(T.exprTreeCost) : float);
+enum exprTreeCost(T) = T.exprTreeCost;
 
 enum hasMemoryView(T) = (is(typeof(T.init.sliced().lightScope())) && hasMemoryView!(typeof(T.init.sliced().lightScope())))
                      || is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 1, kind), SliceKind kind)
@@ -120,7 +123,7 @@ unittest
 struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
 {
     alias ElementType = typeof(S.init * MatA.ElementType.init * MatB.ElementType.init + S.init * MatC.ElementType.init);
-    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB, MatC))) + 1;
+    enum float exprTreeCost = sum([staticMap!(.exprTreeCost, AliasSeq!(MatA, MatB, MatC))]) + EXPR_COST_N^^3;
 
 
     this(S alpha, MatA matA, MatB matB, S beta, MatC matC)
@@ -309,7 +312,7 @@ struct MatrixVectorMulGEMV(T, MatA, VecB, VecC)
 if(isMatrixLike!MatA && isVectorLike!VecB)
 {
     alias ElementType = typeof(T.init * MatA.ElementType.init * VecB.ElementType.init + T.init * VecC.ElementType.init);
-    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, VecB, VecC))) + 1;
+    enum float exprTreeCost = sum([staticMap!(.exprTreeCost, AliasSeq!(MatA, VecB, VecC))]) + EXPR_COST_N^^2;
 
 
     this(T alpha, MatA matA, VecB vecB, T beta, VecC vecC)
@@ -469,7 +472,7 @@ struct MatrixAxpby(S, MatA, MatB)
 if(isMatrixLike!MatA && isMatrixLike!MatB)
 {
     alias ElementType = typeof(S.init * MatA.ElementType.init + S.init * MatB.ElementType.init);
-    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(MatA, MatB))) + 1;
+    enum float exprTreeCost = sum([staticMap!(.exprTreeCost, AliasSeq!(MatA, MatB))]) + EXPR_COST_N^^2;
 
 
     this(S alpha, MatA matA, S beta, MatB matB)
@@ -515,8 +518,8 @@ if(isMatrixLike!MatA && isMatrixLike!MatB)
     }
 
 
-    mixin MatrixOperators!(["M+M",]) OpImpls;
-    mixin(definitionsOfMatrixOperators(["defaults", "M*M", "M*V", ".H", ".T"]));
+    // mixin MatrixOperators!(["M+M", "M*M"]) OpImpls;
+    mixin(definitionsOfMatrixOperators(["defaults", ".H", ".T"]));
 
 
     auto _opB_Impl_(string op : "*", U)(U u)
@@ -544,10 +547,34 @@ if(isMatrixLike!MatA && isMatrixLike!MatB)
         else
             return matrixAxpby(_alpha, _matA, S(op == "+" ? 1 : -1), mat);
     }
+
+
+    auto _opB_Impl_(string op : "*", V)(V vec)
+    if(isVectorLike!V)
+    in(vec.length == this.length!1)
+    {
+        return _alpha * (_matA * vec);
+    }
+
+
+    auto _opB_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(mat.length!0 == this.length!1)
+    {
+        return _alpha * (_matA * mat);
+    }
+
+
+    auto _opBR_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(mat.length!1 == this.length!0)
+    {
+        return _alpha * (mat * _matA);
+    }
   }
   else
   {
-    mixin(definitionsOfMatrixOperators(["M+M"]));
+    mixin(definitionsOfMatrixOperators(["M+M", "M*M", "M*V"]));
   }
 
 
@@ -603,7 +630,7 @@ struct VectorAxpby(T, VecA, VecB)
 if(isVectorLike!VecA && isVectorLike!VecB)
 {
     alias ElementType = typeof(T.init * VecA.ElementType.init + T.init * VecB.ElementType.init);
-    enum float exprTreeDepth = max(staticMap!(.exprTreeDepth, AliasSeq!(VecA, VecB))) + 1;
+    enum float exprTreeCost = sum([staticMap!(.exprTreeCost, AliasSeq!(VecA, VecB))]) + EXPR_COST_N;
 
 
     this(T alpha, VecA vecA, T beta, VecB vecB)
@@ -738,7 +765,15 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
 {
     import std.functional : unaryFun;
     alias ElementType = typeof(unaryFun!fn(Mat.ElementType.init));
-    enum float exprTreeDepth = Mat.exprTreeDepth + 1;
+
+  static if(isMatrixLike!Mat)
+  {
+    enum float exprTreeCost = Mat.exprTreeCost + EXPR_COST_N^^2;
+  }
+  else
+  {
+    enum float exprTreeCost = Mat.exprTreeCost + EXPR_COST_N;
+  }
 
 
     this(Mat mat)
@@ -834,7 +869,7 @@ struct Transposed(Mat)
 if(isMatrixLike!Mat)
 {
     alias ElementType = Mat.ElementType;
-    enum float exprTreeDepth = Mat.exprTreeDepth + 1;
+    enum float exprTreeCost = Mat.exprTreeCost + 1;
 
     this(Mat mat)
     {
@@ -874,7 +909,7 @@ if(isMatrixLike!Mat)
     }
 
 
-    mixin MatrixOperators!(["defaults", "M*V", "M+M", ".H"]);
+    mixin MatrixOperators!(["defaults", "M*M", "M*V", "M+M", ".H"]);
 
 
   private:
@@ -938,7 +973,7 @@ string definitionsOfVectorOperators(string[] list)
             {
                 alias T1 = typeof(this._opB_Impl_!op(rhs));
                 alias T2 = typeof(rhs._opBR_Impl_!op(this));
-                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                static if(T1.exprTreeCost <= T2.exprTreeCost)
                     return this._opB_Impl_!op(rhs);
                 else
                     return rhs._opBR_Impl_!op(this);
@@ -962,7 +997,7 @@ string definitionsOfVectorOperators(string[] list)
             {
                 alias T1 = typeof(this._opBR_Impl_!op(rhs));
                 alias T2 = typeof(rhs._opB_Impl_!op(this));
-                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                static if(T1.exprTreeCost <= T2.exprTreeCost)
                     return this._opBR_Impl_!op(rhs);
                 else
                     return rhs._opB_Impl_!op(this);
@@ -1070,7 +1105,7 @@ string definitionsOfMatrixOperators(string[] list)
                 pragma(msg, X);
                 alias T1 = typeof(this._opB_Impl_!op(rhs));
                 alias T2 = typeof(rhs._opBR_Impl_!op(this));
-                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                static if(T1.exprTreeCost <= T2.exprTreeCost)
                     return this._opB_Impl_!op(rhs);
                 else
                     return rhs._opBR_Impl_!op(this);
@@ -1094,7 +1129,7 @@ string definitionsOfMatrixOperators(string[] list)
             {
                 alias T1 = typeof(this._opBR_Impl_!op(rhs));
                 alias T2 = typeof(rhs._opB_Impl_!op(this));
-                static if(T1.exprTreeDepth <= T2.exprTreeDepth)
+                static if(T1.exprTreeCost <= T2.exprTreeCost)
                     return this._opBR_Impl_!op(rhs);
                 else
                     return rhs._opB_Impl_!op(this);

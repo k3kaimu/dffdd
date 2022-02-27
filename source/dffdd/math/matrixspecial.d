@@ -32,7 +32,7 @@ struct AllSameElements(E, size_t Dim)
 if(is(typeof(value) : E) && (Dim == 1 || Dim == 2))
 {
     alias ElementType = E;
-    enum float exprTreeDepth = 1;
+    enum float exprTreeCost = 1;
 
     this(size_t[Dim] len, E value){
         this._len = len;
@@ -143,7 +143,7 @@ struct ConstAll(E, E value, size_t Dim)
 if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
 {
     alias ElementType = E;
-    enum float exprTreeDepth = 1;
+    enum float exprTreeCost = 1;
 
 
     this(size_t[Dim] len...){ this._len = len; }
@@ -240,7 +240,7 @@ enum isZeros(T) = is(Unqual!T == ZeroMatrix!(T.ElementType)) || is(Unqual!T == Z
 struct ConstEye(E, E value)
 {
     alias ElementType = E;
-    enum float exprTreeDepth = 1;
+    enum float exprTreeCost = 1;
 
 
     this(size_t len){ this._len = len; }

@@ -62,7 +62,7 @@ enum isMatrixLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
 struct MatrixedSlice(Iterator, SliceKind kind)
 {
     alias ElementType = Unqual!(typeof(Slice!(Iterator, 2, kind).init[0, 0]));
-    enum float exprTreeDepth = 0;
+    enum float exprTreeCost = 0;
 
     this(Slice!(Iterator, 2, kind) s)
     {
