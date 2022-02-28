@@ -426,7 +426,52 @@ if(isMatrixLike!Mat && isComplex!(Mat.ElementType))
 
 
     import dffdd.math.exprtemplate;
-    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*M", "M*V", "M*S", ".T", ".H"]));
+    mixin MatrixOperators!(["M*M", "M*V"]) OpImpls;
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S", ".T", ".H"]));
+
+
+    auto _opB_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(this.length!1 == mat.length!0)
+    {
+        static if(is(typeof(mat.fromRealRIIR())))
+        {
+            alias T1 = typeof(toRealRIIR(_mat * mat.fromRealRIIR));
+            alias T2 = typeof(OpImpls._opB_Impl_!"*"(mat));
+
+            static if(T1.exprTreeCost < T2.exprTreeCost)
+                return toRealRIIR(_mat * mat.fromRealRIIR);
+            else
+                return OpImpls._opB_Impl_!"*"(mat);
+        }
+        else
+            return OpImpls._opB_Impl_!"*"(mat);
+    }
+
+
+    auto _opB_Impl_(string op : "*", V)(V vec)
+    if(isVectorLike!V)
+    in(this.length!1 == vec.length)
+    {
+        static if(is(typeof(vec.fromRealRI())))
+        {
+            alias T1 = typeof(toRealRI(_mat * vec.fromRealRI));
+            alias T2 = typeof(OpImpls._opB_Impl_!"*"(vec));
+
+            static if(T1.exprTreeCost < T2.exprTreeCost)
+                return toRealRI(_mat * vec.fromRealRI);
+            else
+                return OpImpls._opB_Impl_!"*"(vec);
+        }
+        else
+            return OpImpls._opB_Impl_!"*"(vec);
+    }
+
+
+    Mat fromRealRIIR()
+    {
+        return _mat;
+    }
     
 
   private:
@@ -448,15 +493,39 @@ unittest
     assert(s == [[1, -2], [2, 1]]);
 }
 
+unittest
+{
+    alias C = MirComplex!float;
+    auto cmat = [C(1, 2)].sliced(1, 1).matrixed;
+    auto rmat = cmat.toRealRIIR;
+    
+    auto cvec = [C(1, 2)].sliced(1).vectored;
+    auto rvec = cvec.toRealRI;
+
+    auto rmul = rmat * rvec;
+    auto cmul = rmul.fromRealRI;
+
+    import dffdd.math.exprtemplate;
+    static assert(is(typeof(cmul) == MatrixVectorMulGEMV!(C, M, V1, V2), M, V1, V2));
+
+
+    auto rmul2 = rmat * rmat;
+    auto cmul2 = rmul2.fromRealRIIR;
+    static assert(is(typeof(cmul2) == MatrixMatrixMulGEMM!(C, M1, M2, M3), M1, M2, M3));
+}
+
 
 
 /**
 複素ベクトルを[R I]という実数ベクトルへ変換します．
 */
-RealVectorRIStructure!Vec toRealRI(Vec)(Vec vec)
+auto toRealRI(Vec)(Vec vec)
 if(isVectorLike!Vec && isComplex!(Vec.ElementType))
 {
-    return RealVectorRIStructure!Vec(vec);
+    static if(is(Vec == ComplexVectorFromRIStructure!M, M))
+        return vec._vec;
+    else
+        return RealVectorRIStructure!Vec(vec);
 }
 
 
@@ -527,11 +596,14 @@ unittest
 /**
 実数ベクトルを複素ベクトルへ変換します
 */
-ComplexVectorFromRIStructure!(C!(Vec.ElementType), Vec) fromRealRI(alias C = MirComplex, Vec)(Vec vec)
+auto fromRealRI(alias C = MirComplex, Vec)(Vec vec)
 if(isVectorLike!Vec && !isComplex!(Vec.ElementType))
 in(vec.length % 2 == 0)
 {
-    return ComplexVectorFromRIStructure!(C!(Vec.ElementType), Vec)(vec);
+    static if(is(Vec == RealVectorRIStructure!V, V) && is(V.ElementType == C!(Vec.ElementType)))
+        return vec._vec;
+    else
+        return ComplexVectorFromRIStructure!(C!(Vec.ElementType), Vec)(vec);
 }
 
 
@@ -583,16 +655,23 @@ if(isVectorLike!Vec && !isComplex!(Vec.ElementType) && isComplex!C)
 unittest
 {
     alias C = MirComplex!float;
-    auto cvec = [C(1, 2)].sliced(1).vectored;
-    auto rvec = cvec.toRealRI;
+    auto rvec = [1, 2].sliced(2).as!float.vectored;
     assert(rvec[0] == 1);
     assert(rvec[1] == 2);
 
-    auto cvec2 = rvec.fromRealRI;
-    assert(cvec2[0] == C(1, 2));
+    auto cvec = rvec.fromRealRI;
+    assert(cvec[0] == C(1, 2));
     auto s = slice!C(1);
-    cvec2.evalTo(s, matvecAllocator);
+    cvec.evalTo(s, matvecAllocator);
     assert(s == [C(1, 2)]);
+}
+
+unittest
+{
+    alias C = MirComplex!float;
+    auto cvec1 = [C(1, 2)].sliced(1).vectored;
+    auto cvec2 = cvec1.toRealRI.fromRealRI;
+    static assert(is(typeof(cvec2) == typeof(cvec1)));
 }
 
 
@@ -611,6 +690,7 @@ unittest
     assert(rvec[0] == 1);
     assert(rvec[1] == 2);
 
+    auto _1 = rmat._opB_Impl_!"*"(rvec);
     auto rmul = rmat * rvec;
     auto cmul = rmul.fromRealRI;
     assert(cmul[0] == C(1, 2) * C(1, 2));
