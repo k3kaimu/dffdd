@@ -845,3 +845,53 @@ unittest
 
 //     assert((LLR01!float(1) & LLR01!float(2)) == LLR01!float(3));
 // }
+
+
+Tuple!(F, "value", F, "drv") softDecision(alias arrP_, alias arrR_, F)(F x, F sigma2)
+if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && arrP_.length >= 2 && arrP_.length == arrR_.length)
+{
+    import std.math : isNaN, abs;
+    import std.algorithm : min;
+    import dffdd.math.math : fast_exp;
+
+    alias arrP = arrP_;
+    alias arrR = arrR_;
+
+    version(all)
+    {
+        F xr2_min = F.infinity;
+        static foreach(i; 0 .. arrP.length) {
+            xr2_min = min((arrR[i] - x)^^2, xr2_min);
+        }
+    }
+    else
+    {
+        enum F xr2_min = F(0);
+    }
+
+    immutable expCoef = -0.5 / sigma2;
+
+    F p_e = F(0),
+      p_r_e = F(0),
+      p_r2_e = F(0);
+    static foreach(i; 0 .. arrP.length) {{
+        F expvalue = fast_exp!F(expCoef * ((arrR[i] - x)^^2 - xr2_min));
+        if(expvalue.isNaN) expvalue = 1;
+
+        p_e += arrP[i] * expvalue;
+        p_r_e += arrP[i] * arrR[i] * expvalue;
+        p_r2_e += arrP[i] * arrR[i] * arrR[i] * expvalue;
+    }}
+
+    immutable drv = -2 * expCoef * (p_r2_e * p_e - p_r_e^^2) / p_e^^2;
+    return typeof(return)(
+        p_r_e / p_e,
+        (abs(sigma2) > 1e-30 && !drv.isNaN) ? drv : 0
+    );
+}
+
+unittest
+{
+    assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).value.isClose(0.0798298, 1e-4));
+    assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).drv.isClose(79.4902, 1e-4));
+}

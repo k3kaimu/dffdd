@@ -30,7 +30,17 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
     {
         _mod = mod;
         _chMat = matrix!F(chMat.length!0 * 2, chMat.length!1 * 2);
+        _rowScales = vector!F(chMat.length!0 * 2);
         _chMat[] = chMat.toRealRIIR;
+
+        // 大システム極限での正規化条件（lim |a_n|^2 = 1）
+        foreach(i; 0 .. chMat.length!0 * 2) {
+            auto rvec = _chMat.rowVec(i);
+            auto p = 1/sqrt(norm2(rvec));
+            _rowScales[i] = p;
+            rvec.sliced()[] *= p;
+        }
+
         _delta = _chMat.length!0 * 1.0 / _chMat.length!1;
         _maxIter = maxIter;
         _damp1_1 = damp1_1;
@@ -58,6 +68,9 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
         auto inpvecs = vector!F(M * 2);
         foreach(n; 0 .. received.length / M) {
             inpvecs[] = received[M * n  .. M * (n+1)].sliced.vectored.toRealRI;
+            foreach(i; 0 .. inpvecs.length)
+                inpvecs[i] *= _rowScales[i];
+
             // import std.stdio;
             // writeln(inpvecs.sliced);
             Vector!(F, Contiguous) res;
@@ -91,6 +104,7 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
 //   private:
     Mod _mod; 
     Matrix!(F, Contiguous) _chMat;
+    Vector!(F, Contiguous) _rowScales;
     double _delta;
     double _damp1_1;
     double _damp1_2;

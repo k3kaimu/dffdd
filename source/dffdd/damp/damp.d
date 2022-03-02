@@ -12,64 +12,13 @@ import dffdd.math.exprtemplate : hasMemoryView;
 
 import mir.ndslice : SliceKind, Contiguous;
 
-
-Tuple!(F, "value", F, "drv") softThrBayesOpt(alias arrP_, alias arrR_, F)(F x, F sigma, F delta)
-if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && arrP_.length >= 2 && arrP_.length == arrR_.length)
-{
-    import std.math : isNaN, abs;
-    import std.algorithm : min;
-    import dffdd.math.math : fast_exp;
-
-    // enum F[] arrP = cast(F[])arrP_;
-    // enum F[] arrR = arrR_;
-
-    alias arrP = arrP_;
-    alias arrR = arrR_;
-
-    version(all)
-    {
-        F xr2_min = F.infinity;
-        static foreach(i; 0 .. arrP.length) {
-            xr2_min = min((arrR[i] - x)^^2, xr2_min);
-        }
-    }
-    else
-    {
-        enum F xr2_min = F(0);
-    }
-
-    immutable expCoef = -0.5 * delta / sigma^^2;
-
-    F p_e = F(0),
-      p_r_e = F(0),
-      p_r2_e = F(0);
-    static foreach(i; 0 .. arrP.length) {{
-        F expvalue = fast_exp!F(expCoef * ((arrR[i] - x)^^2 - xr2_min));
-        if(expvalue.isNaN) expvalue = 1;
-
-        p_e += arrP[i] * expvalue;
-        p_r_e += arrP[i] * arrR[i] * expvalue;
-        p_r2_e += arrP[i] * arrR[i] * arrR[i] * expvalue;
-    }}
-
-    immutable drv = -2 * expCoef * (p_r2_e * p_e - p_r_e^^2) / p_e^^2;
-    return typeof(return)(
-        p_r_e / p_e,
-        (abs(sigma) > 1e-15 && !drv.isNaN) ? drv : 0
-    );
-}
-
-unittest
-{
-    assert(softThrBayesOpt!([0.5, 0, 0.5], [-1, 0, 1])(0.001, 0.1, 0.8).value.isClose(0.0798298, 1e-4));
-    assert(softThrBayesOpt!([0.5, 0, 0.5], [-1, 0, 1])(0.001, 0.1, 0.8).drv.isClose(79.4902, 1e-4));
-}
+import dffdd.mod.primitives : softDecision;
 
 
-alias softThrBayesOpt2PAM_BPSK(F) = softThrBayesOpt!([0.5, 0.5], [-1, 1], F);
-alias softThrBayesOpt2PAM_QPSK(F) = softThrBayesOpt!([0.5, 0.5], [-SQRT1_2, SQRT1_2], F);
-alias softThrBayesOpt4PAM_16QAM(F) = softThrBayesOpt!([0.25, 0.25, 0.25, 0.25], [-3/sqrt(10.0L), -1/sqrt(10.0L), 1/sqrt(10.0L), 3/sqrt(10.0L)], F);
-alias softThrBayesOpt8PAM_64QAM(F) = softThrBayesOpt!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7/sqrt(42.0L), -5/sqrt(42.0L), -3/sqrt(42.0L), -1/sqrt(42.0L), 1/sqrt(42.0L), 3/sqrt(42.0L), 5/sqrt(42.0L), 7/sqrt(42.0L)], F);
+alias softThrBayesOpt2PAM_BPSK(F) = softDecision!([0.5, 0.5], [-1, 1], F);
+alias softThrBayesOpt2PAM_QPSK(F) = softDecision!([0.5, 0.5], [-SQRT1_2, SQRT1_2], F);
+alias softThrBayesOpt4PAM_16QAM(F) = softDecision!([0.25, 0.25, 0.25, 0.25], [-3/sqrt(10.0L), -1/sqrt(10.0L), 1/sqrt(10.0L), 3/sqrt(10.0L)], F);
+alias softThrBayesOpt8PAM_64QAM(F) = softDecision!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7/sqrt(42.0L), -5/sqrt(42.0L), -3/sqrt(42.0L), -1/sqrt(42.0L), 1/sqrt(42.0L), 3/sqrt(42.0L), 5/sqrt(42.0L), 7/sqrt(42.0L)], F);
 
 // Tuple!(F[], "x_hat", F[], "arrMSE")
 
@@ -94,9 +43,9 @@ if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!
     import mir.math.stat : mean;
     import dffdd.math.linalg : norm2;
 
-    alias ProxResult = typeof(prox(F(0), theta0, delta));
+    alias ProxResult = typeof(prox(F(0), theta0^^2/delta));
     auto wprox = slice!ProxResult(N);
-    wprox[] = w.sliced.map!(e => prox(e, theta, delta));
+    wprox[] = w.sliced.map!(e => prox(e, theta^^2/delta));
 
     foreach(iter; 1 .. nIteration) {
         F damp2 = damp2_2 * iter / nIteration + damp2_1 * (1 - 1.0 * iter / nIteration);
@@ -105,7 +54,7 @@ if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!
         z[] = (1-damp1) * z + damp1 * (y - A * x + (1/delta) * z * wprox.map!"a.drv".mean);
         theta = sqrt(norm2(z) / N);
         w[] = x + A.T * z;
-        wprox[] = w.sliced.map!(e => prox(e, theta, delta));
+        wprox[] = w.sliced.map!(e => prox(e, theta^^2/delta));
         x[] = (1-damp2) * x + damp2 * wprox.map!"a.value".vectored;
     }
 
@@ -149,7 +98,7 @@ unittest
     int nIteration = 2;
     import std.stdio;
 
-    auto xhat1 = BODAMP!((e, v, d) => softThrBayesOpt!(arrP, arrR)(e, v, d), F)(y, A, delta, theta0, 3, 1, 1, 1, 1);
+    auto xhat1 = BODAMP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, delta, theta0, 3, 1, 1, 1, 1);
     assert(xhat1[0].isClose(-0.9729, 1e-3));
     assert(xhat1[1].isClose(+0.9744, 1e-3));
     assert(xhat1[2].isClose(-0.9220, 1e-3));
@@ -161,7 +110,7 @@ unittest
     assert(xhat1[8].isClose(-0.9436, 1e-3));
     assert(xhat1[9].isClose(+0.8961, 1e-3));
 
-    auto xhat2 = BODAMP!((e, v, d) => softThrBayesOpt!(arrP, arrR)(e, v, d), F)(y, A, delta, theta0, 20, 1, 1, 1, 1);
+    auto xhat2 = BODAMP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, delta, theta0, 20, 1, 1, 1, 1);
     assert(xhat2[0].isClose(-1, 1e-3));
     assert(xhat2[1].isClose(+1, 1e-3));
     assert(xhat2[2].isClose(-1, 1e-3));
@@ -173,7 +122,7 @@ unittest
     assert(xhat2[8].isClose(-1, 1e-3));
     assert(xhat2[9].isClose(+1, 1e-3));
 
-    auto xhat3 = BODAMP!((e, v, d) => softThrBayesOpt!(arrP, arrR)(e, v, d), F)(y, A, delta, theta0, 200, 1, 1, 1, 1);
+    auto xhat3 = BODAMP!((e, v) => softDecision!(arrP, arrR)(e, v), F)(y, A, delta, theta0, 200, 1, 1, 1, 1);
     assert(xhat3[0].isClose(-1, 1e-3));
     assert(xhat3[1].isClose(+1, 1e-3));
     assert(xhat3[2].isClose(-1, 1e-3));
