@@ -847,15 +847,18 @@ unittest
 // }
 
 
-Tuple!(F, "value", F, "drv") softDecision(alias arrP_, alias arrR_, F)(F x, F sigma2)
+/**
+ 事後平均とその微分値と事後分散を計算します
+*/
+Tuple!(F, "value", F, "drv", F, "var") softDecision(alias arrP_, alias arrR_, F)(F x, F sigma2)
 if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && arrP_.length >= 2 && arrP_.length == arrR_.length)
 {
     import std.math : isNaN, abs;
     import std.algorithm : min;
     import dffdd.math.math : fast_exp;
 
-    alias arrP = arrP_;
-    alias arrR = arrR_;
+    enum F[] arrP = arrP_;
+    enum F[] arrR = arrR_;
 
     version(all)
     {
@@ -874,19 +877,25 @@ if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && ar
     F p_e = F(0),
       p_r_e = F(0),
       p_r2_e = F(0);
+
+    F[arrP.length] _pes;
     static foreach(i; 0 .. arrP.length) {{
         F expvalue = fast_exp!F(expCoef * ((arrR[i] - x)^^2 - xr2_min));
         if(expvalue.isNaN) expvalue = 1;
 
-        p_e += arrP[i] * expvalue;
-        p_r_e += arrP[i] * arrR[i] * expvalue;
-        p_r2_e += arrP[i] * arrR[i] * arrR[i] * expvalue;
+        _pes[i] = arrP[i] * expvalue;
+        p_e += _pes[i];
+        p_r_e += _pes[i] * arrR[i];
+        p_r2_e += _pes[i] * arrR[i]^^2;
     }}
 
     immutable drv = -2 * expCoef * (p_r2_e * p_e - p_r_e^^2) / p_e^^2;
+    immutable mean = p_r_e / p_e;
+
     return typeof(return)(
-        p_r_e / p_e,
-        (abs(sigma2) > 1e-30 && !drv.isNaN) ? drv : 0
+        mean,
+        (abs(sigma2) > 1e-30 && !drv.isNaN) ? drv : 0,
+        (p_r2_e / p_e) - mean^^2
     );
 }
 
@@ -894,4 +903,5 @@ unittest
 {
     assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).value.isClose(0.0798298, 1e-4));
     assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).drv.isClose(79.4902, 1e-4));
+    assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).var.isClose(1 - 0.0798298^^2, 1e-4));
 }
