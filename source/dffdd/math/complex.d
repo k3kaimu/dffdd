@@ -69,6 +69,16 @@ if(isNarrowComplex!C)
 alias RealPartType(C) = typeof(C.init.re);
 
 
+template FloatingPointType(T)
+if(isFloatingPoing!T || isComplex!T)
+{
+    static if(isComplex!T)
+        alias FloatingPointType = RealPartType!T;
+    else
+        alias FloatingPointType = T;
+}
+
+
 
 RealPartType!C abs(C)(C x)
 if(isComplex!C)
@@ -81,6 +91,13 @@ RealPartType!C sqAbs(C)(C x)
 if(isComplex!C)
 {
     return std.complex.sqAbs(StdComplex!(RealPartType!C)(x.re, x.im));
+}
+
+
+F sqAbs(F)(F x)
+if(isFloatingPoint!F)
+{
+    return x^^2;
 }
 
 
