@@ -120,7 +120,7 @@ unittest
     import dffdd.math.exprtemplate;
 
     alias C = MirComplex!float;
-    auto chMat = [C(1, 0), C(0, -1), C(0, 1), C(1, 0)].sliced(2, 2).matrixed;
+    auto chMat = [C(1, 0), C(0, 0), C(0, 0), C(1, 0)].sliced(2, 2).matrixed;
     auto recv = [C(1/SQRT2, 1/SQRT2), C(-1/SQRT2, 1/SQRT2)];
 
     auto detector = new DAMPDectector!(C, QPSK!C)(QPSK!C(), chMat, 20);
