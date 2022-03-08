@@ -43,6 +43,26 @@ nothrow @trusted extern(C)
             int ldb, double* s, double rcond,
             int* rank );
 
+    int LAPACKE_sgetrf(
+            int matrix_order, int m, int n,
+            float* a, int lda, int* ipiv
+        );
+
+    int LAPACKE_dgetrf(
+            int matrix_order, int m, int n,
+            double* a, int lda, int* ipiv
+        );
+
+    int LAPACKE_sgetri(
+            int matrix_order, int n,
+            float* a, int lda, const int* ipiv
+        );
+
+    int LAPACKE_dgetri(
+            int matrix_order, int n,
+            double* a, int lda, const int* ipiv
+        );
+
     int LAPACKE_cgetrf(
             int matrix_order, int m, int n,
             float[2]* a, int lda, int* ipiv

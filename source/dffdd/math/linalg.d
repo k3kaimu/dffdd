@@ -741,30 +741,208 @@ unittest
 }
 
 
-// unittest
-// {
-//     import std.math : isClose;
+struct InverseMatrix(M)
+if(isMatrixLike!M)
+{
+    alias ElementType = M.ElementType;
+    enum exprTreeCost = M.exprTreeCost + EXPR_COST_N^^3;
 
-//     alias C = MirComplex!double;
-//     auto mat = matrix!C(3, 2);
-//     mat.sliced()[] =
-//         [[C(1), C(2)],
-//          [C(3), C(4)],
-//          [C(5), C(6)]];
 
-//     auto matQ = matrix!C(3, 3);
-//     auto matR = matrix!C(3, 2);
+    this(M mat)
+    {
+        _mat = mat;
+    }
 
-//     mat.qrDecomp(matQ, matR);
 
-//     import std.stdio;
-//     writeln(matQ.sliced);
-//     writeln(matR.sliced);
-//     auto mul = matrix!C(3, 3);
-//     mul[] = matQ * matR;
-//     foreach(i; 0 .. 3)
-//         foreach(j; 0 .. 3) {
-//             assert(mul[i, j].re.isClose(mat[i, j].re));
-//             assert(mul[i, j].im.isClose(mat[i, j].im));
-//         }
-// }
+    size_t length(size_t dim)() const { return _mat.length!dim; }
+
+
+    ElementType opIndex(size_t, size_t) const { assert(0); return ElementType(float.nan); }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+    {
+        _mat.evalTo(dst, alloc);
+        invImpl(dst, alloc);
+    }
+
+
+    // import dffdd.math.exprtemplate;
+    // mixin(definitionsOfVectorOperators(["defaults", "V+V", "V*S"]));
+
+
+  private:
+    M _mat;
+}
+
+
+auto inv(M)(M mat)
+{
+    static if(is(typeof(mat._inv_Impl_())))
+        return mat._inv_Impl_;
+    else
+        return InverseMatrix!M(mat);
+}
+
+
+/**
+逆行列
+*/
+void invImpl(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) matA, ref Alloc alloc)
+if(isBlasType!T)
+in{
+    assert(matA.length!0 == matA.length!1);
+}
+do{
+    static if(kindA == Universal)
+    {
+        if (matA._stride!1 != 1)
+        {
+            assert(matA._stride!0 == 1, "Matrix A must have a stride equal to 1.");
+            .invImpl(
+                matA.universal.transposed,
+                alloc);
+            return;
+        }
+        assert(matA._stride!1 == 1, "Matrix A must have a stride equal to 1.");
+    }
+
+    int[] ipiv = alloc.makeArray!int(matA.length!0);
+    scope(exit) alloc.dispose(ipiv);
+
+    immutable n = matA.length!0;
+    immutable lda = matA.matrixStride;
+
+    import dffdd.utils.linalg : LAPACKE_sgetrf, LAPACKE_sgetri, LAPACKE_dgetrf, LAPACKE_dgetri,
+                                LAPACKE_cgetrf, LAPACKE_cgetri, LAPACKE_zgetrf, LAPACKE_zgetri;
+
+    import cblas : Order;
+
+    static if(is(T == float))
+    {
+        alias getrf = LAPACKE_sgetrf;
+        alias getri = LAPACKE_sgetri;
+        alias E = float;
+    }
+    else static if(is(T == double))
+    {
+        alias getrf = LAPACKE_dgetrf;
+        alias getri = LAPACKE_dgetri;
+        alias E = double;
+    }
+    else static if(is(typeof(T.init.re) == float))
+    {
+        alias getrf = LAPACKE_cgetrf;
+        alias getri = LAPACKE_cgetri;
+        alias E = float[2];
+    }
+    else static if(is(typeof(T.init.re) == double))
+    {
+        alias getrf = LAPACKE_zgetrf;
+        alias getri = LAPACKE_zgetri;
+        alias E = double[2];
+    }
+    else static assert(0);
+
+    getrf(Order.RowMajor, cast(uint)n, cast(uint)n, cast(E*)&(matA[0, 0]), cast(uint)lda, ipiv.ptr);
+    getri(Order.RowMajor, cast(uint)n, cast(E*)&(matA[0, 0]), cast(uint)lda, ipiv.ptr);
+}
+
+unittest
+{
+    import std.math;
+    import std.stdio;
+    auto mat = new Complex!float[4].sliced(2, 2);
+    mat[0, 0] = 1;
+    mat[0, 1] = 0;
+    mat[1, 0] = 0;
+    mat[1, 1] = 1;
+
+    invImpl(mat, matvecAllocator);
+    assert(isClose(mat[0, 0].re, 1));
+    assert(isClose(mat[0, 1].re, 0));
+    assert(isClose(mat[1, 0].re, 0));
+    assert(isClose(mat[1, 1].re, 1));
+    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(isClose(mat[i, j].im, 0));
+
+
+    mat[0, 0] = 3;
+    mat[0, 1] = 4;
+    mat[1, 0] = 1;
+    mat[1, 1] = 2;
+    invImpl(mat, matvecAllocator);
+    //writeln(mat);
+
+    assert(isClose(mat[0, 0].re, 1));
+    assert(isClose(mat[0, 1].re, -2));
+    assert(isClose(mat[1, 0].re, -0.5));
+    assert(isClose(mat[1, 1].re, 1.5));
+    foreach(i; [0, 1]) foreach(j; [0, 1]) assert(isClose(mat[i, j].im, 0));
+}
+
+
+unittest
+{
+    import std.math;
+    import std.stdio;
+    auto mat = new float[4].sliced(2, 2);
+    mat[0, 0] = 1;
+    mat[0, 1] = 0;
+    mat[1, 0] = 0;
+    mat[1, 1] = 1;
+
+    invImpl(mat, matvecAllocator);
+    assert(isClose(mat[0, 0], 1));
+    assert(isClose(mat[0, 1], 0));
+    assert(isClose(mat[1, 0], 0));
+    assert(isClose(mat[1, 1], 1));
+
+
+    mat[0, 0] = 3;
+    mat[0, 1] = 4;
+    mat[1, 0] = 1;
+    mat[1, 1] = 2;
+    invImpl(mat, matvecAllocator);
+    //writeln(mat);
+
+    assert(isClose(mat[0, 0], 1));
+    assert(isClose(mat[0, 1], -2));
+    assert(isClose(mat[1, 0], -0.5));
+    assert(isClose(mat[1, 1], 1.5));
+}
+
+
+unittest
+{
+    import std.math;
+    import std.stdio;
+    auto mat = new float[4].sliced(2, 2).matrixed;
+    mat[0, 0] = 1;
+    mat[0, 1] = 0;
+    mat[1, 0] = 0;
+    mat[1, 1] = 1;
+
+    // invImpl(mat, matvecAllocator);
+    // auto inv = InverseMatrix!(typeof(mat))(mat);
+    auto inv = mat.inv;
+    assert(isClose(mat[0, 0], 1));
+    assert(isClose(mat[0, 1], 0));
+    assert(isClose(mat[1, 0], 0));
+    assert(isClose(mat[1, 1], 1));
+
+
+    mat[0, 0] = 3;
+    mat[0, 1] = 4;
+    mat[1, 0] = 1;
+    mat[1, 1] = 2;
+    invImpl(mat, matvecAllocator);
+    //writeln(mat);
+
+    assert(isClose(mat[0, 0], 1));
+    assert(isClose(mat[0, 1], -2));
+    assert(isClose(mat[1, 0], -0.5));
+    assert(isClose(mat[1, 1], 1.5));
+}
+
+
