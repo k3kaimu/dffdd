@@ -118,9 +118,9 @@ void main(string[] args)
         }
     }
 
-    // import std.file : write;
-    // auto jv = JSONValue(results);
-    // write("resultsBER.json", toJSON(jv));
+    import std.file : write;
+    auto jv = JSONValue(results);
+    write("resultsBER.json", toJSON(jv));
 }
 
 
