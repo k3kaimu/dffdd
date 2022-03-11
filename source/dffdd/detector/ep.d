@@ -155,7 +155,7 @@ if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!
     import kaleidic.lubeck : svd;
     auto svdResult = svd(A_.lightConst.sliced);
     auto chMatU = svdResult.u.lightScope.matrixed;
-    auto chMatV = svdResult.v.lightScope.matrixed;
+    auto chMatV = svdResult.vt.lightScope.matrixed;
     auto chMatSigma = svdResult.sigma.lightScope.vectored;
 
     return EP!(prox, F)(y_, A_, chMatU, chMatSigma, chMatV, theta0, sigma2, nIteration);
