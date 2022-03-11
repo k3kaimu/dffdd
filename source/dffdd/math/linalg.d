@@ -213,7 +213,7 @@ if(isVectorLike!VecA)
 }
 
 
-auto mean(VecA)(VecA vecA, ref Alloc alloc = matvecAllocator)
+auto mean(VecA, Alloc)(VecA vecA, ref Alloc alloc = matvecAllocator)
 if(isVectorLike!VecA)
 {
     auto viewA = vecA.makeViewOrNewSlice(alloc);
@@ -757,7 +757,7 @@ if(isMatrixLike!M)
     size_t length(size_t dim)() const { return _mat.length!dim; }
 
 
-    ElementType opIndex(size_t, size_t) const { assert(0); return ElementType(float.nan); }
+    ElementType opIndex(size_t, size_t) const { assert(0); }
 
 
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
@@ -768,8 +768,14 @@ if(isMatrixLike!M)
     }
 
 
-    // import dffdd.math.exprtemplate;
-    // mixin(definitionsOfVectorOperators(["defaults", "V+V", "V*S"]));
+    M _inv_Impl_()
+    {
+        return _mat;
+    }
+
+
+    import dffdd.math.exprtemplate;
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*V", "M*S"]));
 
 
   private:
@@ -913,36 +919,18 @@ unittest
 }
 
 
-unittest
+
+auto trace(M, Alloc)(M mat, ref Alloc alloc = matvecAllocator)
+if(isMatrixLike!M)
+in(mat.length!0 == mat.length!1)
 {
-    import std.math;
-    import std.stdio;
-    auto mat = new float[4].sliced(2, 2).matrixed;
-    mat[0, 0] = 1;
-    mat[0, 1] = 0;
-    mat[1, 0] = 0;
-    mat[1, 1] = 1;
+    auto viewA = mat.makeViewOrNewSlice(alloc);
+    scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
 
-    // invImpl(mat, matvecAllocator);
-    // auto inv = InverseMatrix!(typeof(mat))(mat);
-    auto inv = mat.inv;
-    assert(isClose(mat[0, 0], 1));
-    assert(isClose(mat[0, 1], 0));
-    assert(isClose(mat[1, 0], 0));
-    assert(isClose(mat[1, 1], 1));
-
-
-    mat[0, 0] = 3;
-    mat[0, 1] = 4;
-    mat[1, 0] = 1;
-    mat[1, 1] = 2;
-    invImpl(mat, matvecAllocator);
-    //writeln(mat);
-
-    assert(isClose(mat[0, 0], 1));
-    assert(isClose(mat[0, 1], -2));
-    assert(isClose(mat[1, 0], -0.5));
-    assert(isClose(mat[1, 1], 1.5));
+    alias E = M.ElementType;
+    E sum = 0;
+    foreach(i; 0 .. mat.length!0)
+        sum += viewA.view[i, i];
+    
+    return sum;
 }
-
-

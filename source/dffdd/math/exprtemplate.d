@@ -119,6 +119,53 @@ unittest
 
 
 
+struct WithMemoryView(Mat)
+{
+    this(Mat mat, Matrix!(Mat.ElementType, Contiguous) view)
+    {
+        _mat = mat;
+        _view = view;
+    }
+
+
+    size_t length(size_t dim)() const { return _view.length!dim(); }
+
+
+    Mat.ElementType opIndex(size_t i, size_t j) const
+    {
+        return _view[i, j];
+    }
+
+
+    auto sliced() const { _view.sliced.lightConst; }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+    {
+        _view.evalTo(dst, alloc);
+    }
+
+
+  private:
+    Mat _mat;
+    Matrix!(Mat.ElementType, Contiguous) _view;
+}
+
+
+auto withMemoryView(MatA, Alloc)(Mat mat, lazy Matrix!(Mat.ElementType, Contiguous) view, ref Alloc alloc = matvecAllocator)
+{
+    static if(hasMemoryView!Mat)
+        return mat;
+    else {
+        auto viewmat = view();
+        mat.evalTo(viewmat.sliced, alloc);
+        return WithMemoryView!Mat(mat, view);
+    }
+}
+
+
+
 // 
 struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
 {
@@ -197,6 +244,13 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
 
 
     auto _opB_Impl_(string op : "*", U)(U u)
+    if(!isMatrixLike!U && !isVectorLike!U && is(typeof(U.init * S.init)))
+    {
+        return matrixGemm(_alpha * u, _matA, _matB, _beta * u, _matC);
+    }
+
+
+    auto _opBR_Impl_(string op : "*", U)(U u)
     if(!isMatrixLike!U && !isVectorLike!U && is(typeof(U.init * S.init)))
     {
         return matrixGemm(_alpha * u, _matA, _matB, _beta * u, _matC);
@@ -309,9 +363,14 @@ unittest
 
 // 
 struct MatrixVectorMulGEMV(T, MatA, VecB, VecC)
-if(isMatrixLike!MatA && isVectorLike!VecB)
+if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
 {
     alias ElementType = typeof(T.init * MatA.ElementType.init * VecB.ElementType.init + T.init * VecC.ElementType.init);
+    // pragma(msg, "ElementType is " ~ ElementType.stringof);
+    // pragma(msg, "T is " ~ T.stringof);
+    // pragma(msg, "MatA.ElementType is " ~ MatA.ElementType.stringof);
+    // pragma(msg, "VecB.ElementType is " ~ VecB.ElementType.stringof);
+    // pragma(msg, "VecC.ElementType is " ~ VecC.ElementType.stringof);
     enum float exprTreeCost = sum([staticMap!(.exprTreeCost, AliasSeq!(MatA, VecB, VecC))]) + EXPR_COST_N^^2;
 
 
@@ -990,6 +1049,13 @@ string definitionsOfVectorOperators(string[] list)
         }
 
 
+        auto opBinary(string op : "/", X)(X rhs)
+        if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType))
+        {
+            return this.opBinary!"*"(rhs^^(-1));
+        }
+
+
         auto opBinaryRight(string op, X)(X rhs)
         if(op == "+" || op == "-" || op == "*")
         {
@@ -1009,6 +1075,14 @@ string definitionsOfVectorOperators(string[] list)
             else static if(is(typeof(rhs._opB_Impl_!op(this))))
             {
                 return rhs._opB_Impl_!op(this);
+            }
+            else static if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType) && (op == "*" || op == "+"))
+            {
+                return this.opBinary!op(rhs);
+            }
+            else static if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType) && (op == "-"))
+            {
+                return this.opBinary!"-"(-rhs) * ElementType(-1);
             }
             else static assert(0, "Operator '(LHS) " ~ op ~ " (RHS)' is not defined with (LHS) = " ~ X.stringof ~ ", and (RHS) = " ~ typeof(this).stringof);
         }
@@ -1122,6 +1196,13 @@ string definitionsOfMatrixOperators(string[] list)
         }
 
 
+        auto opBinary(string op : "/", X)(X rhs)
+        if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType))
+        {
+            return this.opBinary!"*"(rhs^^(-1));
+        }
+
+
         auto opBinaryRight(string op, X)(X rhs)
         if(op == "+" || op == "-" || op == "*")
         {
@@ -1141,6 +1222,14 @@ string definitionsOfMatrixOperators(string[] list)
             else static if(is(typeof(rhs._opB_Impl_!op(this))))
             {
                 return rhs._opB_Impl_!op(this);
+            }
+            else static if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType) && (op == "*" || op == "+"))
+            {
+                return this.opBinary!op(rhs);
+            }
+            else static if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType) && (op == "-"))
+            {
+                return this.opBinary!"-"(-rhs) * ElementType(-1);
             }
             else static assert(0, "Operator '(LHS) " ~ op ~ " (RHS)' is not defined with (LHS) = " ~ X.stringof ~ ", and (RHS) = " ~ typeof(this).stringof);
         }
