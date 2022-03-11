@@ -905,3 +905,9 @@ unittest
     assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).drv.isClose(79.4902, 1e-4));
     assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).var.isClose(1 - 0.0798298^^2, 1e-4));
 }
+
+
+alias softDecision2PAM_BPSK(F) = softDecision!([0.5, 0.5], [-1, 1], F);
+alias softDecision2PAM_QPSK(F) = softDecision!([0.5, 0.5], [-SQRT1_2, SQRT1_2], F);
+alias softDecision4PAM_16QAM(F) = softDecision!([0.25, 0.25, 0.25, 0.25], [-3/sqrt(10.0L), -1/sqrt(10.0L), 1/sqrt(10.0L), 3/sqrt(10.0L)], F);
+alias softDecision8PAM_64QAM(F) = softDecision!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7/sqrt(42.0L), -5/sqrt(42.0L), -3/sqrt(42.0L), -1/sqrt(42.0L), 1/sqrt(42.0L), 3/sqrt(42.0L), 5/sqrt(42.0L), 7/sqrt(42.0L)], F);
