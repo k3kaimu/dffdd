@@ -27,6 +27,7 @@ import dffdd.detector.gabp;
 import dffdd.detector.damp;
 import dffdd.detector.ep;
 import dffdd.detector.qrm_mld;
+import dffdd.detector.linear;
 
 
 import mir.ndslice : sliced, slice, Contiguous;
@@ -58,7 +59,7 @@ void main(string[] args)
     // }
 
 
-    static foreach(ALGORITHM; ["EP", "DAMP", "GaBP", "QRM-MLD", "Sphere"])
+    static foreach(ALGORITHM; ["MMSE", "ZF", "EP", "DAMP", "GaBP", "QRM-MLD", "Sphere"])
     foreach(K; [16, 64, 256])
     {
         if(ALGORITHM == "Sphere" && K > 16)
@@ -100,6 +101,14 @@ void main(string[] args)
                 else static if(ALGORITHM == "Sphere")
                 {
                     auto res =  mainImpl!(ModK, "Sphere")(M, N, NFFT, ebno);
+                }
+                else static if(ALGORITHM == "MMSE")
+                {
+                    auto res = mainImpl!(ModK, "MMSE")(M, N, NFFT, ebno);
+                }
+                else static if(ALGORITHM == "ZF")
+                {
+                    auto res = mainImpl!(ModK, "ZF")(M, N, NFFT, ebno);
                 }
                 else static assert(0);
 
@@ -230,6 +239,20 @@ Tuple!(double, "ber", double, "kbps") mainImpl(size_t ModK, string DETECT, Flag!
         auto recvMat = matrix!C(N, N);
         recvMat[] = rwMat * chMat;
         auto detector = makeSphereDetector!C(mod, recvMat, args);
+    }
+    else static if(DETECT == "MMSE")
+    {
+        auto rwMat = makeHaarMatrix!C(M);
+        auto recvMat = matrix!C(M, N);
+        recvMat[] = rwMat * chMat;
+        auto detector = makeMMSEDetector!(C, typeof(mod))(mod, recvMat, SIGMA);
+    }
+    else static if(DETECT == "ZF")
+    {
+        auto rwMat = makeHaarMatrix!C(M);
+        auto recvMat = matrix!C(M, N);
+        recvMat[] = rwMat * chMat;
+        auto detector = makeZFDetector!(C, typeof(mod))(mod, recvMat);
     }
     else
         static assert(0);
