@@ -23,6 +23,7 @@ if(is(Mod == BPSK!C) || is(Mod == QPSK!C))
         _nrxvec = nrxvec;
         _chMat = slice!C(nrxvec, ntxvec);
         _chMatSQ = slice!R(nrxvec, ntxvec);
+        _rowScales = slice!R(nrxvec);
         _recvY = new C[nrxvec];
         _sigma2 = new R[nrxvec];
         _lastLLR = new SoftSymType[ntxvec];
@@ -36,12 +37,21 @@ if(is(Mod == BPSK!C) || is(Mod == QPSK!C))
     void channelMatrix(Matrix)(in Matrix channel)
     if(is(typeof(channel[0][0]) : C))
     {
-        foreach(i; 0 .. _nrxvec)
+        foreach(i; 0 .. _nrxvec) {
+            R sumpow = 0;
+            foreach(j; 0 .. _ntxvec)
+                sumpow += channel[i][j].sqAbs;
+
+            sumpow = 1/sqrt(sumpow);
+            // sumpow = 1;
+            _rowScales[i] = sumpow;
+
             foreach(j; 0 .. _ntxvec) {
-                immutable h = channel[i][j];
+                immutable h = channel[i][j] * sumpow;
                 _chMat[i][j] = h;
                 _chMatSQ[i][j] = h.sqAbs;
             }
+        }
     }
 
 
@@ -123,7 +133,7 @@ if(is(Mod == BPSK!C) || is(Mod == QPSK!C))
 
     Slice!(C*, 2, Contiguous) _chMat;
     Slice!(R*, 2, Contiguous) _chMatSQ;
-    Slice!(C*, 2, Contiguous) _chMatQ, _chMatR;
+    Slice!(R*, 1, Contiguous) _rowScales;
     C[] _recvY;
     R[] _sigma2;
     SoftSymType[] _lastLLR;
@@ -141,6 +151,10 @@ if(is(Mod == BPSK!C) || is(Mod == QPSK!C))
 
     ws._recvY[] = recvY[];
     ws._sigma2[] = N0;
+    foreach(i; 0 .. ws._nrxvec) {
+        ws._recvY[i] *= ws._rowScales[i];
+        ws._sigma2[i] *= ws._rowScales[i]^^2;
+    } 
 
     ws.calcSoftSymbol();
 
