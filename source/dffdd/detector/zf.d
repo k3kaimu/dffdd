@@ -1,5 +1,0 @@
-module dffdd.detector.zf;
-
-
-
-
