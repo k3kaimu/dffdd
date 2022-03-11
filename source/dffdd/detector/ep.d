@@ -186,10 +186,13 @@ in(A_.length!0 <= A_.length!1)
 
     // auto invXi = matrix!F(M, M, 0);
     auto AHinvXi = matrix!F(N, M, 0);
+
+    auto tmpVecM = vector!F(M, 0);
+    auto tmpVecN = vector!F(N, 0);
     // auto matAA = A * A.H;
 
-    auto matAA = matrix!F(M, M, 0);
-    matAA[] = A * A.H;
+    // auto matAA = matrix!F(M, M, 0);
+    // matAA[] = A * A.H;
 
     F v_AB = 0,
       v_BA = theta0,
@@ -200,6 +203,7 @@ in(A_.length!0 <= A_.length!1)
     auto pxs = slice!ProxResult(N);
     import std.stdio;
 
+    // writeln("START");
     foreach(iter; 1 .. nIteration)
     {
         // SVDの結果を使ってXiの逆行列とA.Hの積とtrace(invXi * matAA)を計算
@@ -211,10 +215,13 @@ in(A_.length!0 <= A_.length!1)
             traceInvXiAA += eig * AS_[i]^^2;
         }
 
-        AHinvXi[] = V.T * AHinvXi * U.T;
+        tmpVecM[] = y - A * x_BA;
+        tmpVecM[] = U.T * tmpVecM;
+        tmpVecN[] = AHinvXi * tmpVecM;
+        tmpVecN[] = V.T * tmpVecN;
 
         gamma_vBA = N / traceInvXiAA;
-        x_AB[] = x_BA + gamma_vBA * AHinvXi * (y - A * x_BA);
+        x_AB[] = x_BA + gamma_vBA * tmpVecN;
         v_AB = gamma_vBA - v_BA;
         
         pxs[] = x_AB.sliced.map!(e => prox(e, v_AB));
@@ -224,6 +231,7 @@ in(A_.length!0 <= A_.length!1)
         v_BA = (v_B * v_AB)/(v_AB - v_B);
         x_BA[] = (x_B * v_AB - x_AB * v_B)/(v_AB - v_B);
     }
+    // writeln("STOP");
 
     return x_B;
 }

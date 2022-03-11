@@ -41,7 +41,7 @@ if(isVectorLike!Vec)
     else
     {
         // import std.stdio;
-        // writeln("Allocate");
+        // writeln("Allocate for " ~ Vec.stringof);
         Slice!(Vec.ElementType*, 1, Contiguous) newslice = alloc.makeArray!(Vec.ElementType)(vec.length).sliced;
         vec.evalTo(newslice, alloc);
         return tuple!("view", "isAllocated")(newslice, true);
@@ -80,7 +80,7 @@ if(isMatrixLike!Mat)
             else
             {
                 // import std.stdio;
-                // writeln("Allocate Universal");
+                // writeln("Allocate Universal for " ~ Mat.stringof);
                 Slice!(Mat.ElementType*, 2, Contiguous) newslice = alloc.makeArray!(Mat.ElementType)(mat.length!0 * mat.length!1).sliced(mat.length!0, mat.length!1);
                 mat.evalTo(newslice, alloc);
                 return tuple!("view", "isAllocated")(newslice.universal.lightConst, true);
@@ -89,7 +89,7 @@ if(isMatrixLike!Mat)
         else
         {
             // import std.stdio;
-            // writeln("Allocate");
+            // writeln("Allocate for " ~ Mat.stringof);
             Slice!(Mat.ElementType*, 2, Contiguous) newslice = alloc.makeArray!(Mat.ElementType)(mat.length!0 * mat.length!1).sliced(mat.length!0, mat.length!1);
             mat.evalTo(newslice, alloc);
             return tuple!("view", "isAllocated")(newslice, true);
