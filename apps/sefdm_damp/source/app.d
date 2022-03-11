@@ -59,7 +59,7 @@ void main(string[] args)
 
 
     static foreach(ALGORITHM; ["EP", "DAMP", "GaBP", "QRM-MLD", "Sphere"])
-    foreach(K; [16, 64,/* 256*/])
+    foreach(K; [16, 64, 256])
     {
         if(ALGORITHM == "Sphere" && K > 16)
             continue;
