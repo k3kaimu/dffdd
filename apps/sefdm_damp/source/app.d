@@ -59,13 +59,13 @@ void main(string[] args)
     // }
 
 
-    static foreach(ALGORITHM; ["MMSE", "ZF", "EP", "DAMP", "GaBP", "QRM-MLD", "Sphere"])
+    static foreach(ALGORITHM; ["SVD", "MMSE", "ZF", "EP", "DAMP", "GaBP", "QRM-MLD", "Sphere"])
     foreach(K; [16, 64, 256])
     {
         if(ALGORITHM == "Sphere" && K > 16)
             continue;
 
-        foreach(ALPHA; [16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0]){
+        foreach(ALPHA; [16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0, 9/16.0, 8/16.0]){
             enum ModK = 2;              // 1シンボルあたりのビット数（1: BPSK, 2:QPSKなど）
             immutable uint OSRate = 1;
             immutable uint NFFT = K * OSRate;                   // FFTサイズ
@@ -98,17 +98,9 @@ void main(string[] args)
                 {
                     auto res =  mainImpl!(ModK, "QRM-MLD")(M, N, NFFT, ebno, 100);
                 }
-                else static if(ALGORITHM == "Sphere")
+                else static if(ALGORITHM == "Sphere" || ALGORITHM == "MMSE" || ALGORITHM == "ZF" || ALGORITHM == "SVD")
                 {
-                    auto res =  mainImpl!(ModK, "Sphere")(M, N, NFFT, ebno);
-                }
-                else static if(ALGORITHM == "MMSE")
-                {
-                    auto res = mainImpl!(ModK, "MMSE")(M, N, NFFT, ebno);
-                }
-                else static if(ALGORITHM == "ZF")
-                {
-                    auto res = mainImpl!(ModK, "ZF")(M, N, NFFT, ebno);
+                    auto res =  mainImpl!(ModK, ALGORITHM)(M, N, NFFT, ebno);
                 }
                 else static assert(0);
 
@@ -254,7 +246,21 @@ Tuple!(double, "ber", double, "kbps") mainImpl(size_t ModK, string DETECT, Flag!
         recvMat[] = rwMat * chMat;
         auto detector = makeZFDetector!(C, typeof(mod))(mod, recvMat);
     }
-    else
+    else static if(DETECT == "SVD")
+    {
+        auto rwMat = matrix!C(M, M, C(0));
+        {
+            import kaleidic.lubeck;
+            auto svdResult = svd(chMat.sliced);
+            chMat[] = chMat * svdResult.vt.lightScope.matrixed.H;
+            rwMat[] = svdResult.u.lightScope.matrixed.H;
+            writeln(svdResult.sigma);
+        }
+        auto recvMat = matrix!C(M, N, C(0));
+        recvMat[] = rwMat * chMat;
+        auto detector = makeMMSEDetector!(C, typeof(mod))(mod, recvMat, SIGMA);
+    }
+    else 
         static assert(0);
 
     // writeln(chMat.sliced);
