@@ -164,9 +164,9 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
 
         auto opSliceAssign(S)(S scalar)
-        if(!isMatrixLike!S && !isVectorLike!S)
+        if(!isMatrixLike!S && !isVectorLike!S && is(S : ElementType))
         {
-            this._slice[] = ElementType(scalar);
+            this._slice[] = cast(ElementType)(scalar);
         }
 
 

@@ -264,7 +264,7 @@ struct ConstEye(E, E value)
         import mir.ndslice : diagonal;
 
         dst[] = T(0);
-        dst.diagonal[] = T(value);
+        dst.diagonal[] = cast(T)value;
     }
 
 
@@ -338,6 +338,18 @@ unittest
     assert(ident[0, 1] == 0);
     assert(ident[1, 0] == 0);
     assert(ident[1, 1] == 3);
+}
+
+unittest
+{
+    import std.complex;
+    auto ident = ConstEye!(Complex!float, Complex!float(3, 0))(2);
+    static assert(isMatrixLike!(typeof(ident)));
+
+    assert(ident[0, 0].re == 3);
+    assert(ident[0, 1].re == 0);
+    assert(ident[1, 0].re == 0);
+    assert(ident[1, 1].re == 3);
 }
 
 
