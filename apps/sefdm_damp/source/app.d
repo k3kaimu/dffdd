@@ -106,7 +106,7 @@ void main(string[] args)
                 berResults ~= res.ber;
                 speedResults ~= res.kbps;
                 writefln!"%s,%s"(ebno, res.ber);
-                if(res.ber < 1E-5) {
+                if(res.ber < 1E-6) {
                     break;
                 }
             }
