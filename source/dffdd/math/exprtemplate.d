@@ -1281,7 +1281,7 @@ string definitionsOfMatrixOperators(string[] list)
                 static if(is(M == MatrixAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
                     return matrixAxpby(ElementType(1), this, op == "+" ? mat._alpha : -mat._alpha, mat._matA);
                 else
-                    return matrixAxpby(ElementType(1), this, S(op == "+" ? 1 : -1), mat);
+                    return matrixAxpby(ElementType(1), this, ElementType(op == "+" ? 1 : -1), mat);
             }
         }
     };

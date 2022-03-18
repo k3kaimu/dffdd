@@ -23,28 +23,39 @@ Matrix!(T, Contiguous) matrix(T)(size_t row, size_t col)
 
 Matrix!(T, Contiguous) matrix(T)(size_t row, size_t col, T init)
 {
-    return Matrix!(T, Contiguous)(slice!T([row, col], init));
+    return MatrixedSlice!(T*, Contiguous)(slice!T([row, col], init));
 }
 
 
 auto matrix(Iterator, SliceKind kind)(Slice!(Iterator, 2, kind) s)
 {
-    return matrixed(slice(s));
+    auto ret = matrix!(typeof(s[0][0]))(s.length!0, s.length!1);
+    ret.sliced[] = s;
+    return ret;
 }
 
 
 auto makeMatrix(T, Alloc)(ref Alloc alloc, size_t row, size_t col)
 {
     T[] arr = alloc.makeArray!(T)(row * col);
-    return arr.sliced(row, col).matrixed;
+    T[] tmp = alloc.makeArray!(T)(row * col);
+    return MatrixedSlice!(T*, Contiguous)(arr.sliced(row, col), tmp.sliced(row, col));
 }
 
 
 auto makeMatrix(T, Alloc)(ref Alloc alloc, size_t row, size_t col, T init)
 {
     T[] arr = alloc.makeArray!(T)(row * col);
+    T[] tmp = alloc.makeArray!(T)(row * col);
     arr[] = init;
-    return arr.sliced(row, col).matrixed;
+    return MatrixedSlice!(T*, Contiguous)(arr.sliced(row, col), tmp.sliced(row, col));
+}
+
+
+auto disposeMatrix(T, Alloc, SliceKind kindA)(ref Alloc alloc, ref Matrix!(T*, kindA) mat)
+{
+    alloc.dispose(mat._slice.iterator);
+    alloc.dispose(mat._tmp.iterator);
 }
 
 
@@ -67,12 +78,17 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     this(Slice!(Iterator, 2, kind) s)
     {
         _slice = s;
-
-        static if(is(Iterator == ElementType*))
-        {
-            _tmp = slice!ElementType(s.shape);
-        }
     }
+
+
+  static if(is(Iterator == ElementType*))
+  {
+    this(Slice!(Iterator, 2, kind) s, Slice!(Iterator, 2, Contiguous) tmp)
+    {
+        _slice = s;
+        _tmp = tmp;
+    }
+  }
 
 
     size_t length(size_t dim = 0)() const @property
@@ -136,7 +152,7 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
 
     import dffdd.math.exprtemplate;
-    mixin(definitionsOfMatrixOperators(["defaults", "M*M", "M*V", "M*S", ".H"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M*M", "M+M", "M*V", "M*S", ".H"]));
 
 
     static if(is(Iterator == ElementType*))
@@ -145,6 +161,7 @@ struct MatrixedSlice(Iterator, SliceKind kind)
         if(isMatrixLike!M)
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
+            _allocateTmp();
             mat.evalTo(_tmp, matvecAllocator);
             _slice[] = _tmp;
         }
@@ -154,6 +171,7 @@ struct MatrixedSlice(Iterator, SliceKind kind)
         if(isMatrixLike!M && (op == "+" || op == "-"))
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
+            _allocateTmp();
             mat.evalTo(_tmp, matvecAllocator);
 
             static if(op == "+")
@@ -171,12 +189,17 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
 
         auto opSliceOpAssign(string op, S)(S scalar)
-        if(!isMatrixLike!S && !isVectorLike!S && (op == "+" || op == "-"))
+        if(!isMatrixLike!S && !isVectorLike!S && (op == "+" || op == "-" || op == "*" || op == "/"))
         {
             static if(op == "+")
                 this._slice[] += scalar;
-            else
+            else static if(op == "-")
                 this._slice[] -= scalar;
+            else static if(op == "*")
+                this._slice[] *= scalar;
+            else static if(op == "/")
+                this._slice[] /= scalar;
+            else static assert(0);
         }
     }
 
@@ -187,6 +210,14 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     static if(is(Iterator == ElementType*))
     {
         Slice!(ElementType*, 2, Contiguous) _tmp;
+
+
+        void _allocateTmp()
+        {
+            if(_tmp.shape != _slice.shape) {
+                _tmp = slice!ElementType(_slice.shape);
+            }
+        }
     }
 }
 
