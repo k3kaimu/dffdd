@@ -5,6 +5,7 @@ import dffdd.math.matrix;
 import dffdd.math.linalg;
 import dffdd.math.vector;
 import dffdd.math.matrixspecial;
+import dffdd.math.complex;
 
 import dffdd.mod.primitives;
 
@@ -57,7 +58,7 @@ final class LinearDetector(C, Mod)
 }
 
 
-auto makeMMSEDetector(C, Mod, Mat)(Mod mod, Mat chMat, double sigma2)
+auto makeMMSEDetector(C, Mod, Mat)(Mod mod, Mat chMat, RealPartType!C sigma2)
 {
     immutable M = chMat.length!0;
     immutable N = chMat.length!1;
