@@ -1366,52 +1366,52 @@ unittest
 }
 
 
-unittest
-{
-    import dffdd.math.complex;
-    alias C = MirComplex!double;
-    import std.stdio;
-    import std.algorithm : sort;
+// unittest
+// {
+//     import dffdd.math.complex;
+//     alias C = MirComplex!double;
+//     import std.stdio;
+//     import std.algorithm : sort;
 
-    static C[] genChannel(C)(uint N, uint NFFT, uint k)
-    {
-        import std.complex : expi;
-        import std.math;
+//     static C[] genChannel(C)(uint N, uint NFFT, uint k)
+//     {
+//         import std.complex : expi;
+//         import std.math;
 
-        C[] coefs = new C[N];
-        foreach(i, ref e; coefs) {
-            e = C(expi(2*PI/NFFT * k * i).tupleof) / sqrt(N*1.0);
-        }
+//         C[] coefs = new C[N];
+//         foreach(i, ref e; coefs) {
+//             e = C(expi(2*PI/NFFT * k * i).tupleof) / sqrt(N*1.0);
+//         }
         
-        return coefs;
-    }
+//         return coefs;
+//     }
+        
+//     import std.math : round;
+//     immutable uint NFFT = 256;
+//     immutable uint M = cast(uint)round( NFFT * 10 / 16.0 );
+//     immutable uint N = cast(uint)round( NFFT * 10 / 16.0 );
 
-    import std.math : round;
-    immutable uint NFFT = 256;
-    immutable uint M = cast(uint)round( NFFT * 10 / 16.0 );
-    immutable uint N = cast(uint)round( NFFT * 10 / 16.0 );
+//     auto chMat = matrix!C(M, N);
+//     foreach(m; 0 .. M) {
+//         auto s = genChannel!C(N, NFFT, m);
+//         foreach(n; 0 .. N) {
+//             chMat[m, n] = s[n].conj;
+//         }
+//     }
 
-    auto chMat = matrix!C(M, N);
-    foreach(m; 0 .. M) {
-        auto s = genChannel!C(N, NFFT, m);
-        foreach(n; 0 .. N) {
-            chMat[m, n] = s[n].conj;
-        }
-    }
+//     import mir.math.stat : mean;
+//     auto tdres = polarTridiagonalize(chMat);
+//     tdres.diag.sliced.sort!"a^^2 < b^^2"();
+//     writeln(tdres.diag.sliced);
+//     // tdres.diag.sliced.map!"a^^2".mean.writeln();
+//     // writeln(tdres.diag.sliced.map!"a^^2".sort());
 
-    import mir.math.stat : mean;
-    auto tdres = polarTridiagonalize(chMat);
-    tdres.diag.sliced.sort!"a^^2 < b^^2"();
-    writeln(tdres.diag.sliced);
-    // tdres.diag.sliced.map!"a^^2".mean.writeln();
-    // writeln(tdres.diag.sliced.map!"a^^2".sort());
-
-    import kaleidic.lubeck;
-    auto svdres = svd(chMat.sliced);
-    svdres.sigma.sort!"a^^2 < b^^2"();
-    writeln(svdres.sigma);
-    // svdres.sigma.map!"a^^2".mean.writeln();
-    // auto mm = matrix!C(M, M);
-    // mm[] = chMat * chMat.H;
-    // writeln(trace(mm) / M);
-}
+//     import kaleidic.lubeck;
+//     auto svdres = svd(chMat.sliced);
+//     svdres.sigma.sort!"a^^2 < b^^2"();
+//     writeln(svdres.sigma);
+//     // svdres.sigma.map!"a^^2".mean.writeln();
+//     // auto mm = matrix!C(M, M);
+//     // mm[] = chMat * chMat.H;
+//     // writeln(trace(mm) / M);
+// }
