@@ -1,11 +1,12 @@
 {
-    "name": "gabp_gaussian",
+    "name": "sim_sefdm",
     "description": "A minimal D application.",
     "copyright": "Copyright © 2019, komatsu",
     "authors": ["komatsu"],
     "dependencies": {
         "dffdd": { "path": "../../" },
-        "lubeck": { "path": "../../../lubeck" }
+        "lubeck": { "path": "../../../lubeck" },
+        "tuthpc": { "path": "../../../TUT-HPCLib4D" }
     },
     "buildTypes": {
         "debug": { "buildOptions": ["debugMode"] },
