@@ -6,7 +6,7 @@ import std.experimental.allocator;
 import dffdd.math.complex;
 import dffdd.math.vector;
 import dffdd.math.matrix;
-import dffdd.math.exprtemplate : makeViewOrNewSlice, matvecAllocator;
+import dffdd.math.exprtemplate : makeViewOrNewSlice, matvecAllocator, hasMemoryView;
 
 import mir.ndslice;
 
@@ -928,9 +928,490 @@ in(mat.length!0 == mat.length!1)
     scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
 
     alias E = M.ElementType;
-    E sum = 0;
+    E sum = E(0);
     foreach(i; 0 .. mat.length!0)
         sum += viewA.view[i, i];
     
     return sum;
+}
+
+
+/**
+Bidiagonalization for square matrix
+Translated from: https://www.cas.mcmaster.ca/~qiao/software/blklan/c/src/Bidiagonal.c
+*/
+void bidiagDecompImpl(T, U, SliceKind kindA, SliceKind kindQ, SliceKind kindP)(
+    in Slice!(U*, 2, kindA) A,
+    Slice!(RealPartType!T*) d,
+    Slice!(RealPartType!T*) b,
+    Slice!(T*, 2, kindQ) Q,
+    Slice!(T*, 2, kindP) P)
+if(is(T == Unqual!T) && (kindA == Contiguous || kindA == Canonical) && (kindQ == Contiguous || kindQ == Canonical) && (kindP == Contiguous || kindP == Canonical))
+in(A.length!0 == A.length!1)
+in(A.length!0 == d.length)
+in(A.length!0 - 1 == b.length)
+in(Q.length!0 == A.length!0)
+in(Q.length!0 == Q.length!1)
+in(P.length!0 == A.length!0)
+in(P.length!0 == P.length!1)
+{
+    import dffdd.math.lapack;
+
+    immutable n = A.length!0;
+
+    auto A1 = slice!T(n, n); /*mininitRcslice!T(n, n)*/
+    A1[] = A.lightConst.transposed;
+
+    auto tauq = slice!T(n); /*mininitRcslice!T(n)*/
+    auto taup = slice!T(n); /*mininitRcslice!T(n)*/
+    auto work = slice!T(n); /*mininitRcslice!T(n)*/
+
+    gebrd!T(A1.lightScope.canonical, d, b, tauq.lightScope, taup.lightScope, work.lightScope);
+
+    Q[] = A1[];
+    P[] = A1[];
+
+    static if(isComplex!T)
+    {
+        ungbr!T('Q', n, Q.canonical, tauq.lightScope, work.lightScope);
+        ungbr!T('P', n, P.canonical, taup.lightScope, work.lightScope);
+    }
+    else
+    {
+        orgbr!T('Q', n, Q.canonical, tauq.lightScope, work.lightScope);
+        orgbr!T('P', n, P.canonical, taup.lightScope, work.lightScope);
+    }
+
+    A1[] = Q.transposed;
+    Q[] = A1[];
+
+    A1[] = P.transposed;
+    P[] = A1[];
+}
+
+unittest
+{
+    import std.math;
+    import mir.algorithm.iteration : equal;
+    import mir.complex : cabs;
+
+    alias F = float;
+    alias C = MirComplex!F;
+    auto mat = matrix!C(3, 3);
+    mat[] = iota([3, 3]).matrixed;
+    mat[] += 1;
+
+    auto d = vector!F(3);
+    auto b = vector!F(2);
+    auto Q = matrix!C(3, 3);
+    auto P = matrix!C(3, 3);
+
+    bidiagDecompImpl!C(mat.sliced, d.sliced, b.sliced, Q.sliced, P.sliced);
+
+    auto bd = matrix!C(3, 3, C(0));
+    foreach(i; 0 .. 3) {
+        bd[i, i] = d[i];
+        if(i < 2) bd[i, i+1] = b[i];
+    }
+
+    bd[] = Q * bd * P;
+    assert(equal!((a, b) => cabs(a-b)< 1e-5)(mat.sliced, bd.sliced));
+}
+
+
+
+struct Bidiagonalized(T)
+{
+    Matrix!(T, Contiguous) q;
+    Vector!(RealPartType!T, Contiguous) diag;
+    Vector!(RealPartType!T, Contiguous) offdiag;
+    Matrix!(T, Contiguous) pt;
+
+
+    void evalBTo(Iterator, SliceKind kind)(MatrixedSlice!(Iterator, kind) dst)
+    in(dst.length!0 == diag.length && dst.length!1 == diag.length)
+    {
+        immutable size_t M = diag.length;
+
+        dst[] = cast(typeof(dst[0, 0]))0;
+        foreach(i; 0 .. M) {
+            dst[i, i] = diag[i];
+            if(i < M - 1) dst[i, i+1] = offdiag[i];
+        }
+    }
+}
+
+
+Bidiagonalized!(Mat.ElementType) bidiagonalize(Mat)(in Mat A)
+if(isMatrixLike!Mat && hasMemoryView!Mat)
+in(A.length!0 == A.length!1)
+{
+    Bidiagonalized!(Mat.ElementType) ret;
+    return bidiagonalize!Mat(A, ret);
+}
+
+
+ref Bidiagonalized!(Mat.ElementType) bidiagonalize(Mat)(in Mat A, return ref Bidiagonalized!(Mat.ElementType) dst)
+if(isMatrixLike!Mat)
+in(A.length!0 == A.length!1)
+{
+    alias T = Mat.ElementType;
+
+    immutable size_t M = A.length!0;
+
+    auto viewA = makeViewOrNewSlice(A, matvecAllocator);
+    scope(exit) if(viewA.isAllocated) matvecAllocator.dispose(viewA.view.iterator);
+
+    if(dst.q.sliced.shape != viewA.view.shape)
+        dst.q = matrix!T(M, M);
+
+    if(dst.pt.sliced.shape != viewA.view.shape)
+        dst.pt = matrix!T(M, M);
+
+    if(dst.diag.length != M)
+        dst.diag = vector!(RealPartType!T)(M);
+
+    if(dst.offdiag.length != M - 1)
+        dst.offdiag = vector!(RealPartType!T)(M - 1);
+
+    bidiagDecompImpl!T(viewA.view, dst.diag.sliced, dst.offdiag.sliced, dst.q.sliced, dst.pt.sliced);
+
+    return dst;
+}
+
+unittest
+{
+    import std.math;
+    import mir.algorithm.iteration : equal;
+    import mir.complex : cabs;
+
+    alias F = float;
+    alias C = MirComplex!F;
+    auto mat = matrix!C(3, 3);
+    mat[] = iota([3, 3]).matrixed;
+    mat[] += 1;
+
+    auto res = bidiagonalize(mat);
+
+    auto reconst = matrix!C(3, 3);
+    res.evalBTo(reconst);
+    reconst[] = res.q * reconst * res.pt;
+    assert(equal!((a, b) => cabs(a-b)< 1e-5)(mat.sliced, reconst.sliced));
+}
+
+
+
+/**
+Tridiagonalization for Hermitian matrix
+*/
+void tridiagDecompImpl(T, U, SliceKind kindA, SliceKind kindQ)(
+    in Slice!(U*, 2, kindA) A,
+    Slice!(RealPartType!T*) d,
+    Slice!(RealPartType!T*) b,
+    Slice!(T*, 2, kindQ) Q)
+if(is(T == Unqual!T) && (kindA == Contiguous || kindA == Canonical) && (kindQ == Contiguous || kindQ == Canonical))
+in(A.length!0 == A.length!1)
+in(A.length!0 == d.length)
+in(A.length!0 - 1 == b.length)
+in(Q.length!0 == A.length!0)
+in(Q.length!0 == Q.length!1)
+{
+    import dffdd.math.lapack;
+
+    immutable n = A.length!0;
+
+    auto A1 = slice!T(n, n); /*mininitRcslice!T(n, n)*/
+    A1[] = A.lightConst.transposed;
+
+    auto tauq = slice!T(n-1); /*mininitRcslice!T(n)*/
+    auto work = slice!T(n*64); /*mininitRcslice!T(n)*/
+
+    static if(isComplex!T)
+        hetrd!T('L', A1.lightScope.canonical, d, b, tauq.lightScope, work.lightScope);
+    else
+        sytrd!T('L', A1.lightScope.canonical, d, b, tauq.lightScope, work.lightScope);
+
+    Q[] = A1[];
+
+    static if(isComplex!T)
+    {
+        ungtr!T('L', Q.canonical, tauq.lightScope, work.lightScope);
+    }
+    else
+    {
+        orgtr!T('L', Q.canonical, tauq.lightScope, work.lightScope);
+    }
+
+    A1[] = Q.transposed;
+    Q[] = A1[];
+}
+
+
+unittest
+{
+    import std.stdio;
+    import std.math;
+    import mir.algorithm.iteration : equal;
+    import mir.complex : cabs;
+
+    alias F = double;
+    alias C = MirComplex!F;
+    // alias C = F;
+    auto mat = matrix!C(4, 4);
+    mat.sliced()[] =   [[C( 2.07), C( 3.87), C( 4.20), C(-1.15)],
+                        [C( 3.87), C(-0.21), C( 1.87), C( 0.63)],
+                        [C( 4.20), C( 1.87), C( 1.15), C( 2.06)],
+                        [C(-1.15), C( 0.63), C( 2.06), C(-1.81)]];
+
+    auto d = vector!F(4);
+    auto b = vector!F(3);
+    auto Q = matrix!C(4, 4);
+
+    tridiagDecompImpl!C(mat.sliced, d.sliced, b.sliced, Q.sliced);
+
+    auto tb = matrix!C(4, 4, C(0));
+    foreach(i; 0 .. 4) {
+        tb[i, i] = d[i];
+        if(i < 3) {
+            tb[i, i+1] = b[i];
+            tb[i+1, i] = b[i];
+        }
+    }
+
+    tb[] = Q * tb * Q.H;
+    assert(equal!((a, b) => cabs(a-b)< 1e-5)(mat.sliced, tb.sliced));
+}
+
+
+
+struct Tridiagonalized(T)
+{
+    Matrix!(T, Contiguous) q;
+    Vector!(RealPartType!T, Contiguous) diag;
+    Vector!(RealPartType!T, Contiguous) offdiag;
+
+
+    void evalTTo(Iterator, SliceKind kind)(MatrixedSlice!(Iterator, kind) dst)
+    in(dst.length!0 == diag.length && dst.length!1 == diag.length)
+    {
+        immutable size_t M = diag.length;
+
+        dst[] = cast(typeof(dst[0, 0]))0;
+        foreach(i; 0 .. M) {
+            dst[i, i] = diag[i];
+            if(i < M - 1) dst[i, i+1] = offdiag[i];
+            if(i < M - 1) dst[i+1, i] = offdiag[i];
+        }
+    }
+}
+
+
+Tridiagonalized!(Mat.ElementType) tridiagonalize(Mat)(in Mat A)
+if(isMatrixLike!Mat && hasMemoryView!Mat)
+in(A.length!0 == A.length!1)
+{
+    Tridiagonalized!(Mat.ElementType) ret;
+    return tridiagonalize!Mat(A, ret);
+}
+
+
+ref Tridiagonalized!(Mat.ElementType) tridiagonalize(Mat)(in Mat A, return ref Tridiagonalized!(Mat.ElementType) dst)
+if(isMatrixLike!Mat)
+in(A.length!0 == A.length!1)
+{
+    alias T = Mat.ElementType;
+
+    immutable size_t M = A.length!0;
+
+    auto viewA = makeViewOrNewSlice(A, matvecAllocator);
+    scope(exit) if(viewA.isAllocated) matvecAllocator.dispose(viewA.view.iterator);
+
+    if(dst.q.sliced.shape != viewA.view.shape)
+        dst.q = matrix!T(M, M);
+
+    if(dst.diag.length != M)
+        dst.diag = vector!(RealPartType!T)(M);
+
+    if(dst.offdiag.length != M - 1)
+        dst.offdiag = vector!(RealPartType!T)(M - 1);
+
+    tridiagDecompImpl!T(viewA.view, dst.diag.sliced, dst.offdiag.sliced, dst.q.sliced);
+
+    return dst;
+}
+
+unittest
+{
+    import std.math;
+    import mir.algorithm.iteration : equal;
+    import mir.complex : cabs;
+
+    alias F = float;
+    alias C = MirComplex!F;
+    auto mat = matrix!C(4, 4);
+    mat.sliced()[] =   [[C( 2.07), C( 3.87), C( 4.20), C(-1.15)],
+                        [C( 3.87), C(-0.21), C( 1.87), C( 0.63)],
+                        [C( 4.20), C( 1.87), C( 1.15), C( 2.06)],
+                        [C(-1.15), C( 0.63), C( 2.06), C(-1.81)]];
+
+    auto res = tridiagonalize(mat);
+
+    auto reconst = matrix!C(4, 4);
+    res.evalTTo(reconst);
+    reconst[] = res.q * reconst * res.q.H;
+    assert(equal!((a, b) => cabs(a-b)< 1e-5)(mat.sliced, reconst.sliced));
+}
+
+
+// A = Q * T * P
+struct PolarTridiagonalized(T)
+{
+    Matrix!(T, Contiguous) q;
+    Matrix!(T, Contiguous) pt;
+    Vector!(RealPartType!T, Contiguous) diag;
+    Vector!(RealPartType!T, Contiguous) offdiag;
+
+
+    void evalTTo(Iterator, SliceKind kind)(MatrixedSlice!(Iterator, kind) dst)
+    in(dst.length!0 == diag.length && dst.length!1 == diag.length)
+    {
+        immutable size_t M = diag.length;
+
+        dst[] = cast(typeof(dst[0, 0]))0;
+        foreach(i; 0 .. M) {
+            dst[i, i] = diag[i];
+            if(i < M - 1) dst[i, i+1] = offdiag[i];
+            if(i < M - 1) dst[i+1, i] = offdiag[i];
+        }
+    }
+}
+
+
+PolarTridiagonalized!(Mat.ElementType) polarTridiagonalize(Mat)(in Mat A)
+if(isMatrixLike!Mat && hasMemoryView!Mat)
+in(A.length!0 == A.length!1)
+{
+    PolarTridiagonalized!(Mat.ElementType) ret;
+    return polarTridiagonalize!Mat(A, ret);
+}
+
+
+ref PolarTridiagonalized!(Mat.ElementType) polarTridiagonalize(Mat)(in Mat A, return ref PolarTridiagonalized!(Mat.ElementType) dst)
+if(isMatrixLike!Mat)
+in(A.length!0 == A.length!1)
+{
+    alias T = Mat.ElementType;
+
+    immutable size_t M = A.length!0;
+
+    auto viewA = makeViewOrNewSlice(A, matvecAllocator);
+    scope(exit) if(viewA.isAllocated) matvecAllocator.dispose(viewA.view.iterator);
+
+    if(dst.q.sliced.shape != viewA.view.shape)
+        dst.q = matrix!T(M, M);
+
+    if(dst.pt.sliced.shape != viewA.view.shape)
+        dst.pt = matrix!T(M, M);
+
+    if(dst.diag.length != M)
+        dst.diag = vector!(RealPartType!T)(M);
+
+    if(dst.offdiag.length != M - 1)
+        dst.offdiag = vector!(RealPartType!T)(M - 1);
+
+    // SVD for A
+    import kaleidic.lubeck : svd;
+    auto svdres = svd(viewA.view);
+
+    auto S = matrix!T(M, M, T(0));
+    foreach(i; 0 .. M) S[i, i] = svdres.sigma[i];
+
+    auto U = svdres.u.matrixed;
+    auto VH = svdres.vt.matrixed;
+
+    auto X = matrix!T(M, M);
+    // X[] = VH.H * S * VH;
+    X[] = VH.H * U.H * (viewA.view.matrixed);
+
+    dst.q[] = U * VH;
+    
+    auto tdres = tridiagonalize(X);
+
+    dst.q[] = dst.q * tdres.q;
+    dst.pt[] = tdres.q.H;
+    dst.diag[] = tdres.diag;
+    dst.offdiag[] = tdres.offdiag;
+
+    return dst;
+}
+
+unittest
+{
+    import std.math;
+    import mir.algorithm.iteration : equal;
+    import mir.complex : cabs;
+
+    alias F = float;
+    alias C = MirComplex!F;
+    auto mat = matrix!C(3, 3);
+    mat[] = iota([3, 3]).matrixed;
+    mat[] += 1;
+
+    auto res = polarTridiagonalize(mat);
+
+    auto reconst = matrix!C(3, 3);
+    res.evalTTo(reconst);
+    reconst[] = res.q * reconst * res.pt;
+    assert(equal!((a, b) => cabs(a-b)< 1e-5)(mat.sliced, reconst.sliced));
+}
+
+
+unittest
+{
+    import dffdd.math.complex;
+    alias C = MirComplex!double;
+    import std.stdio;
+    import std.algorithm : sort;
+
+    static C[] genChannel(C)(uint N, uint NFFT, uint k)
+    {
+        import std.complex : expi;
+        import std.math;
+
+        C[] coefs = new C[N];
+        foreach(i, ref e; coefs) {
+            e = C(expi(2*PI/NFFT * k * i).tupleof) / sqrt(N*1.0);
+        }
+        
+        return coefs;
+    }
+
+    import std.math : round;
+    immutable uint NFFT = 256;
+    immutable uint M = cast(uint)round( NFFT * 10 / 16.0 );
+    immutable uint N = cast(uint)round( NFFT * 10 / 16.0 );
+
+    auto chMat = matrix!C(M, N);
+    foreach(m; 0 .. M) {
+        auto s = genChannel!C(N, NFFT, m);
+        foreach(n; 0 .. N) {
+            chMat[m, n] = s[n].conj;
+        }
+    }
+
+    import mir.math.stat : mean;
+    auto tdres = polarTridiagonalize(chMat);
+    tdres.diag.sliced.sort!"a^^2 < b^^2"();
+    writeln(tdres.diag.sliced);
+    // tdres.diag.sliced.map!"a^^2".mean.writeln();
+    // writeln(tdres.diag.sliced.map!"a^^2".sort());
+
+    import kaleidic.lubeck;
+    auto svdres = svd(chMat.sliced);
+    svdres.sigma.sort!"a^^2 < b^^2"();
+    writeln(svdres.sigma);
+    // svdres.sigma.map!"a^^2".mean.writeln();
+    // auto mm = matrix!C(M, M);
+    // mm[] = chMat * chMat.H;
+    // writeln(trace(mm) / M);
 }

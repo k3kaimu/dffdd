@@ -1,64 +1,45 @@
-module dffdd.detector.damp;
+module dffdd.detector.amp;
 
-import std.algorithm : stdmap = map;
-import std.math : sqrt, isClose, SQRT2, SQRT1_2;
-import std.numeric : stddot = dotProduct;
-import std.traits : isFloatingPoint, isArray;
-import std.typecons : Tuple, tuple;
+import std.math;
+import std.traits;
 
-import dffdd.detector.primitives;
-import dffdd.mod.primitives : softDecision;
-
-// import dffdd.damp.damp;
 import dffdd.math.complex;
 import dffdd.math.matrix;
 import dffdd.math.vector;
-import dffdd.math.linalg;
-import dffdd.math.exprtemplate : hasMemoryView;
+import dffdd.math.exprtemplate;
+import dffdd.math.linalg : toRealRI, fromRealRI, toRealRIIR;
 
+import dffdd.detector.primitives;
+import dffdd.mod.primitives;
 import dffdd.mod.qpsk;
 import dffdd.mod.qam;
 
-import mir.ndslice : slice, sliced, Contiguous, SliceKind;
+import mir.ndslice : Contiguous, sliced;
 
 
-class DAMPDectector(C, Mod) : IDetector!(C, C)
-if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re) == float) || is(typeof(C.init.re) == double)) )
+final class AMPDetector(C, Mod) : IDetector!(C, C)
+if((is(Mod == QPSK!C) || is(Mod == QAM!C)) && isComplex!C && (is(typeof(C.init.re) == float) || is(typeof(C.init.re) == double)))
 {
     alias F = typeof(C.init.re);
-
     alias InputElementType = C;
     alias OutputElementType = C;
 
 
-    this(Mat)(Mod mod, in Mat chMat, size_t maxIter = 20, F damp1_1 = 1, F damp1_2 = 1, F damp2_1 = 1, F damp2_2 = 1)
+    this(Mat)(Mod mod, in Mat chMat, double N0, size_t maxIter = 20)
     if(isMatrixLike!Mat)
     {
         _mod = mod;
         _chMat = matrix!F(chMat.length!0 * 2, chMat.length!1 * 2);
-        _rowScales = vector!F(chMat.length!0 * 2);
         _chMat[] = chMat.toRealRIIR;
-
-        // 大システム極限での正規化条件（lim |a_n|^2 = 1）
-        foreach(i; 0 .. chMat.length!0 * 2) {
-            auto rvec = _chMat.rowVec(i);
-            auto p = 1/sqrt(norm2(rvec));
-            _rowScales[i] = p;
-            rvec.sliced()[] *= p;
-        }
 
         _delta = _chMat.length!0 * 1.0 / _chMat.length!1;
         _maxIter = maxIter;
-        _damp1_1 = damp1_1;
-        _damp1_2 = damp1_2;
-        _damp2_1 = damp2_1;
-        _damp2_2 = damp2_2;
+        _N0 = N0;
     }
 
 
     size_t inputLength() const { return _chMat.length!0 / 2; }
     size_t outputLength() const { return _chMat.length!1 / 2; }
-
 
 
     C[] detect(in C[] received, return ref C[] detected) const
@@ -74,25 +55,22 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
         auto inpvecs = vector!F(M * 2);
         foreach(n; 0 .. received.length / M) {
             inpvecs[] = received[M * n  .. M * (n+1)].sliced.vectored.toRealRI;
-            foreach(i; 0 .. inpvecs.length)
-                inpvecs[i] *= _rowScales[i];
+            // foreach(i; 0 .. inpvecs.length)
+            //     inpvecs[i] *= _rowScales[i];
 
-            // import std.stdio;
-            // writeln(inpvecs.sliced);
             Vector!(F, Contiguous) res;
-
             switch(_mod.symInputLength) {
                 case 2: // QPSK
-                    res = BODAMP!(softThrBayesOpt2PAM_QPSK!F, F)
-                        (inpvecs, _chMat, _delta, 0.5, _maxIter, _damp1_1, _damp1_2, _damp2_1, _damp2_2);
+                    res = AMP!(softDecision2PAM_QPSK!F, F)
+                        (inpvecs, _chMat, _delta, 0.5, _N0, _maxIter);
                     break;
                 case 4: // 16QAM
-                    res = BODAMP!(softThrBayesOpt4PAM_16QAM!F, F)
-                        (inpvecs, _chMat, _delta, 0.5, _maxIter, _damp1_1, _damp1_2, _damp2_1, _damp2_2);
+                    res = AMP!(softDecision4PAM_16QAM!F, F)
+                        (inpvecs, _chMat, _delta, 0.5, _N0, _maxIter);
                     break;
                 case 6: // 64QAM
-                    res = BODAMP!(softThrBayesOpt8PAM_64QAM!F, F)
-                        (inpvecs, _chMat, _delta, 0.5, _maxIter, _damp1_1, _damp1_2, _damp2_1, _damp2_2);
+                    res = AMP!(softDecision8PAM_64QAM!F, F)
+                        (inpvecs, _chMat, _delta, 0.5, _N0, _maxIter);
                     break;
                 default: {
                     import std.conv;
@@ -107,17 +85,15 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
     }
 
 
-//   private:
-    Mod _mod; 
+  private:
+    Mod _mod;
     Matrix!(F, Contiguous) _chMat;
-    Vector!(F, Contiguous) _rowScales;
+    // Vector!(F, Contiguous) _rowScales;
     double _delta;
-    double _damp1_1;
-    double _damp1_2;
-    double _damp2_1;
-    double _damp2_2;
     size_t _maxIter;
+    double _N0;
 }
+
 
 unittest
 {
@@ -129,7 +105,7 @@ unittest
     auto chMat = [C(1, 0), C(0, 0), C(0, 0), C(1, 0)].sliced(2, 2).matrixed;
     auto recv = [C(1/SQRT2, 1/SQRT2), C(-1/SQRT2, 1/SQRT2)];
 
-    auto detector = new DAMPDectector!(C, QPSK!C)(QPSK!C(), chMat, 20);
+    auto detector = new AMPDetector!(C, QPSK!C)(QPSK!C(), chMat, 0.1, 20);
     C[] dst;
     dst = detector.detect(recv, dst);
     assert(dst[0].re.isClose(recv[0].re));
@@ -139,16 +115,9 @@ unittest
 }
 
 
-alias softThrBayesOpt2PAM_BPSK(F) = softDecision!([0.5, 0.5], [-1, 1], F);
-alias softThrBayesOpt2PAM_QPSK(F) = softDecision!([0.5, 0.5], [-SQRT1_2, SQRT1_2], F);
-alias softThrBayesOpt4PAM_16QAM(F) = softDecision!([0.25, 0.25, 0.25, 0.25], [-3/sqrt(10.0L), -1/sqrt(10.0L), 1/sqrt(10.0L), 3/sqrt(10.0L)], F);
-alias softThrBayesOpt8PAM_64QAM(F) = softDecision!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7/sqrt(42.0L), -5/sqrt(42.0L), -3/sqrt(42.0L), -1/sqrt(42.0L), 1/sqrt(42.0L), 3/sqrt(42.0L), 5/sqrt(42.0L), 7/sqrt(42.0L)], F);
-
-// Tuple!(F[], "x_hat", F[], "arrMSE")
-
 Vector!(F, Contiguous)
-    BODAMP(alias prox, F, VecY, MatA)
-        (in VecY y_, in MatA A_, in F delta, in F theta0, size_t nIteration, F damp1_1, F damp1_2, F damp2_1, F damp2_2)
+    AMP(alias prox, F, VecY, MatA)
+        (in VecY y_, in MatA A_, in F delta, in F theta0, in F sigma2, size_t nIteration)
 if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!MatA && hasMemoryView!MatA && is(VecY.ElementType == F) && is(MatA.ElementType == F))
 {
     auto y = y_.lightConst;
@@ -158,38 +127,38 @@ if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!
     immutable size_t M = A.length!0,
                      N = A.length!1;
 
-    auto x = vector!F(N, 0);
-    auto z = vector!F(M, 0);
-    F theta = theta0;
-    auto w = vector!F(N, 0);
+    auto x_AB = vector!F(N, 0);
+    auto x_B = vector!F(N, 0);
+    auto u = vector!F(M, 0);
+
+    F v_B = theta0;
+    F v_AB = sigma2 + (1/delta) * v_B;
 
     import mir.ndslice : map, slice;
     import mir.math.stat : mean;
-    import dffdd.math.linalg : norm2;
 
-    alias ProxResult = typeof(prox(F(0), theta0^^2/delta));
-    auto wprox = slice!ProxResult(N);
-    wprox[] = w.sliced.map!(e => prox(e, theta^^2/delta));
-
+    alias ProxResult = typeof(prox(F(0), theta0));
+    auto xprox = slice!ProxResult(N);
+    // xprox[] = w.sliced.map!(e => prox(e, theta^^2/delta));
+    import std.stdio;
     foreach(iter; 1 .. nIteration) {
-        F damp2 = damp2_2 * iter / nIteration + damp2_1 * (1 - 1.0 * iter / nIteration);
-        F damp1 = damp1_2 * iter / nIteration + damp1_1 * (1 - 1.0 * iter / nIteration);
-
-        z[] = (1-damp1) * z + damp1 * (y - A * x + (1/delta) * z * wprox.map!"a.drv".mean);
-        theta = sqrt(norm2(z) / N);
-        w[] = x + A.T * z;
-        wprox[] = w.sliced.map!(e => prox(e, theta^^2/delta));
-        x[] = (1-damp2) * x + damp2 * wprox.map!"a.value".vectored;
+        u[] = y - A * x_B + (v_B/delta/v_AB) * u;
+        x_AB[] = x_B + A.T * u;
+        v_AB = sigma2 + (1/delta) * v_B;
+        xprox[] = x_AB.sliced.map!(e => prox(e, v_AB));
+        x_B[] = xprox.map!"a.value".vectored;
+        v_B = xprox.map!"a.var".mean;
     }
 
-    return x;
+    return x_B;
 }
 
 
 unittest
 {
     import std.stdio;
-
+    import std.algorithm : stdmap = map;
+    import std.numeric : stddot = dotProduct;
     import mir.ndslice;
     alias F = double;
 
@@ -214,26 +183,15 @@ unittest
         -0.686546300398577,]).sliced.vectored;
 
     auto delta = 0.8;
-    enum F[] arrP = [0.5, 0, 0.5];
-    enum F[] arrR = [-1, 0, 1];
+    enum F[] arrP = [0.5, 0.5];
+    enum F[] arrR = [-1, 1];
     auto theta0 = sqrt(stddot(arrP, arrR.stdmap!"a^^2"));
 
     int nIteration = 2;
     import std.stdio;
 
-    auto xhat1 = BODAMP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, delta, theta0, 3, 1, 1, 1, 1);
-    assert(xhat1[0].isClose(-0.9729, 1e-3));
-    assert(xhat1[1].isClose(+0.9744, 1e-3));
-    assert(xhat1[2].isClose(-0.9220, 1e-3));
-    assert(xhat1[3].isClose(+0.9716, 1e-3));
-    assert(xhat1[4].isClose(+0.8439, 1e-3));
-    assert(xhat1[5].isClose(-0.9594, 1e-3));
-    assert(xhat1[6].isClose(+0.9440, 1e-3));
-    assert(xhat1[7].isClose(-0.8160, 1e-3));
-    assert(xhat1[8].isClose(-0.9436, 1e-3));
-    assert(xhat1[9].isClose(+0.8961, 1e-3));
-
-    auto xhat2 = BODAMP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, delta, theta0, 20, 1, 1, 1, 1);
+    auto xhat2 = AMP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, delta, theta0, 0.1, 20);
+    // writeln(xhat2);
     assert(xhat2[0].isClose(-1, 1e-3));
     assert(xhat2[1].isClose(+1, 1e-3));
     assert(xhat2[2].isClose(-1, 1e-3));
@@ -245,7 +203,8 @@ unittest
     assert(xhat2[8].isClose(-1, 1e-3));
     assert(xhat2[9].isClose(+1, 1e-3));
 
-    auto xhat3 = BODAMP!((e, v) => softDecision!(arrP, arrR)(e, v), F)(y, A, delta, theta0, 200, 1, 1, 1, 1);
+    auto xhat3 = AMP!((e, v) => softDecision!(arrP, arrR)(e, v), F)(y, A, delta, theta0, 0.1, 200);
+    // writeln(xhat3);
     assert(xhat3[0].isClose(-1, 1e-3));
     assert(xhat3[1].isClose(+1, 1e-3));
     assert(xhat3[2].isClose(-1, 1e-3));
@@ -258,26 +217,3 @@ unittest
     assert(xhat3[9].isClose(+1, 1e-3));
 }
 
-
-// unittest
-// {
-//     import dffdd.math.exprtemplate;
-//     import std.stdio;
-//     import mir.ndslice;
-
-//     alias F = float;
-
-//     auto chMat = matrix!F(4, 4);
-//     chMat[] = ConstEye!(F, 1)(4);
-//     writeln(chMat);
-
-//     enum F[] arrR = [-SQRT1_2, SQRT1_2];
-
-//     auto vec = (cast(F[])[SQRT1_2, -SQRT1_2, SQRT1_2, SQRT1_2]).sliced.vectored;
-//     // pragma(msg, typeof(vec));
-//     // auto res = BODAMP!(softThrBayesOpt!([0.5, 0.5], arrR, F), F)(vec, chMat, 1, 0.5, 50);
-//     auto res = BODAMP!(softThrBayesOpt2PAM_QPSK!F, F)(vec, chMat, 1, 0.5, 50);
-
-//     writeln(res);
-//     writeln(makeViewOrNewSlice(vec - chMat * res, matvecAllocator));
-// }
