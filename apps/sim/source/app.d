@@ -164,7 +164,7 @@ void mainJob()
     size_t sumOfTrials = 0;
 
     foreach(dpdMode; [DPDMode.Linearity, DPDMode.EfficiencyAndLinearity])
-    foreach(dpdOrder; [1, 3, 5, 7])
+    foreach(dpdOrder; [1, 7])
     foreach(usePhaseNoise; [false])
     foreach(useIQImbalance; [false])
     foreach(amplifierModel; [/*"Linear",*/ "Rapp", /*"Saleh", /*"Saleh_noPM"*/])
@@ -207,9 +207,14 @@ void mainJob()
                             // size_t compls = std.file.readText(resListDumpFilePath)
                             //                 .parseJSON(JSONOptions.specialFloatLiterals).array.length;
                             // size_t compls = msgpack.toJSONValue(msgpack.unpack(cast(ubyte[]) std.file.read(resListDumpFilePath))).array.length;
-                            size_t compls = readJSONData(resListDumpFilePath).array.length;
-                            sumOfTrials -= compls;
-                            writefln!"%s: %s complete"(dir, compls);
+                            try {
+                                size_t compls = readJSONData(resListDumpFilePath).array.length;
+                                sumOfTrials -= compls;
+                                writefln!"%s: %s complete"(dir, compls);
+                            } catch(Exception ex) {
+                                writefln("Error on '%s':", resListDumpFilePath);
+                                writeln(ex);
+                            }
                         }
                     }
                 }
@@ -229,7 +234,7 @@ void mainJob()
         if(dpdOrder == 1 && dpdMode == DPDMode.EfficiencyAndLinearity)
             continue;
 
-
+        /+
         // only desired signal on AWGN or Rayleigh
         static if(methodName == "Nop_X")
         // foreach(loss_dB; iota(90, 120, 3))
@@ -259,6 +264,7 @@ void mainJob()
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
 
         // // static if(methodName == "Nop_X" || methodName == "L_LS")
         // foreach(inr_dB; iota(0, 52, 3))
@@ -282,7 +288,7 @@ void mainJob()
         //     appLong.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         // }
 
-
+        /+
         // INR vs (EVM / SIC / BER)
         foreach(learningSymbols; [200])
         foreach(inr; iota(0, 82, 3))
@@ -349,6 +355,7 @@ void mainJob()
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
+        +/
 
 
         // SF vs (EVM / SIC / BER)
@@ -446,6 +453,14 @@ void mainJob()
         import std.digest : toHexString;
         env.jobName = format("run_%s_%s", Runtime.args[0].baseName, crc32Of(cast(ubyte[])std.file.read(Runtime.args[0])).toHexString);
         // env.scriptPath = "jobscript.sh";
+
+        {
+            Random rnd;
+            rnd.seed(0);
+            taskListShort.taskShuffle(rnd);
+            rnd.seed(0);
+            taskListLong.taskShuffle(rnd);
+        }
 
         if(taskListShort.length != 0)
             tuthpc.taskqueue.run(taskListShort, env);

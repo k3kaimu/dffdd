@@ -353,7 +353,7 @@ auto connectToDemodulator(R, Mod)(R r, Mod modObj/*, Bits bits*/, Model)
 
 auto thermalNoise(Model model, uint seedOffset = 123321)
 {
-    return ThermalNoise(model.samplingFreq, model.thermalNoise.temperature, model.rndSeed + seedOffset);
+    return ThermalNoise!(Complex!float)(model.samplingFreq, model.thermalNoise.temperature, model.rndSeed + seedOffset);
 }
 
 
