@@ -54,6 +54,7 @@ void main()
         Xorshift rnd;
         rnd.seed(0);
 
+
         import std.datetime.stopwatch;
         StopWatch sw;
         while(totalBlocks < MaxTotalBlocks && errorBlocks < MaxErrorBlocks) {
