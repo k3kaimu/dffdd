@@ -51,9 +51,10 @@ void main()
                totalBits = 0,
                errorBits = 0;
 
-        Random rnd;
+        Xorshift rnd;
         rnd.seed(0);
 
+        import std.datetime.stopwatch;
         StopWatch sw;
         while(totalBlocks < MaxTotalBlocks && errorBlocks < MaxErrorBlocks) {
             enum size_t P = 8;
@@ -100,7 +101,7 @@ void main()
         blerList[i_ebn0] =  errorBlocks * 1.0 / totalBlocks;
         writefln!"EbN0 = %s [dB], DecodeThroughput = %s [kbps]"(
             ebn0_dB,
-            totalBits / (sw.peek.usecs / 1.0E6) / 1E3
+            totalBits / (sw.peek.total!"usecs" / 1.0E6) / 1E3
         );
     }
 
@@ -114,7 +115,7 @@ void main()
 }
 
 
-void makeBits(ref Random rnd, Bit[] dst)
+void makeBits(Rnd)(ref Rnd rnd, Bit[] dst)
 {
     foreach(ref e; dst) {
         e = rnd.front % 2;
