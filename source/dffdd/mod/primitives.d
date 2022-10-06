@@ -6,6 +6,8 @@ import std.numeric : gcd;
 import std.traits;
 import std.typecons;
 
+import dffdd.math.math;
+
 
 
 enum bool isModulator(T) = is(typeof((T t){
@@ -421,7 +423,8 @@ struct P0P1Calculator(C, F)
             _p1[] = 0;
 
             foreach(j, y; _points) {
-                auto p = exp(-(x - y * hcoef).sqAbs/ N0);
+                // import dffdd.math.approxmath;
+                F p = fast_exp!F(-(x - y * hcoef).sqAbs/ N0);
 
                 foreach(k; 0 .. _nbits) {
                     if(j & (1 << k))
