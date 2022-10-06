@@ -729,8 +729,16 @@ if(isVectorLike!VecA && isVectorLike!VecB)
             _vecB.evalTo(dst, alloc);
             dst[] *= _beta;
 
-            foreach(i; 0 .. this.length)
-                dst[i] += _alpha * viewA.view[i];
+            static if(isFloatingPoint!T || (is(T == MirComplex!E, E) && isFloatingPoint!E))
+            {
+                import mir.blas : axpy;
+                axpy(_alpha, viewA.view, dst);
+            }
+            else
+            {
+                foreach(i; 0 .. this.length)
+                    dst[i] += _alpha * viewA.view[i];
+            }
         }
     }
 
@@ -803,6 +811,7 @@ unittest
         auto vec2 = [3, 2, 3].sliced.as!E.vectored;
 
         auto axpy1 = vectorAxpby(alpha, vec1, E(1), vec2);
+        axpy1.evalTo(slice!E(3), theAllocator);
         static assert(isVectorLike!(typeof(axpy1)));
 
         assert(axpy1.length == 3);
