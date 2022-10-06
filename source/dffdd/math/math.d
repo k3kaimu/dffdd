@@ -182,7 +182,7 @@ version(LDC)
 {
     pragma(LDC_intrinsic, "llvm.pow.f#")
     F llvm_pow(F)(F x, F y) pure nothrow @nogc;
-    pragma(LDC_intrinsic, "llvm.powi.f#")
+    pragma(LDC_intrinsic, "llvm.powi.f#.i32")
     F llvm_powi(F)(F x, int y) pure nothrow @nogc;
     pragma(LDC_intrinsic, "llvm.sqrt.f#")
     F llvm_sqrt(F)(F x) pure nothrow @nogc;
