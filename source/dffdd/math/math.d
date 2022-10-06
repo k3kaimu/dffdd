@@ -98,6 +98,86 @@ if(isFloatingPoint!F)
 }
 
 
+/**
+compute log(x)
+*/
+F libm_log(F)(F x) /*pure*/ nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : logf, log, logl;
+
+    static if(is(F == float))
+    {
+        return logf(x);
+    }
+    else static if(is(F == double))
+    {
+        return log(x);
+    }
+    else
+    {
+        return logl(x);
+    }
+}
+
+
+/**
+compute sin(x)
+*/
+F libm_sin(F)(F x) /*pure*/ nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : sinf, sin, sinl;
+
+    static if(is(F == float))
+    {
+        return sinf(x);
+    }
+    else static if(is(F == double))
+    {
+        return sin(x);
+    }
+    else
+    {
+        return sinl(x);
+    }
+}
+
+
+/**
+compute cos(x)
+*/
+F libm_cos(F)(F x) /*pure*/ nothrow @nogc
+if(isFloatingPoint!F)
+{
+    import core.stdc.math : cosf, cos, cosl;
+
+    static if(is(F == float))
+    {
+        return cosf(x);
+    }
+    else static if(is(F == double))
+    {
+        return cos(x);
+    }
+    else
+    {
+        return cosl(x);
+    }
+}
+
+
+/**
+*/
+auto fast_expi(C, F = typeof(C.init.re))(F x) nothrow @nogc
+{
+    C dst;
+    dst.re = fast_cos!F(x);
+    dst.im = fast_sin!F(x);
+    return dst;
+}
+
+
 version(LDC)
 {
     pragma(LDC_intrinsic, "llvm.pow.f#")
@@ -108,6 +188,12 @@ version(LDC)
     F llvm_sqrt(F)(F x) pure nothrow @nogc;
     pragma(LDC_intrinsic, "llvm.exp.f#")
     F llvm_exp(F)(F x) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.log.f#")
+    F llvm_log(F)(F x) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.sin.f#")
+    F llvm_sin(F)(F x) pure nothrow @nogc;
+    pragma(LDC_intrinsic, "llvm.cos.f#")
+    F llvm_cos(F)(F x) pure nothrow @nogc;
 
 
     alias fast_pow = llvm_pow;
@@ -115,6 +201,9 @@ version(LDC)
     alias fast_sqrt = llvm_sqrt;
     alias fast_cbrt = libm_cbrt;
     alias fast_exp = llvm_exp;
+    alias fast_log = llvm_log;
+    alias fast_sin = llvm_sin;
+    alias fast_cos = llvm_cos;
 }
 else
 {
@@ -122,6 +211,9 @@ else
     alias fast_sqrt = libm_sqrt;
     alias fast_cbrt = libm_cbrt;
     alias fast_exp = libm_exp;
+    alias fast_log = libm_log;
+    alias fast_sin = libm_sin;
+    alias fast_cos = libm_cos;
 
     F fast_powi(F)(F x, int y) pure nothrow @nogc
     {

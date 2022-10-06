@@ -30,7 +30,7 @@ struct BoxMuller(RNG, C = StdComplex!real)
 
     C front() const @property
     {
-        return cast(C)(sqrt(-2 * log(_x)) * C(cos(2*PI*_y), sin(2*PI*_y)));
+        return cast(C)(fast_sqrt!F(-2 * fast_log!F(_x)) * C(fast_cos!F(2*PI*_y), fast_sin!F(2*PI*_y)));
     }
 
 
@@ -62,8 +62,10 @@ struct BoxMuller(RNG, C = StdComplex!real)
 
   private:
     RNG _urng;
-    real _x;
-    real _y;
+    F _x;
+    F _y;
+
+    alias F = typeof(C.init.re);
 }
 
 
