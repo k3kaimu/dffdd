@@ -60,6 +60,48 @@ enum size_t defaultDistortionOrder = 7;
 alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
 
 
+struct TransceiverModel
+{
+    struct TXIQMixer
+    {
+        /* f(x) = x + b*x としたときの b */
+        Complex!double imbCoef;
+    }
+    TXIQMixer txIQMixer;
+
+
+    struct RXIQMixer
+    {
+        Complex!double imbCoef;
+    }
+    RXIQMixer rxIQMixer;
+
+
+    struct PA 
+    {
+        string modelName;
+        Gain GAIN = 28.5.dB;
+        Voltage Vsat = 21.8.dBm;        // 出力飽和電圧
+        Voltage TX_POWER = 15.dBm;
+        double smoothFactor = 3;
+    }
+    PA pa;
+
+
+    struct LNA
+    {
+        string modelName;
+        Gain GAIN = 20.dB;              // 20dB
+        Gain NF = 4.dB;                 // 4dB
+        // uint noiseSeedOffset = 123;
+        // Gain DR = 70.dB;             // Dynamic Range
+        Voltage Vsat = (20 - 6).dBm;    // 出力飽和電圧
+        double smoothFactor = 3;
+    }
+    LNA lna;
+}
+
+
 struct Model
 {
     // size_t numOfModelTrainingSymbols = 100;
@@ -95,6 +137,8 @@ struct Model
     bool useSRXQZ = true;
 
     bool doNoiseElimination = false;
+
+    TransceiverModel[2] xcvrs;
 
 /*
     struct QAM
@@ -159,21 +203,6 @@ struct Model
     BERCounter berCounter;
 
 
-    struct TXIQMixer
-    {
-        /* f(x) = x + b*x としたときの b */
-        Complex!double imbCoef;
-    }
-    TXIQMixer txIQMixer;
-
-
-    struct RXIQMixer
-    {
-        Complex!double imbCoef;
-    }
-    RXIQMixer rxIQMixer;
-
-
     struct PhaseNoise
     {
         // \beta = 1/sqrt(10) [Hz] for -90 [dBc/Hz] at 10 [kHz]
@@ -183,29 +212,6 @@ struct Model
         double betaBWHz = 0.1;
     }
     PhaseNoise phaseNoise;
-
-
-    struct PA 
-    {
-        string modelName;
-        Gain GAIN = 28.5.dB;
-        Voltage Vsat = 21.8.dBm;        // 出力飽和電圧
-        Voltage TX_POWER = 15.dBm;
-        double smoothFactor = 3;
-    }
-    PA pa;
-
-    struct LNA
-    {
-        string modelName;
-        Gain GAIN = 20.dB;              // 20dB
-        Gain NF = 4.dB;                 // 4dB
-        // uint noiseSeedOffset = 123;
-        // Gain DR = 70.dB;             // Dynamic Range
-        Voltage Vsat = (20 - 6).dBm;    // 出力飽和電圧
-        double smoothFactor = 3;
-    }
-    LNA lna;
 
 
     struct Quantizer
@@ -299,10 +305,10 @@ struct Model
     }
     DPD dpd;
 
-    void txPower(Voltage p) @property
-    {
-        this.pa.TX_POWER = p;
-    }
+    // void txPower(Voltage p) @property
+    // {
+    //     this.pa.TX_POWER = p;
+    // }
 
 
     void useCoaxialCableAsChannel() @property

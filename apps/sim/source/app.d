@@ -81,17 +81,17 @@ struct ModelSeed
     double pn3dBBWHz = 0.1;
 
     /* PA */
-    string paModelName;
-    Voltage txPower = 23.dBm;       // 送信電力
-    Voltage paVsat = 30.dBm;        // 出力飽和電圧
-    Gain paGain = 30.dB;
-    double paSmoothFactor = 3;
+    string[2] paModelName;
+    Voltage[2] txPower = 23.dBm;       // 送信電力
+    Voltage[2] paVsat = 30.dBm;        // 出力飽和電圧
+    Gain[2] paGain = 30.dB;
+    double[2] paSmoothFactor = 3;
 
     /* LNA */
-    string lnaModelName;
-    double lnaSmoothFactor = 3;
-    Gain lnaGain = 20.dB;         // LNA利得 
-    Voltage lnaVsatIn = (-6).dBm; // 入力飽和電圧
+    string[2] lnaModelName;
+    double[2] lnaSmoothFactor = 3;
+    Gain[2] lnaGain = 20.dB;         // LNA利得 
+    Voltage[2] lnaVsatIn = (-6).dBm; // 入力飽和電圧
 
     /* Other */
     Nullable!Gain SNR;
@@ -159,7 +159,8 @@ void mainJob()
     enum bool isDumpedFileCheck = true;
 
 
-    enum numOfTrials = 1001;
+    enum numOfTrials = 10001;
+    enum numOfDivTrials = 10;   // 10分割する
     size_t sumOfTaskNums = 0;
     size_t sumOfTrials = 0;
 
@@ -172,8 +173,8 @@ void mainJob()
     // ADC&IQ&PA
     foreach(methodName; AliasSeq!(
                                     "L_LS",
-                                    "PHPAOnly3_LS",
-                                    "PHPAOnly5_LS",
+                                    // "PHPAOnly3_LS",
+                                    // "PHPAOnly5_LS",
                                     "PHPAOnly7_LS",
                                     // "WL_LS",
                                     // "OPH3_LS",
@@ -358,12 +359,19 @@ void mainJob()
         +/
 
 
+        static enum SFLoopConfig
+        {
+            SAME, X1Only, X2Only
+        }
+
+
         // SF vs (EVM / SIC / BER)
         if(amplifierModel == "Rapp")
-        foreach(txp; [23])
+        foreach(txp; [23, 22, 21, 20])
         foreach(isoRF; [50])
         foreach(desiredLoss; [70])
         foreach(learningSymbols; [200])
+        foreach(sfconf; [SFLoopConfig.SAME, SFLoopConfig.X1Only, SFLoopConfig.X2Only])
         foreach(sf_10; iota(2, 51, 2)) {
             ModelSeed modelSeed;
             modelSeed.useIQImbalance = useIQImbalance;
@@ -374,7 +382,24 @@ void mainJob()
             modelSeed.pn3dBBWHz = 0.1;
             modelSeed.paModelName = amplifierModel;
             modelSeed.lnaModelName = amplifierModel;
-            modelSeed.paSmoothFactor = sf_10/10.0;
+            // modelSeed.paSmoothFactor = sf_10/10.0;
+            modelSeed.paSmoothFactor = 3;
+            string saveSuffix;
+            final switch(sfconf) {
+                case SFLoopConfig.SAME:
+                    modelSeed.paSmoothFactor = sf_10/10.0;
+                    saveSuffix = "SF1V_SF2V";
+                    break;
+                case SFLoopConfig.X1Only:
+                    modelSeed.paSmoothFactor[0] = sf_10/10.0;
+                    saveSuffix = "SF1V_SF2F";
+                    break;
+                case SFLoopConfig.X2Only:
+                    modelSeed.paSmoothFactor[1] = sf_10/10.0;
+                    saveSuffix = "SF1F_SF2V";
+                    break;
+            }
+
             modelSeed.lnaSmoothFactor = 3;
             modelSeed.txPower = txp.dBm;
             modelSeed.cancellerType = methodName;
@@ -388,7 +413,7 @@ void mainJob()
             modelSeed.numOfTapsOfDesiredChannel = numChTaps;
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
-            dir = buildPath(parentDir, "results_sf_vs_sic", dir ~ format("_sf%s", sf_10));
+            dir = buildPath(parentDir, "results_sf_vs_sic_%s".format(saveSuffix), dir ~ format("_sf%s", sf_10));
             dirset[dir] = true;
             appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
         }
@@ -500,14 +525,14 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         // model.SNR = modelSeed.SNR;
 
         if(modelSeed.SNR.isNull)
-            model.SNR = modelSeed.txPower / NP / modelSeed.DesiredLOSS.get;
+            model.SNR = modelSeed.txPower[0] / NP / modelSeed.DesiredLOSS.get;
         else
             model.SNR = modelSeed.SNR.get;
 
         if(iTrial == 0) writefln!"SNR = %s"(model.SNR);
 
         if(modelSeed.INR.isNull)
-            model.INR = modelSeed.txPower / NP / modelSeed.TXRXISO.get;
+            model.INR = modelSeed.txPower[0] / NP / modelSeed.TXRXISO.get;
         else
             model.INR = modelSeed.INR.get;
 
@@ -515,7 +540,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         // model.txIQMixer.IRR = modelSeed.txIRR;
         // model.rxIQMixer.IRR = modelSeed.rxIRR;
         model.basisFuncsSelection.noiseMargin = modelSeed.gamma;
-        model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
+        foreach(i; 0 .. 2) model.xcvrs[i].lna.smoothFactor = modelSeed.lnaSmoothFactor[i];
 
         model.withSI = !modelSeed.onlyDesired;
 
@@ -538,44 +563,48 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
 
 
         /* PAの設定 */
+        foreach(i; 0 .. 2)
         {
-            model.pa.modelName = modelSeed.paModelName;
-            if(model.pa.modelName == "Linear") {
+            model.xcvrs[i].pa.modelName = modelSeed.paModelName[i];
+            if(model.xcvrs[i].pa.modelName == "Linear") {
                 model.useSTXPA = false;
                 model.useDTXPA = false;
             }
 
-            model.pa.TX_POWER = modelSeed.txPower;
-            model.pa.GAIN = modelSeed.paGain;
-            model.pa.Vsat = modelSeed.paVsat;
-            model.pa.smoothFactor = modelSeed.paSmoothFactor;
+            model.xcvrs[i].pa.TX_POWER = modelSeed.txPower[i];
+            model.xcvrs[i].pa.GAIN = modelSeed.paGain[i];
+            model.xcvrs[i].pa.Vsat = modelSeed.paVsat[i];
+            model.xcvrs[i].pa.smoothFactor = modelSeed.paSmoothFactor[i];
         }
 
         /* LNAの設定 */
+        foreach(i; 0 .. 2)
         {
-            model.lna.modelName = modelSeed.lnaModelName;
-            if(model.pa.modelName == "Linear") {
+            model.xcvrs[i].lna.modelName = modelSeed.lnaModelName[i];
+            if(modelSeed.lnaModelName[i] == "Linear") {
                 model.useSRXLN = false;
             }
 
-            model.lna.GAIN = modelSeed.lnaGain;
-            model.lna.Vsat = modelSeed.lnaVsatIn * modelSeed.lnaGain;   // 入力飽和電圧から出力飽和電圧への変換
-            model.lna.smoothFactor = modelSeed.lnaSmoothFactor;
+            model.xcvrs[i].lna.GAIN = modelSeed.lnaGain[i];
+            model.xcvrs[i].lna.Vsat = modelSeed.lnaVsatIn[i] * modelSeed.lnaGain[i];   // 入力飽和電圧から出力飽和電圧への変換
+            model.xcvrs[i].lna.smoothFactor = modelSeed.lnaSmoothFactor[i];
         }
 
         // 位相雑音
         model.phaseNoise.betaBWHz = modelSeed.pn3dBBWHz;
 
         /* TX IQ Mixer の設定 */
+        foreach(i; 0 .. 2)
         {
-            Random rnd = uniqueRandom(iTrial, "TXIQMixer");
-            model.txIQMixer.imbCoef = model.txIQMixer.imbCoef = (1.0L / modelSeed.txIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
+            Random rnd = uniqueRandom(iTrial, "TXIQMixer_%s".format(i));
+            model.xcvrs[i].txIQMixer.imbCoef = (1.0L / modelSeed.txIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
         }
 
         /* RX IQ Mixer の設定 */
+        foreach(i; 0 .. 2)
         {
-            Random rnd = uniqueRandom(iTrial, "RXIQMixer");
-            model.rxIQMixer.imbCoef = model.txIQMixer.imbCoef = (1.0L / modelSeed.rxIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
+            Random rnd = uniqueRandom(iTrial, "RXIQMixer_%s".format(i));
+            model.xcvrs[i].rxIQMixer.imbCoef = (1.0L / modelSeed.rxIRR.asV) * std.complex.expi(uniform(0, 1.0f, rnd) * 2 * PI);
         }
 
         /* チャネルの設定 */
@@ -683,8 +712,8 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     string dir;
     if(modelSeed.cancellerType.split("_")[0].endsWith("FHF"))
     {
-        dir = "TXP%s_%s_%s_%s_G%s_IRR%s_%s"
-            .format(modelSeed.txPower,
+        dir = "TXP%s_%s_%s_%s_%s_G%s_IRR%s_%s"
+            .format(modelSeed.txPower[0], modelSeed.txPower[1],
                     strINRorISO,
                     strSNRorISO,
                     cancellerName,
@@ -694,8 +723,8 @@ string makeDirNameOfModelSeed(ModelSeed modelSeed)
     }
     else
     {
-        dir = "TXP%s_%s_%s_%s_IRR%s_PN%s_%s"
-            .format(modelSeed.txPower,
+        dir = "TXP%s_%s_%s_%s_%s_IRR%s_PN%s_%s"
+            .format(modelSeed.txPower[0], modelSeed.txPower[1],
                     strINRorISO,
                     strSNRorISO,
                     cancellerName,
@@ -801,8 +830,11 @@ void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, st
                 JSONValue jv = cast(JSONValue[string])null;
                 jv["impulseResponseSI"] = m.channelSI.impulseResponse.map!cpx2JV.array();
                 jv["impulseResponseDesired"] = m.channelDesired.impulseResponse.map!cpx2JV.array();
-                jv["txIQCoef"] = cpx2JV(m.txIQMixer.imbCoef);
-                jv["rxIQCoef"] = cpx2JV(m.rxIQMixer.imbCoef);
+
+                foreach(i; 0 .. 2) {
+                    jv["txIQCoef_%s".format(i)] = cpx2JV(m.xcvrs[i].txIQMixer.imbCoef);
+                    jv["rxIQCoef_%s".format(i)] = cpx2JV(m.xcvrs[i].rxIQMixer.imbCoef);
+                }
 
                 return jv;
             }();
