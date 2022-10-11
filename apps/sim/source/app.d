@@ -1,5 +1,8 @@
 module app;
 
+import core.atomic;
+import core.memory;
+
 import std.algorithm;
 import std.complex;
 import std.conv;
@@ -25,6 +28,10 @@ import models;
 import simmain;
 
 import msgpack;
+
+import tuthpc.tasklist;
+import tuthpc.cluster;
+import tuthpc.tasklist;
 
 extern(C) void openblas_set_num_threads(int num_threads);
 extern(C) int openblas_get_num_threads();
@@ -137,9 +144,6 @@ void mainJob()
     //import tuthpc.mpi;
     import tuthpc.taskqueue;
 
-    auto taskListShort = new MultiTaskList!void();
-    auto taskListLong = new MultiTaskList!void();
-
     auto setRLSLMSParam(ref ModelSeed model)
     {
         if(model.cancellerType.startsWith("PH")) {
@@ -156,13 +160,20 @@ void mainJob()
 
     import core.runtime : Runtime;
     immutable bool isProgressChecker = Runtime.args.canFind("check");
-    enum bool isDumpedFileCheck = true;
+    immutable bool isResultsMerger = Runtime.args.canFind("merge");
 
 
     enum numOfTrials = 10001;
-    enum numOfDivTrials = 10;   // 10分割する
-    size_t sumOfTaskNums = 0;
-    size_t sumOfTrials = 0;
+    enum numOfDivTrials = 40;   // N分割する
+
+    static struct SimJob
+    {
+        ModelSeed modelSeed;
+        TaskAppender!(JSONValue, size_t) tasks;
+        string dir;
+    }
+
+    SimJob[] jobs;
 
     foreach(dpdMode; [DPDMode.Linearity, DPDMode.EfficiencyAndLinearity])
     foreach(dpdOrder; [1, 7])
@@ -186,43 +197,6 @@ void mainJob()
                                     // "Nop_X",
             ))
     {
-        bool[string] dirset;
-        auto appShort = uniqueTaskAppender(&mainForEachTrial!methodName);
-        auto appLong = uniqueTaskAppender(&mainForEachTrial!methodName);
-        scope(exit){
-            enforce(appShort.length + appLong.length == dirset.length);
-            taskListShort ~= appShort;
-            taskListLong ~= appLong;
-            
-            if(isProgressChecker)
-            {
-                foreach(dir, _; dirset) {
-                    if(!exists(buildPath(dir, ALL_RESULT_FILENAME))){
-                        sumOfTaskNums += 1;
-                        // writeln(dir);
-
-                        sumOfTrials += numOfTrials;
-
-                        string resListDumpFilePath = buildPath(dir, DUMPED_RESULT_LIST_FILENAME);
-                        if(isDumpedFileCheck && exists(resListDumpFilePath)) {
-                            // size_t compls = std.file.readText(resListDumpFilePath)
-                            //                 .parseJSON(JSONOptions.specialFloatLiterals).array.length;
-                            // size_t compls = msgpack.toJSONValue(msgpack.unpack(cast(ubyte[]) std.file.read(resListDumpFilePath))).array.length;
-                            try {
-                                size_t compls = readJSONData(resListDumpFilePath).array.length;
-                                sumOfTrials -= compls;
-                                writefln!"%s: %s complete"(dir, compls);
-                            } catch(Exception ex) {
-                                writefln("Error on '%s':", resListDumpFilePath);
-                                writeln(ex);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-
         string parentDir = format("results_%sTaps_%s_%s", numChTaps, amplifierModel, numOfTrials);
         if(useIQImbalance)
             parentDir ~= "_withIQI";
@@ -414,8 +388,9 @@ void mainJob()
 
             auto dir = makeDirNameOfModelSeed(modelSeed);
             dir = buildPath(parentDir, "results_sf_vs_sic_%s".format(saveSuffix), dir ~ format("_sf%s", sf_10));
-            dirset[dir] = true;
-            appShort.append(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            
+            auto list = makeTaskListFromModelSeed!methodName(numOfTrials, modelSeed, dir, No.saveAllRAWData);
+            jobs ~= SimJob(modelSeed, list, dir);
         }
 
 
@@ -453,56 +428,75 @@ void mainJob()
         // }
     }
 
+
+    SplitMergeResumableTasks!(typeof(SimJob.init.tasks))[] splittedTaskList;
+    foreach(i, jb; jobs) {
+        if(thisProcessType() == ChildProcessType.SUBMITTER && !isProgressChecker && !isResultsMerger)
+            mkdirRecurse(jb.dir);
+
+        auto sp = jb.tasks.toSplitMergeResumable(numOfDivTrials, buildPath(jb.dir, "savedata"), 50);
+        splittedTaskList ~= sp;
+    }
+
     import std.stdio;
+    import core.runtime : Runtime;
+    import std.digest.crc : crc32Of;
+    import std.digest : toHexString;
+    import std.datetime;
 
+    enforce(!isProgressChecker);
 
-    if(isProgressChecker)
+    if(isResultsMerger)
     {
-        immutable size_t totalTaskListLen = taskListShort.length + taskListLong.length;
+        JobEnvironment env = defaultJobEnvironment();
+        env.maxArraySize = 1;
+        env.jobName = format("merge_%s_%s", Runtime.args[0].baseName, crc32Of(cast(ubyte[])std.file.read(Runtime.args[0])).toHexString);
 
-        writefln("%s tasks will be submitted.", totalTaskListLen);
-        writefln("%s tasks will be computed.", sumOfTaskNums);
+        auto list = new MultiTaskList!void();
+        foreach(i, sp; splittedTaskList) {
+            list.append((){
+                auto dir = jobs[i].dir;
+                auto resList = sp.returns;
+                sp.nullify();
+                enforce(resList.length == numOfTrials, "Tasks (%s) have not yet been completed.".format(dir));
 
-        immutable size_t totalTrials = numOfTrials * totalTaskListLen;
-        immutable size_t completeTrials = totalTrials - sumOfTrials;
-        writefln("%s/%s (%2.2f%%) is completed. ", completeTrials, totalTrials, completeTrials*1.0/totalTrials*100);
+                JSONValue jv = cast(JSONValue[string])null;
+                jv["RemainPowers"] = resList.map!(a => a["RemainPower"]).array();
+                jv["SIPowers"] = resList.map!(a => a["SIPower"]).array();
+                jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
+                jv["RINRs"] = resList.map!(a => a["RINR_dB"]).array();
+                jv["INRs"] = resList.map!(a => a["INR_dB"]).array();
+                jv["TXPs"] = resList.map!(a => a["TXPower_dBm"]).array();
+                if(jobs[i].modelSeed.outputBER){
+                    jv["bers"] = resList.map!(a => a["ber"]).array();
+                    // jv["evms"] = resList.map!(a => a["evm"]).array();
+                    jv["sers"] = resList.map!(a => a["ser"]).array();
+                }
+
+                writeJSONData(buildPath(dir, ALL_RESULT_FILENAME), jv);
+            });
+        }
+
+        tuthpc.taskqueue.run(list, env);
     }
     else
     {
+        auto taskList = new MultiTaskList!void();
+        foreach(sp; splittedTaskList)
+            taskList ~= sp.toMultiTaskList();
+
         JobEnvironment env = defaultJobEnvironment();
         env.pmem = 2;
         env.mem = env.pmem * env.taskGroupSize;
-        
-        import core.runtime : Runtime;
-        import std.digest.crc : crc32Of;
-        import std.digest : toHexString;
         env.jobName = format("run_%s_%s", Runtime.args[0].baseName, crc32Of(cast(ubyte[])std.file.read(Runtime.args[0])).toHexString);
-        // env.scriptPath = "jobscript.sh";
 
-        {
-            Random rnd;
-            rnd.seed(0);
-            taskListShort.taskShuffle(rnd);
-            rnd.seed(0);
-            taskListLong.taskShuffle(rnd);
-        }
-
-        if(taskListShort.length != 0)
-            tuthpc.taskqueue.run(taskListShort, env);
-
-        if(taskListLong.length != 0)
-            tuthpc.taskqueue.run(taskListLong, env);
+        if(taskList.length != 0)
+            tuthpc.taskqueue.run(taskList, env);
     }
-
-    // foreach(i; 0 .. taskListShort.length)
-    //     taskListShort[i]();
-
-    // foreach(i; 0 .. taskListLong.length)
-    //     taskListLong[i]();
 }
 
 
-Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, string uniqueString)
+Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, string uniqueString, size_t startIndex = 0, size_t endIndex = size_t.max)
 {
     import dffdd.blockdiagram.noise : noisePower;
     Model[] models;
@@ -513,7 +507,7 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
         return crc32Of(methodName, (cast(ubyte*)&modelSeed)[0 .. modelSeed.sizeof], hashOfExe(), uniqueString).crcHexString;
     }();
 
-    foreach(iTrial; 0 .. numOfTrials) {
+    foreach(iTrial; startIndex .. min(numOfTrials, endIndex)) {
         Model model;
         scope(success)
             models ~= model;
@@ -528,8 +522,6 @@ Model[] makeModels(string methodName)(size_t numOfTrials, ModelSeed modelSeed, s
             model.SNR = modelSeed.txPower[0] / NP / modelSeed.DesiredLOSS.get;
         else
             model.SNR = modelSeed.SNR.get;
-
-        if(iTrial == 0) writefln!"SNR = %s"(model.SNR);
 
         if(modelSeed.INR.isNull)
             model.INR = modelSeed.txPower[0] / NP / modelSeed.TXRXISO.get;
@@ -749,145 +741,51 @@ Random uniqueRandom(Args...)(Args args)
 }
 
 
-void mainForEachTrial(string methodName)(size_t nTrials, ModelSeed modelSeed, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
+JSONValue runTrial(string methodName)(size_t indexTrial, Model m, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
 {
-    Model[] models = makeModels!methodName(nTrials, modelSeed, dir);
+    import core.memory;
+    GC.collect();
+    GC.minimize();
 
-    if(exists(buildPath(dir, ALL_RESULT_FILENAME))) return;
+    JSONValue res;
+    if(indexTrial == 0 && !NO_NEED_CSV_FILES)
+        res = mainImpl!(methodName)(m,  dir);
+    else
+        res = mainImpl!(methodName)(m,  null);
 
-    writeln(dir);
-    mkdirRecurse(dir);
+    res["model"] = (){
+        static JSONValue cpx2JV(F)(Complex!F a) { return JSONValue(["re": a.re, "im": a.im]); }
 
-    // 前回異常終了等で死んでいれば，このファイルがあるはず
-    // 中間状態のダンプファイル
-    immutable resListDumpFilePath = buildPath(dir, DUMPED_RESULT_LIST_FILENAME);
-    JSONValue[] lastDumpedList;
-    if(exists(resListDumpFilePath))
+        JSONValue jv = cast(JSONValue[string])null;
+        jv["impulseResponseSI"] = m.channelSI.impulseResponse.map!cpx2JV.array();
+        jv["impulseResponseDesired"] = m.channelDesired.impulseResponse.map!cpx2JV.array();
+
+        foreach(i; 0 .. 2) {
+            jv["txIQCoef_%s".format(i)] = cpx2JV(m.xcvrs[i].txIQMixer.imbCoef);
+            jv["rxIQCoef_%s".format(i)] = cpx2JV(m.xcvrs[i].rxIQMixer.imbCoef);
+        }
+
+        return jv;
+    }();
+
+    return res;
+}
+
+
+TaskAppender!(JSONValue, size_t) makeTaskListFromModelSeed(string methodName)(size_t nTrials, ModelSeed modelSeed, string dir, Flag!"saveAllRAWData" saveAllRAWData = No.saveAllRAWData)
+{
+    JSONValue runImpl(size_t i)
     {
-        // lastDumpedList = std.file.readText(resListDumpFilePath)
-        //     .parseJSON(JSONOptions.specialFloatLiterals).array;
-        // lastDumpedList = msgpack.toJSONValue(msgpack.unpack(cast(ubyte[]) std.file.read(resListDumpFilePath))).array;
-        lastDumpedList = readJSONData(resListDumpFilePath).array;
-    }
-    scope(success) {
-        // このプロセスが正常終了すれば中間状態のダンプファイルは不要
-        if(exists(resListDumpFilePath))
-            std.file.remove(buildPath(dir, DUMPED_RESULT_LIST_FILENAME));
+        auto model = makeModels!methodName(nTrials, modelSeed, dir, i, i+1)[0];
+        return runTrial!methodName(i, model, dir, saveAllRAWData);
     }
 
-    import std.datetime;
-    auto lastUpdateTime = Clock.currTime;
-
-
-    JSONValue[] resList;
-    uint sumOfSuccFreq;
-    JSONValue[] selectingRatioList;
-    foreach(i, ref m; models) {
-        {
-            import core.memory;
-            GC.collect();
-            GC.minimize();
-        }
-
-        JSONValue res; // この試行での結果が格納される
-        scope(success)
-        {
-            resList ~= res;
-
-            // このプロセスで計算できた試行回数が前回を上回っていればダンプファイルを更新
-            // ただし，前回の更新時より1分以上空いていること
-            auto ct = Clock.currTime;
-            if(resList.length > lastDumpedList.length
-                && (ct - lastUpdateTime) > 60.seconds )
-            {
-                // std.file.write(resListDumpFilePath, JSONValue(resList).toString(JSONOptions.specialFloatLiterals));
-                // File outputFile = File(resListDumpFilePath, "w");
-                // auto packer = msgpack.Packer(outputFile.lockingTextWriter, false);
-                // packer.pack(msgpack.fromJSONValue(JSONValue(resList)));
-                // std.file.write(resListDumpFilePath, msgpack.pack(msgpack.fromJSONValue(JSONValue(resList))));
-                writeJSONData(resListDumpFilePath, JSONValue(resList));
-                lastUpdateTime = ct;
-            }
-        }
-
-        if(lastDumpedList.length >= i+1) {
-            // 前回中断時にすでに計算済みなのでそのデータを復元
-            res = lastDumpedList[i];
-            continue;
-        }
-        else {
-            // まだ未計算なので計算する
-            if(i == 0 && !NO_NEED_CSV_FILES)
-                res = mainImpl!(methodName)(m,  dir);
-            else
-                res = mainImpl!(methodName)(m,  null);
-        }
-
-        if(saveAllRAWData) {
-            res["model"] = (){
-                static JSONValue cpx2JV(F)(Complex!F a) { return JSONValue(["re": a.re, "im": a.im]); }
-
-                JSONValue jv = cast(JSONValue[string])null;
-                jv["impulseResponseSI"] = m.channelSI.impulseResponse.map!cpx2JV.array();
-                jv["impulseResponseDesired"] = m.channelDesired.impulseResponse.map!cpx2JV.array();
-
-                foreach(i; 0 .. 2) {
-                    jv["txIQCoef_%s".format(i)] = cpx2JV(m.xcvrs[i].txIQMixer.imbCoef);
-                    jv["rxIQCoef_%s".format(i)] = cpx2JV(m.xcvrs[i].rxIQMixer.imbCoef);
-                }
-
-                return jv;
-            }();
-        }
+    auto app = taskAppender(&runImpl);
+    foreach(i; 0 .. nTrials) {
+        app.append(i);
     }
 
-    JSONValue jv = cast(JSONValue[string])null;
-    jv["RemainPowers"] = resList.map!(a => a["RemainPower"]).array();
-    jv["SIPowers"] = resList.map!(a => a["SIPower"]).array();
-    jv["cancellations"] = resList.map!(a => a["cancellation_dB"]).array();
-    jv["RINRs"] = resList.map!(a => a["RINR_dB"]).array();
-    jv["INRs"] = resList.map!(a => a["INR_dB"]).array();
-    jv["TXPs"] = resList.map!(a => a["TXPower_dBm"]).array();
-    if(modelSeed.outputBER){
-        jv["bers"] = resList.map!(a => a["ber"]).array();
-        // jv["evms"] = resList.map!(a => a["evm"]).array();
-        jv["sers"] = resList.map!(a => a["ser"]).array();
-    }
-
-    // auto file = File(buildPath(dir, "allResult.json"), "w");
-    // file.write(jv.toPrettyString(JSONOptions.specialFloatLiterals));
-    {
-        // auto file = File(buildPath(dir, ALL_RESULT_FILENAME), "w");
-        // file.rawWrite(msgpack.pack(msgpack.fromJSONValue(jv)));
-        writeJSONData(buildPath(dir, ALL_RESULT_FILENAME), jv);
-    }
-
-    if(saveAllRAWData){
-        // auto file = File(buildPath(dir, "rawAllResult.bin"), "w");
-        // file.write(JSONValue(resList).toPrettyString(JSONOptions.specialFloatLiterals));
-        // file.rawWrite(msgpack.pack(msgpack.fromJSONValue(JSONValue(resList))));
-        writeJSONData(buildPath(dir, "rawAllResult.bin"), JSONValue(resList));
-    }
-
-    if(methodName.startsWith("Log_")){
-        foreach(i, res; resList){
-            import std.file : mkdirRecurse;
-
-            auto siglogpath = buildPath(dir, "signallog");
-            mkdirRecurse(siglogpath);
-
-            auto uniqueId = res["filterSpec"]["uniqueId"].str;
-            foreach(iden; ["TrX", "TrY", "TrZ", "CnX", "CnY", "CnZ"]){
-                string filename = "signal_%s_%s.dat".format(iden, uniqueId);
-                auto frompath = buildPath("signallog", filename);
-                auto topath = buildPath(siglogpath, "signal_%s_%s.dat".format(iden, i));
-                
-                // frompathからtopathにファイルをコピーする
-                std.file.rename(frompath, topath);
-                writefln("%s -> %s", frompath, topath);
-            }
-        }
-    }
+    return app;
 }
 
 
