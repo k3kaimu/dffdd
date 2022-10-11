@@ -67,11 +67,6 @@ struct VectoredSlice(Iterator, SliceKind kind)
     this(Slice!(Iterator, 1, kind) s)
     {
         _slice = s;
-
-        static if(is(Iterator == ElementType*))
-        {
-            _tmp = slice!ElementType(s.length);
-        }
     }
 
 
@@ -112,10 +107,22 @@ struct VectoredSlice(Iterator, SliceKind kind)
 
     static if(is(Iterator == ElementType*))
     {
+        alias noalias = noAliasCopy;
+
+
+        auto noAliasCopy(V)(V vec)
+        if(isVectorLike!V)
+        in(vec.length == this.length)
+        {
+            vec.evalTo(_slice, matvecAllocator);
+        }
+
+
         auto opSliceAssign(V)(V vec)
         if(isVectorLike!V)
         in(vec.length == this.length)
         {
+            if(_tmp.length != _slice.length) _tmp = slice!ElementType(_slice.length);
             vec.evalTo(_tmp, matvecAllocator);
             _slice[] = _tmp;
         }
@@ -125,6 +132,7 @@ struct VectoredSlice(Iterator, SliceKind kind)
         if(isVectorLike!V && (op == "+" || op == "-"))
         in(vec.length == this.length)
         {
+            if(_tmp.length != _slice.length) _tmp = slice!ElementType(_slice.length);
             vec.evalTo(_tmp, matvecAllocator);
 
             static if(op == "+")
