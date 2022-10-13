@@ -165,6 +165,37 @@ auto withMemoryView(MatA, Alloc)(Mat mat, lazy Matrix!(Mat.ElementType, Contiguo
 }
 
 
+auto forceEvaluate(V)(const V vec)
+if(isVectorLike!V)
+{
+    auto dst = vector!(V.ElementType)(vec.length);
+    dst[] = vec;
+    return dst; 
+}
+
+
+auto forceEvaluate(M)(const M mat)
+if(isMatrixLike!M)
+{
+    auto dst = matrix!(M.ElementType)(mat.length!0, mat.length!1);
+    dst[] = mat;
+    return dst; 
+}
+
+
+unittest
+{
+    Vector!(float, Contiguous) vec = vector!float(3, 0);
+    vec[0] = 1;
+    vec[1] = 2;
+    vec[2] = 3;
+
+    Vector!(float, Contiguous) cache = forceEvaluate(vec * 2 + vec);
+    assert(cache[0] == 3);
+    assert(cache[1] == 6);
+    assert(cache[2] == 9);
+}
+
 
 // 
 struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
@@ -261,7 +292,15 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     if(isVectorLike!V)
     in(vec.length == this.length!1)
     {
-        return _matA * (_matB * vec) * _alpha + (_matC * vec) * _beta;
+        static if(isZeros!MatC)
+        {
+            return _matA * (_matB * vec) * _alpha;
+        }
+        else
+        {
+            auto vec2 = forceEvaluate(vec);
+            return _matA * (_matB * vec2) * _alpha + (_matC * vec2) * _beta;
+        }
     }
 
 
@@ -412,20 +451,20 @@ if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
 
         _vecC.evalTo(dst, alloc);
 
-        static if(isBlasType!T)
-        {
-            static if(isFloatingPoint!T || (is(T == MirComplex!E, E) && isFloatingPoint!E))
-            {
-                import mir.blas : gemv;
-                gemv(_alpha, viewA.view, viewB.view, _beta, dst);
-            }
-            else
-            {
-                import dffdd.math.linalg : gemv_stdcomplex;
-                gemv_stdcomplex(T(_alpha), viewA.view, viewB.view, T(_beta), dst);
-            }
-        }
-        else
+        // static if(isBlasType!T)
+        // {
+        //     static if(isFloatingPoint!T || (is(T == MirComplex!E, E) && isFloatingPoint!E))
+        //     {
+        //         import mir.blas : gemv;
+        //         gemv(_alpha, viewA.view, viewB.view, _beta, dst);
+        //     }
+        //     else
+        //     {
+        //         import dffdd.math.linalg : gemv_stdcomplex;
+        //         gemv_stdcomplex(T(_alpha), viewA.view, viewB.view, T(_beta), dst);
+        //     }
+        // }
+        // else
         {
             import dffdd.math.linalg : dot;            
 
@@ -457,7 +496,7 @@ if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
     static if(isZeros!VecC)
     {
         auto _opB_Impl_(string op, V)(V vec)
-        if(isVectorLike!V)
+        if(isVectorLike!V && (op == "+" || op == "-"))
         in(vec.length == this.length)
         {
             static if(is(V == VectorAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
@@ -467,7 +506,7 @@ if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
         }
 
         auto _opBR_Impl_(string op, V)(V vec)
-        if(isVectorLike!V)
+        if(isVectorLike!V && (op == "+" || op == "-"))
         in(vec.length == this.length)
         {
             static if(is(V == VectorAxpby!(A, V1, V2), A, V1, V2) && isZeros!V2)
@@ -1184,8 +1223,6 @@ string definitionsOfMatrixOperators(string[] list)
         {
             static if(is(typeof(this._opB_Impl_!op(rhs))) && is(typeof(rhs._opBR_Impl_!op(this))))
             {
-                pragma(msg, typeof(this));
-                pragma(msg, X);
                 alias T1 = typeof(this._opB_Impl_!op(rhs));
                 alias T2 = typeof(rhs._opBR_Impl_!op(this));
                 static if(T1.exprTreeCost <= T2.exprTreeCost)
