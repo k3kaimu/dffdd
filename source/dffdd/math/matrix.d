@@ -161,7 +161,7 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
 
         auto noAliasCopy(V)(V mat)
-        if(isVectorLike!V)
+        if(isMatrixLike!V)
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
             mat.evalTo(_slice, matvecAllocator);
