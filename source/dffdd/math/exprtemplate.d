@@ -405,11 +405,6 @@ struct MatrixVectorMulGEMV(T, MatA, VecB, VecC)
 if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
 {
     alias ElementType = typeof(T.init * MatA.ElementType.init * VecB.ElementType.init + T.init * VecC.ElementType.init);
-    // pragma(msg, "ElementType is " ~ ElementType.stringof);
-    // pragma(msg, "T is " ~ T.stringof);
-    // pragma(msg, "MatA.ElementType is " ~ MatA.ElementType.stringof);
-    // pragma(msg, "VecB.ElementType is " ~ VecB.ElementType.stringof);
-    // pragma(msg, "VecC.ElementType is " ~ VecC.ElementType.stringof);
     enum float exprTreeCost = sum([staticMap!(.exprTreeCost, AliasSeq!(MatA, VecB, VecC))]) + EXPR_COST_N^^2;
 
 
@@ -451,20 +446,20 @@ if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
 
         _vecC.evalTo(dst, alloc);
 
-        // static if(isBlasType!T)
-        // {
-        //     static if(isFloatingPoint!T || (is(T == MirComplex!E, E) && isFloatingPoint!E))
-        //     {
-        //         import mir.blas : gemv;
-        //         gemv(_alpha, viewA.view, viewB.view, _beta, dst);
-        //     }
-        //     else
-        //     {
-        //         import dffdd.math.linalg : gemv_stdcomplex;
-        //         gemv_stdcomplex(T(_alpha), viewA.view, viewB.view, T(_beta), dst);
-        //     }
-        // }
-        // else
+        static if(isBlasType!T && _useGEMV)
+        {
+            static if(isFloatingPoint!T || (is(T == MirComplex!E, E) && isFloatingPoint!E))
+            {
+                import mir.blas : gemv;
+                gemv(_alpha, viewA.view, viewB.view, _beta, dst);
+            }
+            else
+            {
+                import dffdd.math.linalg : gemv_stdcomplex;
+                gemv_stdcomplex(T(_alpha), viewA.view, viewB.view, T(_beta), dst);
+            }
+        }
+        else
         {
             import dffdd.math.linalg : dot;            
 
@@ -527,6 +522,12 @@ if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
     MatA _matA;
     VecB _vecB;
     VecC _vecC;
+
+
+    version(DFFDD_BLAS_USEGEMV)
+        enum bool _useGEMV = true;
+    else
+        enum bool _useGEMV = false;
 }
 
 
