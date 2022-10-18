@@ -237,6 +237,14 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
+        static if(MatA.exprTreeCost < EXPR_COST_N && MatB.exprTreeCost < EXPR_COST_N && MatC.exprTreeCost < EXPR_COST_N)
+        {
+            if(_matA.length!0 * _matA.length!1 * _matB.length!1 <= 100) {
+                _evalToForSmall(dst);
+                return;
+            }
+        }
+
         auto viewA = _matA.makeViewOrNewSlice(alloc);
         scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
 
@@ -339,6 +347,55 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     MatA _matA;
     MatB _matB;
     MatC _matC;
+
+
+    void _evalToForSmall(T, SliceKind kindA)(Slice!(T*, 2, kindA) dst) const
+    {
+        gemm_smallsize(_alpha, _matA, _matB, _beta, _matC, dst);
+    }
+}
+
+
+private
+void gemm_smallsize(T, MatA, MatB, MatC, SliceKind kindD)
+    (T alpha, const ref MatA a, const ref MatB b, T beta, const ref MatC c, ref Slice!(T*, 2, kindD) dst)
+in
+{
+    assert(a.length!1 == b.length!0);
+    assert(a.length!0 == c.length!0);
+    assert(c.length!1 == b.length!1);
+    assert(c.length!0 == dst.length!0);
+}
+do
+{
+    immutable M = a.length!0,
+              N = b.length!1,
+              K = a.length!1;
+
+    dst[] = 0;
+
+    static if(isZeros!MatC)
+    {
+        foreach(i; 0 .. M) {
+            foreach(k; 0 .. K)
+                foreach(j; 0 .. N)
+                    dst[i, j] += a[i, k] * b[k, j];
+
+            foreach(j; 0 .. N)
+                dst[i, j] = dst[i, j] * alpha + beta * c[i, j];
+        }
+    }
+    else
+    {
+        foreach(i; 0 .. M)
+            foreach(j; 0 .. N) {
+                T s = T(0);
+                foreach(k; 0 .. K)
+                    s += a[i, k] * b[k, j];
+
+                dst[i, j] = s * alpha + beta * c[i, j];
+            }
+    }
 }
 
 
