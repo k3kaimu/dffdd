@@ -5,6 +5,7 @@ import std.array;
 import std.complex;
 import std.math;
 import std.typecons;
+import std.traits;
 
 import dffdd.filterbank.protofilter;
 import dffdd.utils.fft;
@@ -29,7 +30,7 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
     
         _nchannel = nchannel;
         _ntaps = ntaps;
-        _fftw = makeFFTWObject!Complex(nchannel);
+        _fftw = makeFFTWObject!(TemplateOf!C)(nchannel);
         _coefs = slice!C(nchannel, ntaps);
         _inputs = slice!C(nchannel, ntaps);
 
@@ -118,7 +119,7 @@ final class DFTFilterBank(C, Flag!"isAnalysis" isAnalysis)
   private:
     size_t _nchannel;
     size_t _ntaps;
-    FFTWObject!Complex _fftw;
+    FFTWObject!(TemplateOf!C) _fftw;
     Slice!(C*, 2, Contiguous) _inputs;
     Slice!(C*, 2, Contiguous) _coefs;
 }
@@ -202,8 +203,8 @@ unittest
     }
 
     // reconstruction error is less than -40 dB.
-    writeln(10*log10(sum / P));
-    // assert(10*log10(sum / P) < -40);
+    // writeln(10*log10(sum / P));
+    assert(10*log10(sum / P) < -40);
 }
 
 
