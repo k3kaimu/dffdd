@@ -32,7 +32,7 @@ unittest
 
 
 /**
-点数Nのカイザー窓を作成します
+点数Nのカイザー窓を作成します
 */
 F[] kaiser(F)(size_t N, F beta)
 if(isFloatingPoint!F)
