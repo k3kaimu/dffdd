@@ -46,14 +46,6 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
         _chMatV = matrix!F(chMat.length!1 * 2, chMat.length!1 * 2);
         _chMatSigma = vector!F(min(chMat.length!0, chMat.length!1) * 2);
 
-        // // 大システム極限での正規化条件（lim |a_n|^2 = 1）
-        // foreach(i; 0 .. chMat.length!0 * 2) {
-        //     auto rvec = _chMat.rowVec(i);
-        //     auto p = 1/sqrt(norm2(rvec));
-        //     _rowScales[i] = p;
-        //     rvec.sliced()[] *= p;
-        // }
-
         import kaleidic.lubeck : svd;
         auto svdResult = svd(_chMat.sliced);
         _chMatU[] = svdResult.u.lightScope.matrixed;
@@ -109,7 +101,7 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
                 }
             }
             // writeln(res);
-            detected[N * n .. N * (n+1)].sliced.vectored[] = res.fromRealRI;
+            detected[N * n .. N * (n+1)].sliced.vectored.noAliasCopy(res.fromRealRI);
         }
 
         return detected;
@@ -184,52 +176,62 @@ in(A_.length!0 <= A_.length!1)
     auto x_BA = vector!F(N, 0);
     auto x_B = vector!F(N, 0);
 
-    // auto invXi = matrix!F(M, M, 0);
-    auto AHinvXi = matrix!F(N, M, 0);
+    auto vecAHinvXi = slice!F(M);
 
     auto tmpVecM = vector!F(M, 0);
     auto tmpVecN = vector!F(N, 0);
-    // auto matAA = A * A.H;
+    auto tmpVecN2 = vector!F(N, 0);
 
-    // auto matAA = matrix!F(M, M, 0);
-    // matAA[] = A * A.H;
+    auto y2 = vector!F(M, 0);
+    y2.noalias = U.T * y;
+
+    // UTA = U.T * A 
+    auto UTA = matrix!F(M, N, 0);
+    foreach(i; 0 .. min(M, N) )
+        foreach(j; 0 .. min(M, N))
+            UTA[i, j] = V[i, j] * AS_[i];
 
     F v_AB = 0,
       v_BA = theta0,
       v_B = 0,
       gamma_vBA = 0;
 
+    enum F EPS = 1e-6;
+
     alias ProxResult = typeof(prox(F(0), theta0));
     auto pxs = slice!ProxResult(N);
-    import std.stdio;
 
     // writeln("START");
     foreach(iter; 1 .. nIteration)
     {
         // SVDの結果を使ってXiの逆行列とA.Hの積とtrace(invXi * matAA)を計算
-        F traceInvXiAA = 0;
-        AHinvXi[] = F(0);
+        F traceInvXiAA = EPS;
+        vecAHinvXi[] = F(0);
         foreach(i; 0 .. M) {
-            immutable eig = 1/(sigma2 + v_BA * AS_[i]^^2);
-            AHinvXi[i, i] = eig * AS_[i];
+            immutable eig = 1/(sigma2 + v_BA * AS_[i]^^2 + EPS);
+            vecAHinvXi[i] = eig * AS_[i];
             traceInvXiAA += eig * AS_[i]^^2;
         }
 
-        tmpVecM[] = y - A * x_BA;
-        tmpVecM[] = U.T * tmpVecM;
-        tmpVecN[] = AHinvXi * tmpVecM;
-        tmpVecN[] = V.T * tmpVecN;
+        tmpVecM.noalias = y2 - UTA * x_BA;
+        tmpVecN2[] = F(0);
+        foreach(i; 0 .. M) tmpVecN2[i] = vecAHinvXi[i] * tmpVecM[i];
+        tmpVecN.noalias = V.T * tmpVecN2;
 
         gamma_vBA = N / traceInvXiAA;
-        x_AB[] = x_BA + gamma_vBA * tmpVecN;
+        x_AB.noalias = x_BA + gamma_vBA * tmpVecN;
         v_AB = gamma_vBA - v_BA;
         
         pxs[] = x_AB.sliced.map!(e => prox(e, v_AB));
-        x_B[] = pxs.map!"a.value".vectored;
+        x_B.noalias = pxs.map!"a.value".vectored;
         v_B = pxs.map!"a.var".mean;
 
-        v_BA = (v_B * v_AB)/(v_AB - v_B);
-        x_BA[] = (x_B * v_AB - x_AB * v_B)/(v_AB - v_B);
+        F vden = v_AB - v_B;
+        if(fast_abs!F(vden) < EPS)
+            vden += EPS;
+
+        v_BA = (v_B * v_AB)/vden;
+        x_BA.noalias = (x_B * v_AB - x_AB * v_B)/vden;
     }
     // writeln("STOP");
 
@@ -273,7 +275,7 @@ unittest
     int nIteration = 2;
     import std.stdio;
 
-    auto xhat2 = EP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, theta0, 0.1 , 20);
+    auto xhat2 = EP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, theta0, 0.1, 20);
     assert(xhat2[0].isClose(-1, 1e-3));
     assert(xhat2[1].isClose(+1, 1e-3));
     assert(xhat2[2].isClose(-1, 1e-3));
