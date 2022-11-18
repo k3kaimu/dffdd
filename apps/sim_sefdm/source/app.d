@@ -3,7 +3,7 @@ module app;
 import core.lifetime : forward;
 
 import std.stdio;
-import std.range : iota;
+import std.range : iota, isInputRange, hasLength, ElementType;
 import std.math;
 import std.datetime.stopwatch : StopWatch;
 import std.random;
@@ -18,6 +18,7 @@ import dffdd.math.vector;
 import dffdd.math.complex;
 import dffdd.math.matrixspecial;
 import dffdd.utils.fft;
+import dffdd.dsp.statistics : makeFilterBankSpectrumAnalyzer;
 
 import dffdd.mod.primitives;
 import dffdd.mod.bpsk;
@@ -53,7 +54,7 @@ shared static this()
     openblas_set_num_threads(1);
 }
 
-alias C = MirComplex!float;
+alias C = MirComplex!double;
 
 void main(string[] args)
 {
@@ -71,14 +72,21 @@ void main(string[] args)
     //     results = parseJSON(cast(const(char)[])read("resultsBER.json")).object;
     // }
 
-    // auto isRayleigh = Yes.isRayleigh;
     auto isRayleigh = No.isRayleigh;
+    enum asWSV = Yes.asWSV;
+    enum ModK = 2;              // 1シンボルあたりのビット数（1: BPSK, 2:QPSKなど）
+    enum isSpecOP = No.SpecOP;  // 周波数スペクトルプリコーディング
+    // auto isRayleigh = No.isRayleigh;
 
     immutable resultDir = isRayleigh ? "results_Rayleigh" : "results_AWGN";
+
+    import mir.ndslice : map;
+    // writeln(makeInterfereMatrix!C(0.5, 1, 8).sliced.map!"a.re");
     
-    static foreach(usePrePost; [Yes.usePrecoding/*, No.usePrecoding*/])
+    // if(0)
+    static foreach(usePrePost; [Yes.usePrecoding,/* No.usePrecoding*/])
     static foreach(ALGORITHM; ["EP"/*"SVD", "MMSE", "ZF", "EP", "DAMP", "AMP", "GaBP", "QRM-MLD", "Sphere"*/])
-    foreach(K; [/*16, 64, */256])
+    foreach(K; [16, 64, 256])
     {
         if(ALGORITHM == "Sphere" && K > 16)
             continue;
@@ -91,17 +99,18 @@ void main(string[] args)
 
         auto NTAPS_ARR = [K/8];
         if(ALGORITHM == "EP" && K == 256)
-            NTAPS_ARR = [1, 4, 8, 16, 32];
+            NTAPS_ARR = [/*1, 4, 8, 16, */32];
 
         foreach(NTAPS; isRayleigh ? NTAPS_ARR : [0])
-        foreach(ALPHA; [16/16.0, 12/16.0, 10/16.0, /*16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0, 9/16.0, 8/16.0*/]){
+        foreach(ALPHA; [16/16.0, 12/16.0, 10/16.0, /*9/16.0*/ /*16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0, 9/16.0, 8/16.0*/]){
             void task(uint K, uint NTAPS, double ALPHA) {
-                enum ModK = 2;              // 1シンボルあたりのビット数（1: BPSK, 2:QPSKなど）
                 immutable uint OSRate = 1;
-                immutable uint NFFT = K * OSRate;                   // FFTサイズ
-                immutable uint N = cast(uint)round(K * ALPHA);      // サブキャリア数
+                // immutable uint NFFT = K * OSRate;                   // FFTサイズ
+                // immutable uint N = cast(uint)round(K * ALPHA);      // サブキャリア数
+                immutable uint N = K;
+                immutable uint NFFT = cast(uint)round(K * 1.0 / ALPHA * OSRate);
                 immutable uint M = N * OSRate;                      // 観測数
-                writefln("%s, K: %s, N: %s, alpha = %s/%s, nTaps=%s", ALGORITHM, K, N, N, K, NTAPS);
+                writefln("%s, K: %s, N: %s, alpha = %s/%s, nTaps=%s", ALGORITHM, NFFT, N, N, NFFT, NTAPS);
 
                 float[] berResults;
                 double[] psd;
@@ -114,7 +123,7 @@ void main(string[] args)
                 // immutable long simBitsPerTrial = simTotalBits / nChTrial;
 
                 long nChTrial = isRayleigh ? 100 : 1;
-                long simBitsPerTrial = isRayleigh ? 100_000 : 10_000_000;
+                long simBitsPerTrial = isRayleigh ? /*100_000*/ 1_000 : 1_000_000;
 
                 foreach(ebno; iota(0, 21)) {
                     import std.conv : to;
@@ -122,19 +131,32 @@ void main(string[] args)
                     size_t numErr, numTot;
 
                     foreach(iTrial; 0 .. nChTrial) {
+                        SimParams!(ModK, ALGORITHM) params;
+                        params.usePrecoding = usePrePost;
+                        params.asWSV = asWSV;
+                        params.isRayleigh = isRayleigh;
+                        params.EbN0dB = ebno;
+                        params.totalBits = simBitsPerTrial;
+                        params.chNTaps = NTAPS;
+                        params.chSeed = cast(uint)iTrial;
+                        params.M = M;
+                        params.N = N;
+                        params.NFFT = NFFT;
+                        params.Ncp = NFFT / 8;
+
                         static if(ALGORITHM == "GaBP")
-                            auto res = mainImpl!(ModK, "GaBP", usePrePost)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 50, 0.4);
+                            auto res = mainImpl!(ModK, "GaBP", usePrePost, asWSV)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 50, 0.4);
                         else static if(ALGORITHM == "DAMP")
                         {
-                            auto res = mainImpl!(ModK, "DAMP", usePrePost)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 50, 1, 1, 1, 1);
+                            auto res = mainImpl!(ModK, "DAMP", usePrePost, asWSV)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 50, 1, 1, 1, 1);
                         }
                         else static if(ALGORITHM == "AMP")
                         {
-                            auto res = mainImpl!(ModK, "AMP", usePrePost)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 50);
+                            auto res = mainImpl!(ModK, "AMP", usePrePost, asWSV)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 50);
                         }
                         else static if(ALGORITHM == "EP")
                         {
-                            auto res = mainImpl!(ModK, "EP", usePrePost)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 50);
+                            auto res = mainImpl(params, 50);
                         }
                         else static if(ALGORITHM == "QRM-MLD")
                         {
@@ -149,7 +171,7 @@ void main(string[] args)
                         numErr += cast(size_t)round(simBitsPerTrial * res.ber);
                         numTot += simBitsPerTrial;
 
-                        if(ebno == 10 && iTrial == 0)
+                        if(iTrial == 0)
                             psd = res.psd;
                     }
 
@@ -167,12 +189,12 @@ void main(string[] args)
                 import std.file : write;
                 {
                     auto jv = JSONValue(berResults.map!(a => JSONValue(a)).array());
-                    write("%s/ber_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, M, K, NTAPS, usePrePost ? "wP" : "woP"), toJSON(jv));
+                    write("%s/ber_%s_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, M, NFFT, NTAPS, usePrePost ? "wP" : "woP", asWSV ? "WSV" : "USV"), toJSON(jv));
                 }
-                // {
-                //     auto jv = JSONValue(psd.map!(a => JSONValue(a)).array());
-                //     write("%s/psd_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, M, K, NTAPS, usePrePost ? "wP" : "woP"), toJSON(jv));
-                // }
+                {
+                    auto jv = JSONValue(psd.map!(a => JSONValue(a)).array());
+                    write("%s/psd_%s_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, M, NFFT, NTAPS, usePrePost ? "wP" : "woP", asWSV ? "WSV" : "USV"), toJSON(jv));
+                }
             }
 
             taskList.append(&task, K, NTAPS, ALPHA);
@@ -180,9 +202,9 @@ void main(string[] args)
         }
     }
 
-    run(taskList, env);
-    // foreach(i; 0 .. taskList.length)
-    //     taskList[i]();
+    // run(taskList, env);
+    foreach(i; 0 .. taskList.length)
+        taskList[i]();
 }
 
 
@@ -194,9 +216,39 @@ size_t lcm(size_t n, size_t m)
 }
 
 
-Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", double[], "psd") mainImpl(size_t ModK, string DETECT, Flag!"usePrecoding" usePrecoding = No.usePrecoding, Args...)(
-    uint M, uint N, uint NFFT, double EbN0dB, Flag!"isRayleigh" isRayleigh, uint chSeed, size_t nTaps, ptrdiff_t simTotalBits, Args args)
+struct SimResult
 {
+    double ber;
+    double kbps;
+    long errbits;
+    long totalbits;
+    double[] psd;
+}
+
+
+struct SimParams(size_t ModK_, string DETECT_)
+{
+    enum size_t ModK = ModK_;
+    enum string DETECT = DETECT_;
+    bool usePrecoding = No.usePrecoding;
+    bool asWSV = false;
+    bool isRayleigh = false;
+    uint chSeed = 0;
+    uint chNTaps = 0;
+    ptrdiff_t totalBits = 10_000_000;
+    double EbN0dB = 10;
+    uint M = 256;
+    uint N = 256;
+    uint NFFT = 256;
+    uint Ncp = 32;
+}
+
+
+SimResult mainImpl(Params, Args...)(Params params, Args args)
+{
+    with(params)
+    {
+
     // static if(DETECT == "QRM-MLD")
     // {
     //     if(OSRate == 1) {
@@ -216,9 +268,9 @@ Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", do
         auto mod = QAM!C(2^^ModK);
     }
 
-    immutable K = mod.symInputLength;
-
-    immutable size_t block_bits = N * K;
+    immutable size_t numBlockSyms = 4;
+    immutable size_t block_bits = N * mod.symInputLength * numBlockSyms;
+    immutable double ALPHA = N*1.0 / (NFFT / (M*1.0/N));
 
     size_t total_bits = 0;
     size_t error_bits = 0;
@@ -228,8 +280,23 @@ Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", do
     foreach(m; 0 .. M) {
         auto s = genChannel!C(N, NFFT, m);
         foreach(n; 0 .. N) {
-            modMat[m, n] = s[n].conj;
+            modMat[m, n] = s[n];
         }
+    }
+
+    // OFDMのサブキャリアを圧縮した手法
+    if(asWSV) {
+        // 電力割当行列
+        size_t numUse = cast(uint)round(N * ALPHA);
+        auto pamat = matrix!C(M, M, C(0, 0));
+        foreach(i; 0 .. numUse) {
+            pamat[i, i] = C(sqrt(N * 1.0 / numUse) * sqrt(M * 1.0 / N), 0);
+        }
+
+        modMat[] = pamat;
+
+        auto idftM = genDFTMatrix!C(M).H;
+        modMat[] = idftM * modMat;
     }
 
     // チャネル行列
@@ -238,8 +305,7 @@ Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", do
 
     if(isRayleigh) {
         // i.i.d.レイリーフェージングの巡回行列
-        // chMat[] = makeCirculantIIDChannelMatrix!C(M, cast(uint)round(NFFT/8.0), chSeed);
-        chMat[] = makeCirculantIIDChannelMatrix!C(M, cast(uint)nTaps, chSeed);
+        chMat[] = makeCirculantIIDChannelMatrix!C(M, cast(uint)chNTaps, chSeed);
     }
 
     // チャネル行列の逆行列
@@ -255,8 +321,10 @@ Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", do
     auto rwMat = matrix!C(M, M);
     auto recvMat = matrix!C(M, N);
     if(usePrecoding) {
-        modMat[] = modMat * makeHaarMatrix!C(N);
-        rwMat = makeHaarMatrix!C(M);
+        // modMat[] = modMat * makeHaarMatrix!C(N);
+        modMat[] = modMat * makeRandomPermutationMatrix!C(N, 0) * genDFTMatrix!C(N);
+        // rwMat = makeHaarMatrix!C(M);
+        rwMat[] = identity!C(M);
         recvMat[] = rwMat * chMat * modMat;
     } else {
         rwMat[] = identity!C(M);
@@ -334,55 +402,63 @@ Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", do
 
     // writeln(modMat.sliced);
 
-    size_t sumPSDN = 0;
-    double[] psd = new double[M];
-    psd[] = 0;
-    auto fftw = makeFFTWObject!MirComplex(M);
-    scope(exit) {
-        psd[] /= sumPSDN;
-    }
+    // size_t sumPSDN = 0;
+    // double[] psd = new double[(M + Ncp) * numBlockSyms];
+    // psd[] = 0;
+    // auto fftw = makeFFTWObject!MirComplex((M + Ncp) * numBlockSyms);
+    // scope(exit) {
+    //     psd[] /= sumPSDN;
+    // }
+
+    // FilterBankSpectrumAnalyze
+    auto specAnalyzer = makeFilterBankSpectrumAnalyzer!C(1_000_000, 256, 256);
+
+    Bit[] bits;
+    C[] syms;
+    Vector!(C, Contiguous) sum;
+    Vector!(C, Contiguous) recvY;
+    Bit[] decoded;
+    C[] decodedSyms;
 
     StopWatch sw;
-    foreach(_; 0 .. (simTotalBits == -1 ? 10_000_000 : simTotalBits) / block_bits + 1) {
+    foreach(_; 0 .. (params.totalBits == -1 ? 10_000_000 : params.totalBits) / block_bits + 1) {
         // writeln(error_bits);
         immutable baseSeed = _;
 
+        bits = genBits(block_bits, baseSeed, bits);
+        syms = mod.genSymbols(bits, syms);
 
-        // auto bits = genBPSK(M, baseSeed);
-        auto bits = genBits(block_bits, baseSeed);
-        auto syms = mod.genSymbols(bits);
+        if(sum.length != syms.length / N * M)
+            sum = vector!C(syms.length / N * M);
 
-        // C[] sum = new C[](syms.length / M * N);
-        auto sum = vector!C(syms.length / N * M);
-        // C[] wsum = new C[](syms.length);
         foreach(i; 0 .. syms.length / N) {
-            // mir.blas.gemv(C(1), modMat, syms[i*M .. (i+1)*M].sliced, C(0), sum[i*N .. (i+1)*N].sliced);
-            sum.sliced()[i*M .. (i+1)*M].vectored()[] = chMat * modMat * syms[i*N .. (i+1)*N].sliced.vectored;
+            auto s = syms[i*N .. (i+1)*N].sliced.vectored;
+            auto v = sum.sliced()[i*M .. (i+1)*M].vectored;
+            v[] = modMat * s;
+            v[] = chMat * v;
         }
 
         // 電力スペクトル密度
-        {
-            foreach(i; 0 .. M)
-                fftw.inputs!double[i] = sum[i];
-            
-            fftw.fft!double();
+        foreach(i; 0 .. numBlockSyms) {
+            // CP分
+            foreach(j; 0 .. Ncp)
+                specAnalyzer.put(sum[(i+1)*M - Ncp + j]);
 
-            foreach(i; 0 .. M)
-                psd[i] += fftw.outputs!double[i].sqAbs;
-
-            sumPSDN += 1;
+            foreach(j; 0 .. M)
+                specAnalyzer.put(sum[i*M + j]);
         }
 
         sum.sliced.addAWGN(baseSeed, SIGMA);
 
+        if(recvY.length != sum.length / rwMat.length!1 * rwMat.length!0)
+            recvY = vector!C(sum.length / rwMat.length!1 * rwMat.length!0);
 
-        auto recvY = vector!C(sum.length / rwMat.length!1 * rwMat.length!0);
         foreach(i; 0 .. sum.length / rwMat.length!1) {
             recvY.sliced()[i * rwMat.length!0 .. (i+1) * rwMat.length!0].vectored()[]
                 = rwMat * sum.sliced()[i * rwMat.length!1 .. (i+1) * rwMat.length!1].vectored;
         }
 
-        Bit[] decoded;
+        // Bit[] decoded;
 
         sw.start();
         static if(is(detector.OutputElementType == Bit))
@@ -391,7 +467,6 @@ Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", do
         }
         else
         {
-            C[] decodedSyms;
             decodedSyms = detector.detect(recvY.sliced.iterator[0 .. recvY.length], decodedSyms);
             // writeln(decodedSyms);
             decoded = mod.demodulate(decodedSyms, decoded);
@@ -410,7 +485,17 @@ Tuple!(double, "ber", double, "kbps", size_t, "errbits", size_t, "totalbits", do
     // sw.stop();
     // writefln!"--- %s kbps"(total_bits * 1E3 / sw.peek.total!"usecs");
 
-    return typeof(return)(error_bits * 1.0L / total_bits, total_bits * 1E3 / sw.peek.total!"usecs", error_bits, total_bits, psd);
+    // return typeof(return)(error_bits * 1.0L / total_bits, total_bits * 1E3 / sw.peek.total!"usecs", error_bits, total_bits, psd);
+    SimResult result;
+    result.ber = error_bits * 1.0L / total_bits;
+    result.errbits = error_bits;
+    result.totalbits = total_bits;
+    result.kbps = total_bits * 1E3 / sw.peek.total!"usecs";
+    result.psd = specAnalyzer.psd.dup;
+    // writefln!"alpha=%s, %s (dB): %s"(ALPHA, EbN0dB, result.ber);
+
+    return result;
+    }
 }
 
 
@@ -420,20 +505,26 @@ Random makeRNG(T)(size_t seed, auto ref T id)
 }
 
 
-Bit[] genBits(size_t nbits, size_t seed)
+Bit[] genBits(size_t nbits, size_t seed, return ref Bit[] dst)
 {
     import dffdd.utils.binary;
     import std.range;
     import std.array;
     import std.algorithm;
 
-    return randomBits(makeRNG(seed, "GEN_BITS")).take(nbits).map!(a => Bit(a)).array();
+    if(dst.length != nbits)
+        dst.length = nbits;
+
+    randomBits(makeRNG(seed, "GEN_BITS")).take(nbits).map!(a => Bit(a)).copy(dst);
+    return dst;
 }
 
 
-C[] genSymbols(Mod)(Mod mod, in Bit[] bits)
+C[] genSymbols(Mod)(Mod mod, in Bit[] bits, return ref C[] dst)
 {
-    C[] dst = new C[](bits.length / mod.symInputLength);
+    if(dst.length != bits.length / mod.symInputLength)
+        dst.length = bits.length / mod.symInputLength;
+
     mod.modulate(bits, dst);
     return dst;
 }
@@ -459,8 +550,8 @@ Matrix!(C, Contiguous) genDFTMatrix(C)(uint NFFT)
     auto mat = matrix!C(NFFT, NFFT);
     foreach(i; 0 .. NFFT)
         foreach(j; 0 .. NFFT)
-            mat[i, j] = C(expi(2*PI/NFFT * i * j).tupleof) / sqrt(NFFT*1.0);
-    
+            mat[i, j] = C(expi(-2*PI/NFFT * i * j).tupleof) / sqrt(NFFT*1.0);
+
     return mat;
 }
 
@@ -525,3 +616,78 @@ Matrix!(C, Contiguous) makeCirculantIIDChannelMatrix(C)(size_t N, size_t nTaps, 
 
     return mat;
 }
+
+
+Matrix!(C, Contiguous) makeRandomPermutationMatrix(C)(size_t N, uint rndSeed)
+{
+    size_t[] idxs = new size_t[N];
+    foreach(i; 0 .. N) idxs[i] = i;
+
+    Random rnd;
+    rnd.seed(rndSeed);
+    idxs = randomShuffle(idxs, rnd);
+
+    auto mat = matrix!C(N, N);
+    mat[] = C(0);
+    foreach(i; 0 .. N)
+        mat[i, idxs[i]] = C(1);
+
+    return mat;
+}
+
+
+
+// Matrix!(C, Contiguous) makeSpectralPrecodingMatrix(C, R)(size_t N, R scIndex, uint ncont, size_t nTg, size_t nTs)
+// if(isInputRange!R && hasLength!R && is(ElementType!R : long))
+// {
+//     immutable Nk = scIndex.length;
+//     auto mA = matrix!C((ncont+1)*2, Nk);
+//     immutable phi = 2 * PI * nTg / nTs;
+
+//     foreach(k; scIndex) {
+//         foreach(n; 0 .. ncont + 1) {
+//             mA[n, k] = (k*1.0)^^n * expi!C(-phi * k);
+//             mA[n + (ncont + 1), k] = (k*1.0)^^n;
+//         }
+//     }
+
+//     // import kaleidic.lubeck;
+//     // auto svdres = svd(mA.sliced);
+//     // auto v = svdres.vt.matrixed.H;
+//     // auto ret = matrix!C(N, N, C(0, 0));
+//     // foreach(i; 0 .. Nk)
+//     //     foreach(j; 0 .. Nk)
+//     //         ret[i, j] = v[i, j];
+//     // // ret[] = svdres.vt.matrixed.T;
+
+//     // auto E = matrix!C(N, N, C(0, 0));
+//     // foreach(i; 0 .. N) {
+//     //     if(i < 2*(ncont + 1))
+//     //         E[i, i] = 0;
+//     //     else
+//     //         E[i, i] = 1;
+//     // }
+
+//     // ret[] = ret * E;
+//     // return ret;
+//     import dffdd.math.linalg;
+//     auto t = matrix!C((ncont+1)*2, (ncont+1)*2);
+//     t[] = mA * mA.H;
+//     t[] = inv(t);
+
+//     auto g = matrix!C(Nk, (ncont+1)*2);
+//     g[] = mA.H * t;
+
+//     auto u = matrix!C(Nk, Nk);
+//     u[] = g * mA;
+//     u[] = identity!C(Nk) - u;
+
+//     auto ret = matrix!C(N, N, C(0, 0));
+//     foreach(i; 0 .. Nk)
+//         foreach(j; 0 .. Nk)
+//             ret[i, j] = u[i, j];
+    
+//     return ret;
+//     // return g;
+//     //  identity!C(Nk) - mA.H * inv(mA * mA.H) * mA
+// }
