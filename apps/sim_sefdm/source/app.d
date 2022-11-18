@@ -3,7 +3,8 @@ module app;
 import core.lifetime : forward;
 
 import std.stdio;
-import std.range : iota, isInputRange, hasLength, ElementType;
+import std.array;
+import std.range;
 import std.math;
 import std.datetime.stopwatch : StopWatch;
 import std.random;
@@ -195,6 +196,10 @@ void main(string[] args)
                     auto jv = JSONValue(psd.map!(a => JSONValue(a)).array());
                     write("%s/psd_%s_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, M, NFFT, NTAPS, usePrePost ? "wP" : "woP", asWSV ? "WSV" : "USV"), toJSON(jv));
                 }
+                {
+                    auto jv = JSONValue(psd.map!(a => JSONValue(a)).array());
+                    write("%s/psd_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, M, K, NTAPS, usePrePost ? "wP" : "woP"), toJSON(jv));
+                }
             }
 
             taskList.append(&task, K, NTAPS, ALPHA);
@@ -276,13 +281,7 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     size_t error_bits = 0;
 
     // 変調行列の生成
-    auto modMat = matrix!C(M, N);
-    foreach(m; 0 .. M) {
-        auto s = genChannel!C(N, NFFT, m);
-        foreach(n; 0 .. N) {
-            modMat[m, n] = s[n];
-        }
-    }
+    auto modMat = genSEFDMModMatrix!C(N, 1.0 * N / NFFT);
 
     // OFDMのサブキャリアを圧縮した手法
     if(asWSV) {
@@ -543,6 +542,19 @@ C[] genChannel(C)(uint N, uint NFFT, uint k)
 }
 
 
+Matrix!(C, Contiguous) genSEFDMModMatrix(C)(uint N, double alpha)
+{
+    import std.complex : expi;
+
+    auto mat = matrix!C(N, N);
+    foreach(i; 0 .. N)
+        foreach(j; 0 .. N)
+            mat[i, j] = C(expi(-2*PI/N * i * j * alpha).tupleof) / sqrt(N*1.0);
+    
+    return mat;
+}
+
+
 Matrix!(C, Contiguous) genDFTMatrix(C)(uint NFFT)
 {
     import std.complex : expi;
@@ -618,76 +630,31 @@ Matrix!(C, Contiguous) makeCirculantIIDChannelMatrix(C)(size_t N, size_t nTaps, 
 }
 
 
-Matrix!(C, Contiguous) makeRandomPermutationMatrix(C)(size_t N, uint rndSeed)
+Matrix!(C, Contiguous) makeRandomPermutationMatrix(C)(size_t N, uint seed)
 {
-    size_t[] idxs = new size_t[N];
-    foreach(i; 0 .. N) idxs[i] = i;
-
-    Random rnd;
-    rnd.seed(rndSeed);
-    idxs = randomShuffle(idxs, rnd);
+    auto rnd = makeRNG(seed, "GEN_Perm");
 
     auto mat = matrix!C(N, N);
     mat[] = C(0);
-    foreach(i; 0 .. N)
-        mat[i, idxs[i]] = C(1);
+
+    size_t[] idxs = iota(N).array;
+    idxs = randomShuffle(idxs, rnd);
+
+    foreach(i; 0 .. N) {
+        mat[i, idxs[i]] = 1;
+    }
 
     return mat;
 }
 
 
-
-// Matrix!(C, Contiguous) makeSpectralPrecodingMatrix(C, R)(size_t N, R scIndex, uint ncont, size_t nTg, size_t nTs)
-// if(isInputRange!R && hasLength!R && is(ElementType!R : long))
-// {
-//     immutable Nk = scIndex.length;
-//     auto mA = matrix!C((ncont+1)*2, Nk);
-//     immutable phi = 2 * PI * nTg / nTs;
-
-//     foreach(k; scIndex) {
-//         foreach(n; 0 .. ncont + 1) {
-//             mA[n, k] = (k*1.0)^^n * expi!C(-phi * k);
-//             mA[n + (ncont + 1), k] = (k*1.0)^^n;
-//         }
-//     }
-
-//     // import kaleidic.lubeck;
-//     // auto svdres = svd(mA.sliced);
-//     // auto v = svdres.vt.matrixed.H;
-//     // auto ret = matrix!C(N, N, C(0, 0));
-//     // foreach(i; 0 .. Nk)
-//     //     foreach(j; 0 .. Nk)
-//     //         ret[i, j] = v[i, j];
-//     // // ret[] = svdres.vt.matrixed.T;
-
-//     // auto E = matrix!C(N, N, C(0, 0));
-//     // foreach(i; 0 .. N) {
-//     //     if(i < 2*(ncont + 1))
-//     //         E[i, i] = 0;
-//     //     else
-//     //         E[i, i] = 1;
-//     // }
-
-//     // ret[] = ret * E;
-//     // return ret;
-//     import dffdd.math.linalg;
-//     auto t = matrix!C((ncont+1)*2, (ncont+1)*2);
-//     t[] = mA * mA.H;
-//     t[] = inv(t);
-
-//     auto g = matrix!C(Nk, (ncont+1)*2);
-//     g[] = mA.H * t;
-
-//     auto u = matrix!C(Nk, Nk);
-//     u[] = g * mA;
-//     u[] = identity!C(Nk) - u;
-
-//     auto ret = matrix!C(N, N, C(0, 0));
-//     foreach(i; 0 .. Nk)
-//         foreach(j; 0 .. Nk)
-//             ret[i, j] = u[i, j];
+Matrix!(C, Contiguous) makePartialSelectMatrix(C)(size_t N, size_t M)
+{
+    immutable C scale = C(sqrt(N / M * 1.0));
+    auto mat = matrix!C(N, N);
+    mat[] = C(0);
+    foreach(i; 0 .. M)
+        mat[i, i] = scale;
     
-//     return ret;
-//     // return g;
-//     //  identity!C(Nk) - mA.H * inv(mA * mA.H) * mA
-// }
+    return mat;
+}
