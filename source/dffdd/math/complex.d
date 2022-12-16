@@ -70,7 +70,7 @@ alias RealPartType(C) = typeof(C.init.re);
 
 
 template FloatingPointType(T)
-if(isFloatingPoing!T || isComplex!T)
+if(isFloatingPoint!T || isComplex!T)
 {
     static if(isComplex!T)
         alias FloatingPointType = RealPartType!T;
@@ -266,9 +266,9 @@ if(isNarrowComplex!C)
 
 
 C pow(C1, C2)(C1 x, C2 n)
-if(isNarrowComplex!C1 && (isComplex!C2 || isFloatingPoing!C2 || isInteger!C2))
+if(isNarrowComplex!C1 && (isComplex!C2 || isFloatingPoint!C2 || isInteger!C2))
 {
-    static if(isFloatingPoing!C2 || isInteger!C2) {
+    static if(isFloatingPoint!C2 || isInteger!C2) {
         auto y = std.complex.pow(StdComplex!(RealPartType!C)(x.re, x.im), n);
         return C(y.re, y.im);
     } else {
