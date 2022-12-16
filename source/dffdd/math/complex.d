@@ -107,6 +107,14 @@ if(isComplex!C)
     return std.complex.arg(StdComplex!(RealPartType!C)(x.re, x.im));
 }
 
+
+F arg(F)(F x)
+if(isFloatingPoint!F)
+{
+    return F(0);
+}
+
+
 RealPartType!C norm(C)(C x)
 if(isComplex!C)
 {
@@ -114,10 +122,24 @@ if(isComplex!C)
 }
 
 
+F norm(F)(F x)
+if(isFloatingPoint!F)
+{
+    return std.math.abs(x);
+}
+
+
 C conj(C)(C x)
 if(isNarrowComplex!C)
 {
     return C(x.re, -x.im);
+}
+
+
+F conj(F)(F x)
+if(isFloatingPoint!F)
+{
+    return x;
 }
 
 
