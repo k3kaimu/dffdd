@@ -863,33 +863,31 @@ if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && ar
     enum F[] arrP = arrP_;
     enum F[] arrR = arrR_;
 
-    version(all)
-    {
-        F xr2_min = F.infinity;
-        static foreach(i; 0 .. arrP.length) {
+    F xr2_min = F.infinity;
+    static foreach(i; 0 .. arrP.length) {
+        if(arrP[i] != 0)
             xr2_min = min((arrR[i] - x)^^2, xr2_min);
-        }
-    }
-    else
-    {
-        enum F xr2_min = F(0);
     }
 
     immutable expCoef = -0.5 / sigma2;
 
     F p_e = F(0),
-      p_r_e = F(0),
-      p_r2_e = F(0);
+    p_r_e = F(0),
+    p_r2_e = F(0);
 
     F[arrP.length] _pes;
     static foreach(i; 0 .. arrP.length) {{
-        F expvalue = fast_exp!F(expCoef * ((arrR[i] - x)^^2 - xr2_min));
-        if(expvalue.isNaN) expvalue = 1;
+        if(arrP[i] != 0) {
+            immutable xr2 = (arrR[i] - x)^^2;
 
-        _pes[i] = arrP[i] * expvalue;
-        p_e += _pes[i];
-        p_r_e += _pes[i] * arrR[i];
-        p_r2_e += _pes[i] * arrR[i]^^2;
+            F expvalue = fast_exp!F(expCoef * (xr2 - xr2_min));
+            if(expvalue.isNaN) expvalue = 1;
+
+            _pes[i] = arrP[i] * expvalue;
+            p_e += _pes[i];
+            p_r_e += _pes[i] * arrR[i];
+            p_r2_e += _pes[i] * arrR[i]^^2;
+        }
     }}
 
     immutable drv = -2 * expCoef * (p_r2_e * p_e - p_r_e^^2) / p_e^^2;
@@ -906,7 +904,7 @@ unittest
 {
     assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).value.isClose(0.0798298, 1e-4));
     assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).drv.isClose(79.4902, 1e-4));
-    assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).var.isClose(1 - 0.0798298^^2, 1e-4));
+    assert(softDecision!([0.5, 0, 0.5], [-1, 0, 1])(0.001, (0.1/sqrt(0.8))^^2 ).var.isClose(1 - 0.0798298^^2, 1e-4));   
 }
 
 
