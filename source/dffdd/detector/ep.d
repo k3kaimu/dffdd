@@ -16,6 +16,7 @@ import dffdd.math.vector;
 import dffdd.math.linalg;
 import dffdd.math.exprtemplate : hasMemoryView;
 import dffdd.math.matrixspecial : identity;
+import dffdd.math.math;
 
 import dffdd.mod.qpsk;
 import dffdd.mod.qam;
@@ -101,7 +102,7 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
                 }
             }
             // writeln(res);
-            detected[N * n .. N * (n+1)].sliced.vectored.noAliasCopy(res.fromRealRI);
+            detected[N * n .. N * (n+1)].sliced.vectored[] = res.fromRealRI;
         }
 
         return detected;
