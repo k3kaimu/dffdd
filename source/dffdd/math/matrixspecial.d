@@ -356,9 +356,9 @@ unittest
 alias Identity(E) = ConstEye!(E, E(1));
 
 
-Identity!E identity(E)(size_t n)
+Identity!(Unqual!E) identity(E)(size_t n)
 {
-    return Identity!E(n);
+    return Identity!(Unqual!E)(n);
 }
 
 
