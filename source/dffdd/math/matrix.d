@@ -2,6 +2,7 @@ module dffdd.math.matrix;
 
 import std.experimental.allocator;
 import std.traits;
+import std.typecons : Tuple;
 
 import mir.ndslice;
 import dffdd.math.linalg;
@@ -151,6 +152,24 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     }
 
 
+    auto _op_partial_impl_(Tuple!(size_t, size_t) rs, Tuple!(size_t, size_t) cs)
+    {
+        return _slice[rs[0] .. rs[1], cs[0] .. cs[1]].matrixed;
+    }
+
+
+    auto _op_partial_impl_(Tuple!(size_t, size_t) rs, size_t j)
+    {
+        return _slice[rs[0] .. rs[1], j].vectored;
+    }
+
+
+    auto _op_partial_impl_(size_t i, Tuple!(size_t, size_t) cs)
+    {
+        return _slice[i, cs[0] .. cs[1]].vectored;
+    }
+
+
     import dffdd.math.exprtemplate;
     mixin(definitionsOfMatrixOperators(["defaults", "M*M", "M+M", "M*V", "M*S", ".H"]));
 
@@ -260,6 +279,9 @@ unittest
     assert(s[0, 1] == 2);
     assert(s[1, 0] == 4);
     assert(s[1, 1] == 6);
+
+    auto p = mat2[0 .. 1, 0 .. 1];
+    assert(p[0, 0] == 0);
 }
 
 

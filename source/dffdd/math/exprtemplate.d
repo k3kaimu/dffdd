@@ -1265,6 +1265,7 @@ string definitionsOfMatrixOperators(string[] list)
     import std.algorithm : canFind;
 
     string dst = q{
+    import std.typecons : Tuple;
     import std.traits : isFloatingPoint, isIntegral;
     import dffdd.math.linalg : isBlasType;
     import dffdd.math.exprtemplate;
@@ -1336,6 +1337,57 @@ string definitionsOfMatrixOperators(string[] list)
                 return this.opBinary!"-"(-rhs) * ElementType(-1);
             }
             else static assert(0, "Operator '(LHS) " ~ op ~ " (RHS)' is not defined with (LHS) = " ~ X.stringof ~ ", and (RHS) = " ~ typeof(this).stringof);
+        }
+
+
+        size_t opDollar(size_t dim)()
+        {
+            return this.length!dim;
+        }
+
+
+        Tuple!(size_t, size_t) opSlice(size_t dim)(size_t i, size_t j)
+        {
+            return typeof(return)(i, j);
+        }
+
+
+        auto opIndex(Tuple!(size_t, size_t) rs, Tuple!(size_t, size_t) cs)
+        {
+            static if(is(typeof(this._op_partial_impl_(rs, cs))))
+            {
+                return this._op_partial_impl_(rs, cs);
+            }
+            else
+            {
+                return PartialFromMatrix!(typeof(this), typeof(rs), typeof(cs))(this, rs, cs);
+            }
+        }
+
+
+        auto opIndex(Tuple!(size_t, size_t) rs, size_t j)
+        {
+            static if(is(typeof(this._op_partial_impl_(rs, j))))
+            {
+                return this._op_partial_impl_(rs, j);
+            }
+            else
+            {
+                return PartialFromMatrix!(typeof(this), typeof(rs), size_t)(this, rs, j);
+            }
+        }
+
+
+        auto opIndex(size_t i, Tuple!(size_t, size_t) cs)
+        {
+            static if(is(typeof(this._op_partial_impl_(i, cs))))
+            {
+                return this._op_partial_impl_(i, cs);
+            }
+            else
+            {
+                return PartialFromMatrix!(typeof(this), size_t, typeof(cs))(this, i, cs);
+            }
         }
     };
 
@@ -1425,4 +1477,230 @@ string definitionsOfMatrixOperators(string[] list)
 
 
     return dst;
+}
+
+
+
+struct PartialFromMatrix(M, Ridx, Cidx)
+if(isMatrixLike!M
+    && (is(Ridx == size_t) || is(Ridx == Tuple!(size_t, size_t)))
+    && (is(Cidx == size_t) || is(Cidx == Tuple!(size_t, size_t)))
+    && (is(Ridx == Tuple!(size_t, size_t)) || is(Cidx == Tuple!(size_t, size_t))))
+{
+    alias ElementType = M.ElementType;
+    enum exprTreeCost = M.exprTreeCost;
+
+
+    this(M mat, Ridx rs, Cidx cs)
+    {
+        _mat = mat;
+        _rs = rs;
+        _cs = cs;
+
+        static if(is(Ridx == Tuple!(size_t, size_t))) {
+            _rs[1] = min(_rs[1], mat.length!0);
+            assert(_rs[0] < _rs[1]);
+        }
+
+        static if(is(Cidx == Tuple!(size_t, size_t))) {
+            _cs[1] = min(_cs[1], mat.length!1);
+            assert(_cs[0] < _cs[1]);
+        }
+    }
+
+
+  static if(is(Ridx == size_t))
+  {
+    auto ref opIndex(size_t j) inout
+    {
+        return _mat[_rs, j + _cs[0]];
+    }
+
+
+    size_t length() const { return _cs[1] - _cs[0]; }
+
+
+    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 1, kind) dst, ref Alloc alloc) const
+    in(dst.length == this.length)
+    {
+        auto meval = makeViewOrNewSlice(_mat, alloc);
+        scope(exit) {
+            if(meval.isAllocated)
+                alloc.dispose(meval.view.iterator);
+        }
+
+        dst[] = meval.view[_rs, _cs[0] .. _cs[1]];
+    }
+
+
+    mixin(definitionsOfVectorOperators(["defaults", "V+V", "M*V", "V*S"]));
+  }
+  else static if(is(Cidx == size_t))
+  {
+    auto ref opIndex(size_t i) inout
+    {
+        return _mat[i + _rs[0], _cs];
+    }
+
+
+    size_t length() const { return _rs[1] - _rs[0]; }
+
+
+    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 1, kind) dst, ref Alloc alloc) const
+    in(dst.length == this.length)
+    {
+        auto meval = makeViewOrNewSlice(_mat, alloc);
+        scope(exit) {
+            if(meval.isAllocated)
+                alloc.dispose(meval.view.iterator);
+        }
+
+        dst[] = meval.view[_rs[0] .. _rs[1], _cs];
+    }
+
+
+    mixin(definitionsOfVectorOperators(["defaults", "V+V", "M*V", "V*S"]));
+  }
+  else
+  {
+    auto ref opIndex(size_t i, size_t j)
+    {
+        return _mat[i + _rs[0], j + _cs[0]];
+    }
+
+
+    size_t length(size_t dim)() const
+    {
+        static if(dim == 0)
+            return _rs[1] - _rs[0];
+        else
+            return _cs[1] - _cs[0];
+    }
+
+
+    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 2, kind) dst, ref Alloc alloc) const
+    in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+    {
+        auto meval = makeViewOrNewSlice(_mat, alloc);
+        scope(exit) {
+            if(meval.isAllocated)
+                alloc.dispose(meval.view.iterator);
+        }
+
+        dst[] = meval.view[_rs[0] .. _rs[1], _cs[0] .. _cs[1]];
+    }
+
+
+    typeof(this) _op_partial_impl_(Tuple!(size_t, size_t) rs1, Tuple!(size_t, size_t) cs1)
+    {
+        alias TP = Tuple!(size_t, size_t);
+        return typeof(this)(_mat, TP(_rs[0] + rs1[0], _rs[0] + rs1[1]), TP(_cs[0] + cs1[0], _cs[0] + cs1[1]));
+    }
+
+
+    auto _op_partial_impl_(Tuple!(size_t, size_t) rs1, size_t j)
+    {
+        alias TP = Tuple!(size_t, size_t);
+        return PartialFromMatrix!(M, TP, size_t)(_mat, TP(_rs[0] + rs1[0], _rs[0] + rs1[1]), _cs[0] + j);
+    }
+
+
+    auto _op_partial_impl_(size_t i, Tuple!(size_t, size_t) cs1)
+    {
+        alias TP = Tuple!(size_t, size_t);
+        return PartialFromMatrix!(M, size_t, TP)(_mat, _rs[0] + i, TP(_cs[0] + cs1[0], _cs[0] + cs1[1]));
+    }
+
+
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*V", "M*S", "M*M", ".T", ".H"]));
+  }
+
+  private:
+    M _mat;
+    Ridx _rs;
+    Cidx _cs;
+}
+
+
+
+auto partial(M)(M mat, size_t[2] rs, size_t[2] cs)
+if(isMatrixLike!M)
+{
+    alias TP = Tuple!(size_t, size_t);
+
+    static if(is(typeof(mat._op_partial_impl_(TP(rs[0], rs[1]), TP(cs[0], cs[1])))))
+    {
+        return mat._op_partial_impl_(TP(rs[0], rs[1]), TP(cs[0], cs[1]));
+    }
+    else
+    {
+        return PartialFromMatrix!(M, TP, TP)(mat, TP(rs[0], rs[1]), TP(cs[0], cs[1]));
+    }
+}
+
+
+auto partial(M)(M mat, size_t[2] rs, size_t j)
+if(isMatrixLike!M)
+{
+    alias TP = Tuple!(size_t, size_t);
+
+    static if(is(typeof(mat._op_partial_impl_(TP(rs[0], rs[1]), j))))
+    {
+        return _mat._op_partial_impl_(TP(rs[0], rs[1]), j);
+    }
+    else
+    {
+        return PartialFromMatrix!(M, TP, size_t)(_mat, TP(rs[0], rs[1]), j);
+    }
+}
+
+
+auto partial(M)(M mat, size_t i, size_t[2] cs)
+if(isMatrixLike!M)
+{
+    alias TP = Tuple!(size_t, size_t);
+
+    static if(is(typeof(mat._op_partial_impl_(i, TP(cs[0], cs[1])))))
+    {
+        return _mat._op_partial_impl_(i, TP(cs[0], cs[1]));
+    }
+    else
+    {
+        return PartialFromMatrix!(M, size_t, TP)(_mat, i, TP(cs[0], cs[1]));
+    }
+}
+
+unittest
+{
+    auto mat = matrix!int(3, 3, 0);
+    mat[0, 0] = 1;
+    mat[0, 1] = 2;
+    mat[0, 2] = 3;
+    mat[1, 0] = 4;
+    mat[1, 1] = 5;
+    mat[1, 2] = 6;
+    mat[2, 0] = 7;
+    mat[2, 1] = 8;
+    mat[2, 2] = 9;
+
+    auto p1 = mat.partial([1, 2], [0, 3]);
+    assert(p1.length!0 == 1);
+    assert(p1.length!1 == 3);
+    assert(p1[0, 0] == 4);
+    assert(p1[0, 1] == 5);
+    assert(p1[0, 2] == 6);
+
+    auto s = slice!int(1, 3);
+    p1.evalTo(s, theAllocator);
+    assert(s[0, 0] == 4);
+    assert(s[0, 1] == 5);
+    assert(s[0, 2] == 6);
+
+    auto p2 = p1[0, 1 .. 2];
+    assert(p2.length == 1);
+    assert(p2[0] == 5);
+
+    auto p3 = p1[0 .. 1, 1];
+    assert(p3.length == 1);
+    assert(p3[0] == 5);
 }
