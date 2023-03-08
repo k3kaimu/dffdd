@@ -369,11 +369,21 @@ struct MulDiagonal(ArrayLike, MatVec)
 if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrixLike!MatVec || isVectorLike!MatVec))
 {
     alias ElementType = typeof(_diag[0] * MatVec.ElementType.init);
-    enum float exprTreeCost = 1;
+    enum float exprTreeCost = MatVec.exprTreeCost + EXPR_COST_N;
 
 
-    this(ArrayLike vec, MatVec matvec)
-    {
+    this(size_t M, size_t N, ArrayLike vec, MatVec matvec)
+    // in((vec.length == M || vec.length == N) && matvec.length!0 == N)
+    in {
+        assert(vec.length == min(M, N));
+        static if(isMatrixLike!MatVec)
+            assert(matvec.length!0 == N);
+        else
+            assert(matvec.length == N);
+    }
+    do {
+        _M = M;
+        _N = N;
         _diag = vec;
         _matvec = matvec;
     }
@@ -384,26 +394,36 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
     size_t length(size_t dim = 0)() const @property
     if(dim == 0 || dim == 1)
     {
-        return _matvec.length!dim;
+        static if(dim == 0)
+            return _M;
+        else
+            return _matvec.length!1;
     }
 
 
     ElementType opIndex(size_t i, size_t j) const
     {
-        return _matvec[i, j] * _diag[i];
+        if(i < _diag.length)
+            return _matvec[i, j] * _diag[i];
+        else
+            return ElementType(0);
     }
   }
   else
   {
     size_t length() const @property
     {
-        return _matvec.length;
+        // return _matvec.length;
+        return _M;
     }
 
 
     ElementType opIndex(size_t i) const
     {
-        return _matvec[i] * _diag[i];
+        if(i < _diag.length)
+            return _matvec[i] * _diag[i];
+        else
+            return ElementType(0);
     }
   }
 
@@ -413,9 +433,18 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
-        _matvec.evalTo(dst, alloc);
-        foreach(i; 0 .. _diag.length)
-            dst[i, 0 .. $] *= _diag[i];
+        if(_M == _N) {
+            _matvec.evalTo(dst, alloc);
+            foreach(i; 0 .. _diag.length)
+                dst[i, 0 .. $] *= _diag[i];
+        } else {
+            auto viewA = _matvec.makeViewOrNewSlice(alloc);
+            scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+
+            dst[] = T(0);
+            foreach(i; 0 .. _diag.length)
+                dst[i, 0 .. $] = _diag[i] * viewA.view[i, 0 .. $];
+        }
     }
   }
   else
@@ -423,9 +452,18 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
     in(dst.length == this.length)
     {
-        _matvec.evalTo(dst, alloc);
-        foreach(i; 0 .. _diag.length)
-            dst[i] *= _diag[i];
+        if(_M == _N) {
+            _matvec.evalTo(dst, alloc);
+            foreach(i; 0 .. _diag.length)
+                dst[i] *= _diag[i];
+        } else {
+            auto viewA = _matvec.makeViewOrNewSlice(alloc);
+            scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+
+            dst[] = T(0);
+            foreach(i; 0 .. _diag.length)
+                dst[i] = _diag[i] * viewA.view[i];
+        }
     }
   }
 
@@ -437,7 +475,7 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
     in(vec.length == this.length!1)
     {
         auto mm = _matvec * vec;
-        return MulDiagonal!(ArrayLike, typeof(mm))(_diag, mm);
+        return MulDiagonal!(ArrayLike, typeof(mm))(_M, _N, _diag, mm);
     }
 
 
@@ -446,7 +484,7 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
     in(mat.length!0 == this.length!1)
     {
         auto mm = _matvec * mat;
-        return MulDiagonal!(ArrayLike, typeof(mm))(_diag, mm);
+        return MulDiagonal!(ArrayLike, typeof(mm))(_M, _N, _diag, mm);
     }
 
     mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
@@ -458,6 +496,7 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
 
 
   private:
+    size_t _M, _N;
     ArrayLike _diag;
     MatVec _matvec;
 }
@@ -465,15 +504,29 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
 
 auto diag(Iterator, SliceKind kind)(Slice!(Iterator, 1, kind) slice)
 {
-    auto ident = identity!(typeof(slice[0]))(slice.length);
-    return MulDiagonal!(typeof(slice), typeof(ident))(slice, ident);
+    return .diag(slice.length, slice.length, slice);
+}
+
+
+auto diag(Iterator, SliceKind kind)(size_t M, size_t N, Slice!(Iterator, 1, kind) slice)
+in(slice.length == min(M, N))
+{
+    auto ident = identity!(typeof(slice[0]))(N);
+    return MulDiagonal!(typeof(slice), typeof(ident))(M, N, slice, ident);
 }
 
 
 auto diag(E)(in E[] slice)
 {
-    auto ident = identity!(Unqual!(typeof(slice[0])))(slice.length);
-    return MulDiagonal!(const(E)[], typeof(ident))(slice, ident);
+    return .diag(slice.length, slice.length, slice);
+}
+
+
+auto diag(E)(size_t M, size_t N, in E[] slice)
+in(slice.length == min(M, N))
+{
+    auto ident = identity!(Unqual!(typeof(slice[0])))(N);
+    return MulDiagonal!(const(E)[], typeof(ident))(M, N, slice, ident);
 }
 
 
@@ -538,4 +591,60 @@ unittest
     auto v1 = vector!int(3);
     // auto mul4 = mul3 * v1;
     auto mul4 = mul3._opB_Impl_!"*"(v1);
+}
+
+unittest
+{
+    auto mat1 = [1, 2, 3, 4, 5, 6, 7, 8, 9].sliced(3, 3).matrixed;
+    auto diag1 = diag(2, 3, [1, 2]);
+    auto mul1 = diag1 * mat1;
+    assert(mul1.length!0 == 2);
+    assert(mul1.length!1 == 3);
+    assert(mul1[0, 0] == 1);
+    assert(mul1[0, 1] == 2);
+    assert(mul1[0, 2] == 3);
+    assert(mul1[1, 0] == 8);
+    assert(mul1[1, 1] == 10);
+    assert(mul1[1, 2] == 12);
+    
+    auto s1 = slice!int(2, 3);
+    mul1.evalTo(s1, theAllocator);
+    assert(s1[0, 0] == 1);
+    assert(s1[0, 1] == 2);
+    assert(s1[0, 2] == 3);
+    assert(s1[1, 0] == 8);
+    assert(s1[1, 1] == 10);
+    assert(s1[1, 2] == 12);
+
+    auto diag2 = diag(4, 3, [2, 1, 2]);
+    auto mul2 = diag2 * mat1;
+    assert(mul2.length!0 == 4);
+    assert(mul2.length!1 == 3);
+    assert(mul2[0, 0] == 2);
+    assert(mul2[0, 1] == 4);
+    assert(mul2[0, 2] == 6);
+    assert(mul2[1, 0] == 4);
+    assert(mul2[1, 1] == 5);
+    assert(mul2[1, 2] == 6);
+    assert(mul2[2, 0] == 14);
+    assert(mul2[2, 1] == 16);
+    assert(mul2[2, 2] == 18);
+    assert(mul2[3, 0] == 0);
+    assert(mul2[3, 1] == 0);
+    assert(mul2[3, 2] == 0);
+
+    auto s2 = slice!int(4, 3);
+    mul2.evalTo(s2, theAllocator);
+    assert(s2[0, 0] == 2);
+    assert(s2[0, 1] == 4);
+    assert(s2[0, 2] == 6);
+    assert(s2[1, 0] == 4);
+    assert(s2[1, 1] == 5);
+    assert(s2[1, 2] == 6);
+    assert(s2[2, 0] == 14);
+    assert(s2[2, 1] == 16);
+    assert(s2[2, 2] == 18);
+    assert(s2[3, 0] == 0);
+    assert(s2[3, 1] == 0);
+    assert(s2[3, 2] == 0);
 }
