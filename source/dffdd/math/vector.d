@@ -114,7 +114,9 @@ struct VectoredSlice(Iterator, SliceKind kind)
         if(isVectorLike!V)
         in(vec.length == this.length)
         {
-            vec.evalTo(_slice, matvecAllocator);
+            if(_tmm is null) _tmm = new TempMemoryManager(1024);
+            auto tmms = _tmm.saveState;
+            vec.evalTo(_slice, _tmm);
         }
 
 
@@ -122,9 +124,11 @@ struct VectoredSlice(Iterator, SliceKind kind)
         if(isVectorLike!V)
         in(vec.length == this.length)
         {
-            if(_tmp.length != _slice.length) _tmp = slice!ElementType(_slice.length);
-            vec.evalTo(_tmp, matvecAllocator);
-            _slice[] = _tmp;
+            if(_tmm is null) _tmm = new TempMemoryManager(1024);
+            auto tmms = _tmm.saveState;
+            auto tmp = _tmm.makeSlice!ElementType(_slice.shape);
+            vec.evalTo(tmp, _tmm);
+            _slice[] = tmp;
         }
 
 
@@ -132,13 +136,15 @@ struct VectoredSlice(Iterator, SliceKind kind)
         if(isVectorLike!V && (op == "+" || op == "-"))
         in(vec.length == this.length)
         {
-            if(_tmp.length != _slice.length) _tmp = slice!ElementType(_slice.length);
-            vec.evalTo(_tmp, matvecAllocator);
+            if(_tmm is null) _tmm = new TempMemoryManager(1024);
+            auto tmms = _tmm.saveState;
+            auto tmp = _tmm.makeSlice!ElementType(_slice.shape);
+            vec.evalTo(tmp, _tmm);
 
             static if(op == "+")
-                _slice[] += _tmp;
+                _slice[] += tmp;
             else
-                _slice[] -= _tmp;
+                _slice[] -= tmp;
         }
 
 
@@ -165,7 +171,13 @@ struct VectoredSlice(Iterator, SliceKind kind)
 
     static if(is(Iterator == ElementType*))
     {
-        Slice!(ElementType*, 1, Contiguous) _tmp;
+        TempMemoryManager _tmm;
+    }
+
+    void setTMM(X)(ref X m)
+    {
+        static if(is(Iterator == ElementType*) && is(typeof(m._tmm)))
+            m._tmm = this._tmm;
     }
 }
 

@@ -82,16 +82,6 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     }
 
 
-  static if(is(Iterator == ElementType*))
-  {
-    this(Slice!(Iterator, 2, kind) s, Slice!(Iterator, 2, Contiguous) tmp)
-    {
-        _slice = s;
-        _tmp = tmp;
-    }
-  }
-
-
     size_t length(size_t dim = 0)() const @property
     if(dim == 0 || dim == 1)
     {
@@ -123,13 +113,17 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
     auto rowVec(size_t r)
     {
-        return _slice[r, 0 .. $].vectored;
+        auto v = _slice[r, 0 .. $].vectored;
+        setTMM(v);
+        return v;
     }
 
 
     auto colVec(size_t c)
     {
-        return _slice[0 .. $, c].vectored;
+        auto v = _slice[0 .. $, c].vectored;
+        setTMM(v);
+        return v;
     }
 
 
@@ -183,7 +177,9 @@ struct MatrixedSlice(Iterator, SliceKind kind)
         if(isMatrixLike!V)
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
-            mat.evalTo(_slice, matvecAllocator);
+            if(_tmm is null) _tmm = new TempMemoryManager(1024);
+            auto tmms = _tmm.saveState;
+            mat.evalTo(_slice, _tmm);
         }
 
 
@@ -191,9 +187,11 @@ struct MatrixedSlice(Iterator, SliceKind kind)
         if(isMatrixLike!M)
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
-            _allocateTmp();
-            mat.evalTo(_tmp, matvecAllocator);
-            _slice[] = _tmp;
+            if(_tmm is null) _tmm = new TempMemoryManager(1024);
+            auto tmms = _tmm.saveState;
+            auto tmp = _tmm.makeSlice!ElementType(_slice.shape);
+            mat.evalTo(tmp, _tmm);
+            _slice[] = tmp;
         }
 
 
@@ -201,13 +199,15 @@ struct MatrixedSlice(Iterator, SliceKind kind)
         if(isMatrixLike!M && (op == "+" || op == "-"))
         in(mat.length!0 == this.length!0 && mat.length!1 == this.length!1)
         {
-            _allocateTmp();
-            mat.evalTo(_tmp, matvecAllocator);
+            if(_tmm is null) _tmm = new TempMemoryManager(1024);
+            auto tmms = _tmm.saveState;
+            auto tmp = _tmm.makeSlice!ElementType(_slice.shape);
+            mat.evalTo(tmp, matvecAllocator);
 
             static if(op == "+")
-                _slice[] += _tmp;
+                _slice[] += tmp;
             else
-                _slice[] -= _tmp;
+                _slice[] -= tmp;
         }
 
 
@@ -239,15 +239,13 @@ struct MatrixedSlice(Iterator, SliceKind kind)
 
     static if(is(Iterator == ElementType*))
     {
-        Slice!(ElementType*, 2, Contiguous) _tmp;
+        TempMemoryManager _tmm;
+    }
 
-
-        void _allocateTmp()
-        {
-            if(_tmp.shape != _slice.shape) {
-                _tmp = slice!ElementType(_slice.shape);
-            }
-        }
+    void setTMM(X)(ref X m)
+    {
+        static if(is(Iterator == ElementType*) && is(typeof(m._tmm)))
+            m._tmm = this._tmm;
     }
 }
 
