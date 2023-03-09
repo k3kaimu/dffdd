@@ -24,6 +24,127 @@ enum float EXPR_COST_N = 10;
 enum isExpressionTemplate(T) = is(typeof(T.exprTreeCost) : float);
 enum exprTreeCost(T) = T.exprTreeCost;
 
+
+
+class TempMemoryManagerImpl(size_t alignBytes)
+{
+    import core.memory;
+    enum size_t alignment = alignBytes;
+
+
+    this(size_t initSize)
+    {
+        _memoryTape = _alignedRealloc(null, initSize, alignment);
+        _used = 0;
+    }
+
+
+    CheckPoint saveState() pure nothrow @safe
+    {
+        return CheckPoint(this, _used);
+    }
+
+
+    E[] makeArray(E)(size_t n) pure nothrow @trusted
+    if(!hasIndirections!E)
+    {
+        size_t last = _used + E.sizeof * n;
+        if(_memoryTape.length < last) {
+            _memoryTape = _alignedRealloc(_memoryTape, last*2, alignment);
+        }
+
+        auto ret = _memoryTape[_used ..last];
+        _used = _toNextAlignment(last);
+        return cast(E[])ret;
+    }
+
+
+    Slice!(E*, N, Contiguous) makeSlice(E, size_t N)(size_t[N] shape...) pure nothrow @trusted
+    if(!hasIndirections!E)
+    {
+        size_t len = reduce!"a*b"(cast(size_t)1, shape[]);
+        auto buf = this.makeArray!E(len);
+        return buf.sliced(shape);
+    }
+
+
+    void dispose(E)(E*) pure nothrow @safe {}
+
+
+  private:
+    void[] _memoryTape;
+    size_t _used;
+
+
+    static struct CheckPoint
+    {
+        TempMemoryManagerImpl target;
+        size_t used;
+
+        ~this()
+        {
+            target._used = used;
+        }
+    }
+
+
+    static size_t _toNextAlignment(size_t n) pure nothrow @safe
+    {
+        return (n + (alignment - 1)) & ~(alignment - 1);
+    }
+
+
+    static void[] _alignedRealloc(void[] buf, size_t n, size_t alignment) pure nothrow @trusted
+    {
+        auto newbuf = new void[](n + alignment);
+        auto p = cast(size_t)newbuf.ptr;
+
+        size_t i = _toNextAlignment(p) - p;
+        size_t j = i + n;
+        newbuf = newbuf[i .. j];
+
+        newbuf[0 .. buf.length] = buf[];
+        return newbuf;
+    }
+}
+
+
+alias TempMemoryManager = TempMemoryManagerImpl!64;
+
+
+enum bool isTempMemoryManager(T) = is(T : TempMemoryManagerImpl!alignBytes, size_t alignBytes);
+
+
+unittest
+{
+    auto mm = new TempMemoryManagerImpl!64(128);
+    static assert(isTempMemoryManager!TempMemoryManager);
+
+    {
+        auto ss1 = mm.saveState;
+
+        auto buf1 = mm.makeArray!float(1);
+        assert(((cast(size_t)buf1.ptr) & (64-1)) == 0);
+        assert(mm._used == 64);
+
+        {
+            auto ss2 = mm.saveState;
+            auto buf2 = mm.makeArray!float(2);
+            assert(mm._used == 128);
+            assert(((cast(size_t)buf2.ptr) & (64-1)) == 0);
+
+            auto buf3 = mm.makeArray!double(1);
+            assert(mm._used == 192);
+            assert(((cast(size_t)buf3.ptr) & (64-1)) == 0);
+        }
+
+        assert(mm._used == 64);
+    }
+    assert(mm._used == 0);
+}
+
+
+
 enum hasMemoryView(T) = (is(typeof(T.init.sliced().lightScope())) && hasMemoryView!(typeof(T.init.sliced().lightScope())))
                      || is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 1, kind), SliceKind kind)
                      || (is(Unqual!(typeof(T.init.sliced())) == Slice!(T.ElementType*, 2, kind), SliceKind kind) && (kind == Contiguous || kind == Canonical));
