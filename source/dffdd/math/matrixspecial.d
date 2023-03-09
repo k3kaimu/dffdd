@@ -502,17 +502,18 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
 }
 
 
-auto diag(Iterator, SliceKind kind)(Slice!(Iterator, 1, kind) slice)
+auto diag(Iterator, SliceKind kind)(in Slice!(Iterator, 1, kind) slice)
 {
     return .diag(slice.length, slice.length, slice);
 }
 
 
-auto diag(Iterator, SliceKind kind)(size_t M, size_t N, Slice!(Iterator, 1, kind) slice)
+auto diag(Iterator, SliceKind kind)(size_t M, size_t N, in Slice!(Iterator, 1, kind) slice)
 in(slice.length == min(M, N))
 {
+    auto s = slice.lightConst;
     auto ident = identity!(typeof(slice[0]))(N);
-    return MulDiagonal!(typeof(slice), typeof(ident))(M, N, slice, ident);
+    return MulDiagonal!(typeof(s), typeof(ident))(M, N, s, ident);
 }
 
 
