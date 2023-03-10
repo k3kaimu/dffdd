@@ -15,7 +15,7 @@ import dffdd.math.matrix;
 import dffdd.math.vector;
 import dffdd.math.linalg;
 import dffdd.math.exprtemplate : hasMemoryView;
-import dffdd.math.matrixspecial : identity;
+import dffdd.math.matrixspecial : identity, diag;
 import dffdd.math.math;
 
 import dffdd.mod.qpsk;
@@ -85,15 +85,15 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
 
             switch(_mod.symInputLength) {
                 case 2: // QPSK
-                    res = EP!(softDecision2PAM_QPSK!F, F)
+                    res = EP!(softDecision2PAM_QPSK!F, F, F)
                         (inpvecs, _chMat, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
                     break;
                 case 4: // 16QAM
-                    res = EP!(softDecision4PAM_16QAM!F, F)
+                    res = EP!(softDecision4PAM_16QAM!F, F, F)
                         (inpvecs, _chMat, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
                     break;
                 case 6: // 64QAM
-                    res = EP!(softDecision8PAM_64QAM!F, F)
+                    res = EP!(softDecision8PAM_64QAM!F, F, F)
                         (inpvecs, _chMat, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
                     break;
                 default: {
@@ -141,9 +141,9 @@ unittest
 
 
 Vector!(F, Contiguous)
-    EP(alias prox, F, VecY, MatA)
+    EP(alias prox, C, F, VecY, MatA)
         (in VecY y_, in MatA A_, in F theta0, in F sigma2, size_t nIteration)
-if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!MatA && hasMemoryView!MatA && is(VecY.ElementType == F) && is(MatA.ElementType == F))
+if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!MatA && hasMemoryView!MatA && is(VecY.ElementType == C) && is(MatA.ElementType == C))
 {
     import kaleidic.lubeck : svd;
     auto svdResult = svd(A_.lightConst.sliced);
@@ -151,46 +151,47 @@ if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!
     auto chMatV = svdResult.vt.lightScope.matrixed;
     auto chMatSigma = svdResult.sigma.lightScope.vectored;
 
-    return EP!(prox, F)(y_, A_, chMatU, chMatSigma, chMatV, theta0, sigma2, nIteration);
+    return EP!(prox, C, F)(y_, A_, chMatU, chMatSigma, chMatV, theta0, sigma2, nIteration);
 }
 
 
-Vector!(F, Contiguous)
-    EP(alias prox, F, VecY, MatA, MatAU, VecAS, MatAV)
+Vector!(C, Contiguous)
+    EP(alias prox, C = VecY.ElementType, F, VecY, MatA, MatAU, VecAS, MatAV)
         (in VecY y_, in MatA A_, in MatAU AU_, in VecAS AS_, in MatAV AV_, in F theta0, in F sigma2, size_t nIteration)
-if(isFloatingPoint!F && isVectorLike!VecY && hasMemoryView!VecY && isMatrixLike!MatA && hasMemoryView!MatA && is(VecY.ElementType == F) && is(MatA.ElementType == F))
+if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F
+    && isVectorLike!VecY && hasMemoryView!VecY
+    && isMatrixLike!MatA && hasMemoryView!MatA
+    && is(VecY.ElementType == C) && is(MatA.ElementType == C))
 in(A_.length!0 <= A_.length!1)
 {
+    import dffdd.math.complex : abs;
     import mir.ndslice : map;
     import mir.math.stat : mean;
 
     auto y = y_.lightConst;
-    auto A = A_.lightConst;
+    // auto A = A_.lightConst;
     auto U = AU_.lightConst;
     auto V = AV_.lightConst;
 
     // Mが観測数，Nが未知変数の数
-    immutable size_t M = A.length!0,
-                     N = A.length!1;
+    immutable size_t M = U.length!0,
+                     N = V.length!0;
 
-    auto x_AB = vector!F(N, 0);
-    auto x_BA = vector!F(N, 0);
-    auto x_B = vector!F(N, 0);
+    auto x_AB = vector!C(N, C(0));
+    auto x_BA = vector!C(N, C(0));
+    auto x_B = vector!C(N, C(0));
 
-    auto vecAHinvXi = slice!F(M);
+    auto vecAHinvXi = slice!C(M);
 
-    auto tmpVecM = vector!F(M, 0);
-    auto tmpVecN = vector!F(N, 0);
-    auto tmpVecN2 = vector!F(N, 0);
+    auto tmpVecM = vector!C(M, C(0));
+    auto tmpVecN = vector!C(N, C(0));
+    auto tmpVecN2 = vector!C(N, C(0));
 
-    auto y2 = vector!F(M, 0);
-    y2.noalias = U.T * y;
+    auto y2 = vector!C(M, C(0));
+    y2.noalias = U.H * y;
 
     // UTA = U.T * A 
-    auto UTA = matrix!F(M, N, 0);
-    foreach(i; 0 .. min(M, N) )
-        foreach(j; 0 .. min(M, N))
-            UTA[i, j] = V[i, j] * AS_[i];
+    auto UTA = diag(M, N, AS_.sliced) * V;
 
     F v_AB = 0,
       v_BA = theta0,
@@ -199,7 +200,7 @@ in(A_.length!0 <= A_.length!1)
 
     enum F EPS = 1e-6;
 
-    alias ProxResult = typeof(prox(F(0), theta0));
+    alias ProxResult = typeof(prox(C(0), theta0));
     auto pxs = slice!ProxResult(N);
 
     // writeln("START");
@@ -207,17 +208,18 @@ in(A_.length!0 <= A_.length!1)
     {
         // SVDの結果を使ってXiの逆行列とA.Hの積とtrace(invXi * matAA)を計算
         F traceInvXiAA = EPS;
-        vecAHinvXi[] = F(0);
+        vecAHinvXi[] = C(0);
         foreach(i; 0 .. M) {
-            immutable eig = 1/(sigma2 + v_BA * AS_[i]^^2 + EPS);
-            vecAHinvXi[i] = eig * AS_[i];
-            traceInvXiAA += eig * AS_[i]^^2;
+            immutable ASP = sqAbs(AS_[i]);
+            immutable eig = 1/(sigma2 + v_BA * ASP + EPS);
+            vecAHinvXi[i] = eig * conj(AS_[i]);
+            traceInvXiAA += eig * ASP;
         }
 
         tmpVecM.noalias = y2 - UTA * x_BA;
         tmpVecN2[] = F(0);
         foreach(i; 0 .. M) tmpVecN2[i] = vecAHinvXi[i] * tmpVecM[i];
-        tmpVecN.noalias = V.T * tmpVecN2;
+        tmpVecN.noalias = V.H * tmpVecN2;
 
         gamma_vBA = N / traceInvXiAA;
         x_AB.noalias = x_BA + gamma_vBA * tmpVecN;
@@ -242,9 +244,6 @@ in(A_.length!0 <= A_.length!1)
 
 unittest
 {
-    import std.stdio;
-
-
     import mir.ndslice;
     alias F = double;
 
@@ -276,7 +275,7 @@ unittest
     int nIteration = 2;
     import std.stdio;
 
-    auto xhat2 = EP!((e, v) => softDecision!(arrP, arrR)(e, v))(y, A, theta0, 0.1, 20);
+    auto xhat2 = EP!((e, v) => softDecision!(arrP, arrR)(e, v), F, F)(y, A, theta0, 0.1, 20);
     assert(xhat2[0].isClose(-1, 1e-3));
     assert(xhat2[1].isClose(+1, 1e-3));
     assert(xhat2[2].isClose(-1, 1e-3));
@@ -288,7 +287,7 @@ unittest
     assert(xhat2[8].isClose(-1, 1e-3));
     assert(xhat2[9].isClose(+1, 1e-3));
 
-    auto xhat3 = EP!((e, v) => softDecision!(arrP, arrR)(e, v), F)(y, A, theta0, 0.1 , 200);
+    auto xhat3 = EP!((e, v) => softDecision!(arrP, arrR)(e, v), F, F)(y, A, theta0, 0.1 , 200);
     assert(xhat3[0].isClose(-1, 1e-3));
     assert(xhat3[1].isClose(+1, 1e-3));
     assert(xhat3[2].isClose(-1, 1e-3));
@@ -299,4 +298,88 @@ unittest
     assert(xhat3[7].isClose(-1, 1e-3));
     assert(xhat3[8].isClose(-1, 1e-3));
     assert(xhat3[9].isClose(+1, 1e-3));
+}
+
+unittest
+{
+    import std.range;
+    import std.array;
+    import std.math;
+    import std.complex;
+    import dffdd.math.complex;
+    import std.random;
+    import dffdd.utils.distribution;
+    import dffdd.mod.primitives;
+
+    alias F = double;
+    alias C = Complex!double;
+
+    Random rnd;
+    rnd.seed(0);
+
+    size_t M = 8;
+    size_t N = 10;
+
+    auto W = matrix!C(N, N);
+    foreach(i; 0 .. N)
+        foreach(j; 0 .. N)
+            W[i, j] = std.complex.expi(2*PI/N*i*j) / sqrt(N*1.0);
+    
+    auto P = matrix!C(N, N, C(0));
+    auto idxs = iota(N).array();
+    std.random.randomShuffle(idxs, rnd);
+    foreach(i; 0 .. N)
+        P[i, idxs[i]] = C(1);
+
+    auto V = matrix!C(N, N);
+    V[] = P * W;
+
+    auto U = matrix!C(M, M);
+    U[] = identity!C(M);
+
+    auto ds = vector!C(M);
+    foreach(i; 0 .. M)
+        ds[i] = (0.1)^^(i*1.0/M) * std.complex.expi(2*PI*i / M);
+
+    auto D = diag(M, N, ds.sliced);
+    auto A = matrix!C(M, N);
+    A[] = U * D * V;
+
+    auto x0 = vector!C(N);
+    foreach(i; 0 .. N)
+        x0[i] = C(choice([-1, 1], rndGen), choice([-1, 1], rndGen)) * SQRT1_2;
+
+    auto y0 = vector!C(M);
+    y0[] = A * x0;
+
+    immutable F sigma2 = 0.01;
+    foreach(i; 0 .. M)
+        y0[i] += complexGaussian01!F(rnd) * sqrt(sigma2);
+
+    auto xhat1 = EP!(softDecisionQPSK!C, C, F)(y0, A, U, ds, V, 1, sigma2, 2);
+
+    auto Ar = matrix!F(M * 2, N * 2);
+    Ar[] = A.toRealRIIR;
+
+    auto y0r = vector!F(M * 2);
+    y0r[] = y0.toRealRI;
+
+    auto xhat2r = EP!(softDecision2PAM_QPSK!F, F, F)(y0r, Ar, 0.5, sigma2/2, 2);
+    auto xhat2 = vector!C(N);
+    xhat2[] = xhat2r.fromRealRI;
+
+    foreach(i; 0 .. N) {
+        // import std.stdio;
+        // writefln!"%s == %s"(xhat1[i], xhat2[i]);
+        assert(isClose(xhat1[i].re, xhat2[i].re, 1e-2));
+        assert(isClose(xhat1[i].im, xhat2[i].im, 1e-2));
+    }
+
+    auto xhat3 = EP!(softDecisionQPSK!C, C, F)(y0, A, U, ds, V, 1, sigma2, 20);
+    foreach(i; 0 .. N) {
+        // import std.stdio;
+        // writefln!"%s == %s"(xhat3[i], x0[i]);
+        assert(isClose(xhat3[i].re, x0[i].re, 1e-2));
+        assert(isClose(xhat3[i].im, x0[i].im, 1e-2));
+    }
 }
