@@ -978,6 +978,13 @@ if(isVectorLike!VecA && isVectorLike!VecB)
     }
 
 
+    auto _opB_Impl_(string op : "/", U)(U u)
+    if(!isVectorLike!U && !isMatrixLike!U && is(typeof(T.init / U.init)))
+    {
+        return vectorAxpby(_alpha / u, _vecA, _beta / u, _vecB);
+    }
+
+
     static if(isZeros!VecB)
     {
         auto _opB_Impl_(string op, V)(V vec)
@@ -1277,9 +1284,12 @@ string definitionsOfVectorOperators(string[] list)
 
 
         auto opBinary(string op : "/", X)(X rhs)
-        if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType))
+        if(!isMatrixLike!X && !isVectorLike!X && is(typeof(ElementType.init / rhs)))
         {
-            return this.opBinary!"*"(rhs^^(-1));
+            static if(is(typeof(this._opB_Impl_!"/"(rhs))))
+                return this._opB_Impl_!"/"(rhs);
+            else
+                return this.opBinary!"*"(rhs^^(-1));
         }
 
 
@@ -1328,6 +1338,12 @@ string definitionsOfVectorOperators(string[] list)
         if(!isVectorLike!S && !isMatrixLike!S && is(typeof(S.init * ElementType.init)))
         {
             return vectorAxpby(scalar, this, S(0), zeros!ElementType(this.length));
+        }
+
+        auto _opB_Impl_(string op : "/", S)(S scalar)
+        if(!isVectorLike!S && !isMatrixLike!S && is(typeof(ElementType.init / S.init)))
+        {
+            return vectorAxpby(1/scalar, this, S(0), zeros!ElementType(this.length));
         }
     };
 
@@ -1423,9 +1439,12 @@ string definitionsOfMatrixOperators(string[] list)
 
 
         auto opBinary(string op : "/", X)(X rhs)
-        if(!isMatrixLike!X && !isVectorLike!X && is(X : ElementType))
+        if(!isMatrixLike!X && !isVectorLike!X && is(typeof(ElementType.init / rhs)))
         {
-            return this.opBinary!"*"(rhs^^(-1));
+            static if(is(typeof(this._opB_Impl_!"/"(rhs))))
+                return this._opB_Impl_!"/"(rhs);
+            else
+                return this.opBinary!"*"(rhs^^(-1));
         }
 
 
