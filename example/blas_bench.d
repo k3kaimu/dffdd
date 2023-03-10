@@ -87,7 +87,7 @@ void benchmark(size_t M, size_t ITER)
         // gemmForLoopPtr(M, M, M, a, pA, pB, b, pC, pD);
 
         // dffdd(Lazy)
-        D.noalias = a * A * B * C + b * C;
+        D.noalias = a * A * B + b * C;
 
         // dffdd(Eager)
         // D.noalias = forceEvaluate(forceEvaluate(forceEvaluate(a * A) * B) + forceEvaluate(b * C));
