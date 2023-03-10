@@ -86,15 +86,15 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
             switch(_mod.symInputLength) {
                 case 2: // QPSK
                     res = EP!(softDecision2PAM_QPSK!F, F, F)
-                        (inpvecs, _chMat, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                        (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
                     break;
                 case 4: // 16QAM
                     res = EP!(softDecision4PAM_16QAM!F, F, F)
-                        (inpvecs, _chMat, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                        (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
                     break;
                 case 6: // 64QAM
                     res = EP!(softDecision8PAM_64QAM!F, F, F)
-                        (inpvecs, _chMat, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                        (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
                     break;
                 default: {
                     import std.conv;
@@ -151,18 +151,19 @@ if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F && isVectorLike!VecY 
     auto chMatV = svdResult.vt.lightScope.matrixed;
     auto chMatSigma = svdResult.sigma.lightScope.vectored;
 
-    return EP!(prox, C, F)(y_, A_, chMatU, chMatSigma, chMatV, theta0, sigma2, nIteration);
+    return EP!(prox, C, F)(y_, chMatU, chMatSigma, chMatV, theta0, sigma2, nIteration);
 }
 
 
 Vector!(C, Contiguous)
-    EP(alias prox, C = VecY.ElementType, F, VecY, MatA, MatAU, VecAS, MatAV)
-        (in VecY y_, in MatA A_, in MatAU AU_, in VecAS AS_, in MatAV AV_, in F theta0, in F sigma2, size_t nIteration)
+    EP(alias prox, C = VecY.ElementType, F, VecY, MatAU, VecAS, MatAV)
+        (in VecY y_, in MatAU AU_, in VecAS AS_, in MatAV AV_, in F theta0, in F sigma2, size_t nIteration)
 if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F
     && isVectorLike!VecY && hasMemoryView!VecY
-    && isMatrixLike!MatA && hasMemoryView!MatA
-    && is(VecY.ElementType == C) && is(MatA.ElementType == C))
-in(A_.length!0 <= A_.length!1)
+    && isMatrixLike!MatAU && isMatrixLike!MatAV && isVectorLike!VecAS
+    && is(VecY.ElementType == C) && is(MatAU.ElementType == C) && is(MatAV.ElementType == C)
+    && (is(VecAS.ElementType == C) || is(VecAS.ElementType == F)))
+in(AU_.length!0 <= AV_.length!1)
 {
     import dffdd.math.complex : abs;
     import mir.ndslice : map;
@@ -356,7 +357,7 @@ unittest
     foreach(i; 0 .. M)
         y0[i] += complexGaussian01!F(rnd) * sqrt(sigma2);
 
-    auto xhat1 = EP!(softDecisionQPSK!C, C, F)(y0, A, U, ds, V, 1, sigma2, 2);
+    auto xhat1 = EP!(softDecisionQPSK!C, C, F)(y0, U, ds, V, 1, sigma2, 2);
 
     auto Ar = matrix!F(M * 2, N * 2);
     Ar[] = A.toRealRIIR;
@@ -375,7 +376,7 @@ unittest
         assert(isClose(xhat1[i].im, xhat2[i].im, 1e-2));
     }
 
-    auto xhat3 = EP!(softDecisionQPSK!C, C, F)(y0, A, U, ds, V, 1, sigma2, 20);
+    auto xhat3 = EP!(softDecisionQPSK!C, C, F)(y0, U, ds, V, 1, sigma2, 20);
     foreach(i; 0 .. N) {
         // import std.stdio;
         // writefln!"%s == %s"(xhat3[i], x0[i]);
