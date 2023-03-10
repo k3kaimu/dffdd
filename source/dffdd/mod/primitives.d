@@ -7,6 +7,7 @@ import std.traits;
 import std.typecons;
 
 import dffdd.math.math;
+import dffdd.math.complex;
 
 
 
@@ -424,7 +425,9 @@ struct P0P1Calculator(C, F)
 
             foreach(j, y; _points) {
                 // import dffdd.math.approxmath;
-                F p = fast_exp!F(-(x - y * hcoef).sqAbs/ N0);
+                import dffdd.math.complex : sqAbs;
+
+                F p = fast_exp!F(-sqAbs(x - y * hcoef)/ N0);
 
                 foreach(k; 0 .. _nbits) {
                     if(j & (1 << k))
@@ -912,3 +915,16 @@ alias softDecision2PAM_BPSK(F) = softDecision!([0.5, 0.5], [-1, 1], F);
 alias softDecision2PAM_QPSK(F) = softDecision!([0.5, 0.5], [-SQRT1_2, SQRT1_2], F);
 alias softDecision4PAM_16QAM(F) = softDecision!([0.25, 0.25, 0.25, 0.25], [-3/sqrt(10.0L), -1/sqrt(10.0L), 1/sqrt(10.0L), 3/sqrt(10.0L)], F);
 alias softDecision8PAM_64QAM(F) = softDecision!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7/sqrt(42.0L), -5/sqrt(42.0L), -3/sqrt(42.0L), -1/sqrt(42.0L), 1/sqrt(42.0L), 3/sqrt(42.0L), 5/sqrt(42.0L), 7/sqrt(42.0L)], F);
+
+Tuple!(C, "value", C, "drv", typeof(C.init.re), "var") softDecisionComplex(alias fn, C)(C x, typeof(C.init.re) sigma2)
+if(isComplex!C)
+{
+    auto re = fn!(typeof(C.init.re))(x.re, sigma2 / 2);
+    auto im = fn!(typeof(C.init.re))(x.im, sigma2 / 2);
+
+    return typeof(return)(C(re.value, im.value), C(re.drv, im.drv), re.var + im.var);
+}
+
+alias softDecisionQPSK(C) = softDecisionComplex!(softDecision2PAM_QPSK, C);
+alias softDecision16QAM(C) = softDecisionComplex!(softDecision4PAM_16QAM, C);
+alias softDecision64QAM(C) = softDecisionComplex!(softDecision8PAM_64QAM, C);
