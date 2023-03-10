@@ -27,7 +27,7 @@ import mir.ndslice : slice, sliced, Contiguous, SliceKind;
 
 
 
-class EPDectector(C, Mod) : IDetector!(C, C)
+class EPDetector(C, Mod) : IDetector!(C, C)
 if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re) == float) || is(typeof(C.init.re) == double)) )
 {
     alias F = typeof(C.init.re);
@@ -129,7 +129,7 @@ unittest
     auto chMat = [C(1, 0), C(0, 0), C(0, 0), C(1, 0)].sliced(2, 2).matrixed;
     auto recv = [C(1/SQRT2, 1/SQRT2), C(-1/SQRT2, 1/SQRT2)];
 
-    auto detector = new EPDectector!(C, QPSK!C)(QPSK!C(), chMat, 0.01, 20);
+    auto detector = new EPDetector!(C, QPSK!C)(QPSK!C(), chMat, 0.01, 20);
     C[] dst;
     dst = detector.detect(recv, dst);
     // writeln(dst);
@@ -347,7 +347,7 @@ unittest
 
     auto x0 = vector!C(N);
     foreach(i; 0 .. N)
-        x0[i] = C(choice([-1, 1], rndGen), choice([-1, 1], rndGen)) * SQRT1_2;
+        x0[i] = C(choice([-1, 1], rnd), choice([-1, 1], rnd)) * SQRT1_2;
 
     auto y0 = vector!C(M);
     y0[] = A * x0;
