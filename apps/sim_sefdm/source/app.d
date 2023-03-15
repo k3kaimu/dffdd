@@ -344,7 +344,7 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     }
     else static if(DETECT == "EP")
     {
-        auto detector = new EPDectector!(C, typeof(mod))(mod, recvMat, SIGMA, args);
+        auto detector = new EPDetector!(C, typeof(mod))(mod, recvMat, SIGMA, args);
     }
     else static if(DETECT == "QRM-MLD")
     {

@@ -69,6 +69,7 @@ class TempMemoryManagerImpl(size_t alignBytes)
 
 
     void dispose(E)(E*) pure nothrow @safe {}
+    void dispose(E)(E[]) pure nothrow @safe {}
 
 
   private:
