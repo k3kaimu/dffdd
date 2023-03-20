@@ -58,6 +58,19 @@ enum isVectorLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
 }));
 
 
+void checkIsVectorLike(T)(lazy T t)
+{
+    auto dg = (size_t i){
+        T.ElementType e = t[i];
+        size_t len = t.length;
+
+        auto dst = slice!(typeof(e))(len);
+        auto allocator = std.experimental.allocator.theAllocator;
+        t.evalTo(dst, allocator);
+    };
+}
+
+
 struct VectoredSlice(Iterator, SliceKind kind)
 {
     alias ElementType = Unqual!(typeof(Slice!(Iterator, 1, kind).init[0]));
@@ -151,7 +164,10 @@ struct VectoredSlice(Iterator, SliceKind kind)
         auto opSliceAssign(S)(S scalar)
         if(!isMatrixLike!S && !isVectorLike!S)
         {
-            this._slice[] = scalar;
+            static if(is(S == ElementType))
+                this._slice[] = scalar;
+            else
+                this._slice[] = ElementType(scalar);
         }
 
 

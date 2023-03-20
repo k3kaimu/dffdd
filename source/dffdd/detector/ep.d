@@ -7,7 +7,7 @@ import std.traits : isFloatingPoint, isArray;
 import std.typecons : Tuple, tuple;
 
 import dffdd.detector.primitives;
-import dffdd.mod.primitives : softDecision, softDecision2PAM_BPSK, softDecision2PAM_QPSK, softDecision4PAM_16QAM, softDecision8PAM_64QAM;
+import dffdd.mod.primitives/* : softDecision, softDecision2PAM_BPSK, softDecision2PAM_QPSK, softDecision4PAM_16QAM, softDecision8PAM_64QAM*/;
 
 // import dffdd.damp.damp;
 import dffdd.math.complex;
@@ -27,39 +27,81 @@ import mir.ndslice : slice, sliced, Contiguous, SliceKind;
 
 
 
-class EPDetector(C, Mod) : IDetector!(C, C)
-if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re) == float) || is(typeof(C.init.re) == double)) )
+class EPDetector(C, Mod, F = typeof(C.init.re), MatU = Matrix!(F, Contiguous), MatV = Matrix!(F, Contiguous)) : IDetector!(C, C)
+if((is(Mod == QPSK!C) || is(Mod == QAM!C)) && isComplex!C && (is(typeof(C.init.re) == float) || is(typeof(C.init.re) == double)) )
 {
-    alias F = typeof(C.init.re);
-
     alias InputElementType = C;
     alias OutputElementType = C;
 
 
+  static if(is(MatU == Matrix!(F, Contiguous)) && is(MatV == Matrix!(F, Contiguous)))
+  {
     this(Mat)(Mod mod, in Mat chMat, double N0, size_t maxIter = 20)
     if(isMatrixLike!Mat)
     {
         _mod = mod;
-        _chMat = matrix!F(chMat.length!0 * 2, chMat.length!1 * 2);
-        _rowScales = vector!F(chMat.length!0 * 2, 1);
-        _chMat[] = chMat.toRealRIIR;
-        _chMatU = matrix!F(chMat.length!0 * 2, chMat.length!0 * 2);
-        _chMatV = matrix!F(chMat.length!1 * 2, chMat.length!1 * 2);
-        _chMatSigma = vector!F(min(chMat.length!0, chMat.length!1) * 2);
 
-        import kaleidic.lubeck : svd;
-        auto svdResult = svd(_chMat.sliced);
-        _chMatU[] = svdResult.u.lightScope.matrixed;
-        _chMatV[] = svdResult.vt.lightScope.matrixed;
-        _chMatSigma[] = svdResult.sigma.lightScope.vectored;
+        static if(is(F == typeof(C.init.re)))
+        {
+            auto chm = matrix!F(chMat.length!0 * 2, chMat.length!1 * 2);
+            chm[] = chMat.toRealRIIR;
 
+            _rowScales = vector!F(chMat.length!0 * 2, F(1));
+            _chMatU = matrix!F(chMat.length!0 * 2, chMat.length!0 * 2);
+            _chMatV = matrix!F(chMat.length!1 * 2, chMat.length!1 * 2);
+            _chMatSigma = vector!F(min(chMat.length!0, chMat.length!1) * 2);
+
+            import kaleidic.lubeck : svd;
+            auto svdResult = svd(chm.sliced);
+            _chMatU[] = svdResult.u.lightScope.matrixed;
+            _chMatV[] = svdResult.vt.lightScope.matrixed;
+            _chMatSigma[] = svdResult.sigma.lightScope.vectored;
+        }
+        else
+        {
+            auto chm = matrix!F(chMat.length!0, chMat.length!1);
+            chm[] = chMat;
+            _rowScales = vector!F(chMat.length!0, F(1));
+
+            _chMatU = matrix!F(chMat.length!0, chMat.length!0);
+            _chMatV = matrix!F(chMat.length!1, chMat.length!1);
+            _chMatSigma = vector!F(min(chMat.length!0, chMat.length!1));
+
+            import kaleidic.lubeck : svd;
+            auto svdResult = svd(chm.sliced);
+            _chMatU[] = svdResult.u.lightScope.matrixed;
+            _chMatV[] = svdResult.vt.lightScope.matrixed;
+            _chMatSigma[] = svdResult.sigma.lightScope.vectored;
+        }
+
+        _maxIter = maxIter;
+        _N0 = N0;
+    }
+  }
+
+
+    this(VecS)(Mod mod, MatU chMatU, VecS chMatSigma, MatV chMatVh, double N0, size_t maxIter = 20)
+    {
+        _mod = mod;
+        _rowScales = vector!F(chMatU.length!0, F(1));
+        _chMatU = chMatU;
+        _chMatSigma = chMatSigma;
+        _chMatV = chMatVh;
         _maxIter = maxIter;
         _N0 = N0;
     }
 
 
-    size_t inputLength() const { return _chMat.length!0 / 2; }
-    size_t outputLength() const { return _chMat.length!1 / 2; }
+    size_t inputLength() const
+    {
+        return is(F == typeof(C.init.re)) ? _chMatU.length!0 / 2 : _chMatU.length!0;
+    }
+
+
+    size_t outputLength() const
+    {
+        return is(F == typeof(C.init.re)) ? _chMatV.length!1 / 2 : _chMatV.length!1;
+    }
 
 
 
@@ -72,29 +114,55 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
         if(detected.length != received.length / M * N)
             detected.length = received.length / M * N;
 
-        // auto reals = received.toRealRI;
-        auto inpvecs = vector!F(M * 2);
+        auto inpvecs = vector!F(_chMatU.length!0);
         foreach(n; 0 .. received.length / M) {
-            inpvecs[] = received[M * n  .. M * (n+1)].sliced.vectored.toRealRI;
+
+            static if(is(F == typeof(C.init.re)))
+                inpvecs[] = received[M * n  .. M * (n+1)].sliced.vectored.toRealRI;
+            else
+                inpvecs[] = received[M * n  .. M * (n+1)].sliced.vectored;
+
             foreach(i; 0 .. inpvecs.length)
                 inpvecs[i] *= _rowScales[i];
 
-            // import std.stdio;
-            // writeln(inpvecs.sliced);
             Vector!(F, Contiguous) res;
 
             switch(_mod.symInputLength) {
                 case 2: // QPSK
-                    res = EP!(softDecision2PAM_QPSK!F, F, F)
-                        (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                    static if(is(F == typeof(C.init.re)))
+                    {
+                        res = EP!(softDecision2PAM_QPSK!F, F, F)
+                            (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                    }
+                    else
+                    {
+                        res = EP!(softDecisionQPSK!C, C, typeof(C.init.re))
+                            (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
+                    }
                     break;
                 case 4: // 16QAM
-                    res = EP!(softDecision4PAM_16QAM!F, F, F)
-                        (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                    static if(is(F == typeof(C.init.re)))
+                    {
+                        res = EP!(softDecision4PAM_16QAM!F, F, F)
+                            (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                    }
+                    else
+                    {
+                        res = EP!(softDecision16QAM!C, C, typeof(C.init.re))
+                            (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
+                    }
                     break;
                 case 6: // 64QAM
-                    res = EP!(softDecision8PAM_64QAM!F, F, F)
-                        (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                    static if(is(F == typeof(C.init.re)))
+                    {
+                        res = EP!(softDecision8PAM_64QAM!F, F, F)
+                            (inpvecs, _chMatU, _chMatSigma, _chMatV, 0.5, _N0, _maxIter);
+                    }
+                    else
+                    {
+                        res = EP!(softDecision64QAM!C, C, typeof(C.init.re))
+                            (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
+                    }
                     break;
                 default: {
                     import std.conv;
@@ -102,7 +170,11 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
                 }
             }
             // writeln(res);
-            detected[N * n .. N * (n+1)].sliced.vectored[] = res.fromRealRI;
+
+            static if(is(F == typeof(C.init.re)))
+                detected[N * n .. N * (n+1)].sliced.vectored[] = res.fromRealRI;
+            else
+                detected[N * n .. N * (n+1)].sliced.vectored[] = res;
         }
 
         return detected;
@@ -111,9 +183,9 @@ if(is(Mod == QPSK!C) || is(Mod == QAM!C) && isComplex!C && (is(typeof(C.init.re)
 
   private:
     Mod _mod; 
-    Matrix!(F, Contiguous) _chMat;
     Vector!(F, Contiguous) _rowScales;
-    Matrix!(F, Contiguous) _chMatU, _chMatV;
+    MatU _chMatU;
+    MatV _chMatV;
     Vector!(F, Contiguous) _chMatSigma;
     double _N0;
     size_t _maxIter;
@@ -137,6 +209,32 @@ unittest
     assert(dst[0].im.isClose(recv[0].im));
     assert(dst[1].re.isClose(recv[1].re));
     assert(dst[1].im.isClose(recv[1].im));
+}
+
+unittest
+{
+    import std.stdio;
+    import mir.ndslice : sliced;
+    import dffdd.math.exprtemplate;
+
+    alias C = MirComplex!float;
+    auto chMat = [C(1, 0), C(0, 0), C(0, 0), C(1, 0)].sliced(2, 2).matrixed;
+    auto recv = [C(1/SQRT2, 1/SQRT2), C(-1/SQRT2, 1/SQRT2)];
+
+    auto detector = new EPDetector!(C, QPSK!C, C)(QPSK!C(), chMat, 0.01, 20);
+    C[] dst;
+    dst = detector.detect(recv, dst);
+    // writeln(dst);
+    assert(dst[0].re.isClose(recv[0].re));
+    assert(dst[0].im.isClose(recv[0].im));
+    assert(dst[1].re.isClose(recv[1].re));
+    assert(dst[1].im.isClose(recv[1].im));
+}
+
+
+auto makeSVDEPDetector(C, Mod, MatU, VecS, MatV)(Mod mod, MatU matU, VecS vecS, MatV matV, double N0, size_t maxIter = 20)
+{
+    return new EPDetector!(C, Mod, MatU.ElementType, MatU, MatV)(mod, matU, vecS, matV, N0, maxIter);
 }
 
 
@@ -370,17 +468,25 @@ unittest
     xhat2[] = xhat2r.fromRealRI;
 
     foreach(i; 0 .. N) {
-        // import std.stdio;
-        // writefln!"%s == %s"(xhat1[i], xhat2[i]);
         assert(isClose(xhat1[i].re, xhat2[i].re, 1e-2));
         assert(isClose(xhat1[i].im, xhat2[i].im, 1e-2));
     }
 
     auto xhat3 = EP!(softDecisionQPSK!C, C, F)(y0, U, ds, V, 1, sigma2, 20);
     foreach(i; 0 .. N) {
-        // import std.stdio;
-        // writefln!"%s == %s"(xhat3[i], x0[i]);
         assert(isClose(xhat3[i].re, x0[i].re, 1e-2));
         assert(isClose(xhat3[i].im, x0[i].im, 1e-2));
+    }
+
+
+    auto detector = makeSVDEPDetector!(C)(QPSK!C(), U, ds, V, sigma2, 20);
+    C[] xhat4;
+    C[] y0arr = new C[M];
+    y0arr.sliced[] = y0.sliced;
+
+    detector.detect(y0arr, xhat4);
+    foreach(i; 0 .. N) {
+        assert(isClose(xhat4[i].re, x0[i].re, 1e-2));
+        assert(isClose(xhat4[i].im, x0[i].im, 1e-2));
     }
 }

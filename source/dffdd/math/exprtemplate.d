@@ -933,7 +933,7 @@ if(isVectorLike!VecA && isVectorLike!VecB)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(E, SliceKind kindA, Alloc)(Slice!(E*, 1, kindA) dst, ref Alloc alloc) const
     in(dst.length == this.length)
     {
         static if(!hasMemoryView!VecA && hasMemoryView!VecB)
@@ -948,10 +948,13 @@ if(isVectorLike!VecA && isVectorLike!VecB)
             _vecB.evalTo(dst, alloc);
             dst[] *= _beta;
 
-            static if(isFloatingPoint!T || (is(T == MirComplex!E, E) && isFloatingPoint!E))
+            static if(isFloatingPoint!E || (is(E == MirComplex!F, F) && isFloatingPoint!F && is(E == VecA.ElementType) ))
             {
                 import mir.blas : axpy;
-                axpy(_alpha, viewA.view, dst);
+                static if(is(E == T))
+                    axpy(_alpha, viewA.view, dst);
+                else
+                    axpy(E(_alpha), viewA.view, dst);
             }
             else
             {
