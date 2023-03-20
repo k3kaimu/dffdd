@@ -58,9 +58,9 @@ enum isVectorLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
 }));
 
 
-void checkIsVectorLike(T)(lazy T t)
+void checkIsVectorLike(T)(T _)
 {
-    auto dg = (size_t i){
+    auto dg = (size_t i, T t){
         T.ElementType e = t[i];
         size_t len = t.length;
 
