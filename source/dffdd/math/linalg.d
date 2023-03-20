@@ -408,7 +408,7 @@ if(isMatrixLike!Mat && isComplex!(Mat.ElementType))
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         auto viewA = _mat.makeViewOrNewSlice(alloc);
@@ -556,7 +556,7 @@ if(isVectorLike!Vec && isComplex!(Vec.ElementType))
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         auto viewA = _vec.makeViewOrNewSlice(alloc);
@@ -631,7 +631,7 @@ if(isVectorLike!Vec && !isComplex!(Vec.ElementType) && isComplex!C)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         auto viewA = _vec.makeViewOrNewSlice(alloc);
@@ -760,7 +760,7 @@ if(isMatrixLike!M)
     ElementType opIndex(size_t, size_t) const { assert(0); }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         _mat.evalTo(dst, alloc);

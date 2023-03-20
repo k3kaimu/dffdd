@@ -49,7 +49,7 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2))
         return _value;
     }
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         dst[] = _value;
@@ -64,7 +64,7 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2))
         return _value;
     }
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         dst[] = _value;
@@ -158,7 +158,7 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
         return value;
     }
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         dst[] = value;
@@ -173,7 +173,7 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
         return value;
     }
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         dst[] = value;
@@ -258,7 +258,7 @@ struct ConstEye(E, E value)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         import mir.ndslice : diagonal;
@@ -430,7 +430,7 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
 
   static if(isMatrixLike!MatVec)
   {
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         if(_M == _N) {
@@ -449,7 +449,7 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
   }
   else
   {
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         if(_M == _N) {

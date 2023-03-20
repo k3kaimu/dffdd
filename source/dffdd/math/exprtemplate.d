@@ -153,7 +153,7 @@ enum hasMemoryView(T) = (is(typeof(T.init.sliced().lightScope())) && hasMemoryVi
 /** 
  * 
  */
-auto makeViewOrNewSlice(Vec, Alloc)(const Vec vec, ref Alloc alloc)
+auto makeViewOrNewSlice(Vec, Alloc)(Vec vec, ref Alloc alloc)
 if(isVectorLike!Vec)
 {
     static if(hasMemoryView!Vec)
@@ -185,7 +185,7 @@ unittest
 }
 
 
-auto makeViewOrNewSlice(Mat, Alloc)(const Mat mat, ref Alloc alloc)
+auto makeViewOrNewSlice(Mat, Alloc)(Mat mat, ref Alloc alloc)
 if(isMatrixLike!Mat)
 {
     static if(hasMemoryView!Mat)
@@ -287,7 +287,7 @@ auto withMemoryView(MatA, Alloc)(Mat mat, lazy Matrix!(Mat.ElementType, Contiguo
 }
 
 
-auto forceEvaluate(V)(const V vec)
+auto forceEvaluate(V)(V vec)
 if(isVectorLike!V)
 {
     auto dst = vector!(V.ElementType)(vec.length);
@@ -296,7 +296,7 @@ if(isVectorLike!V)
 }
 
 
-auto forceEvaluate(M)(const M mat)
+auto forceEvaluate(M)(M mat)
 if(isMatrixLike!M)
 {
     auto dst = matrix!(M.ElementType)(mat.length!0, mat.length!1);
@@ -356,7 +356,7 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         static if(MatA.exprTreeCost < EXPR_COST_N && MatB.exprTreeCost < EXPR_COST_N && MatC.exprTreeCost < EXPR_COST_N)
@@ -614,7 +614,7 @@ if(isMatrixLike!MatA && isVectorLike!VecB && !isMatrixLike!T && !isVectorLike!T)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         auto viewA = _matA.makeViewOrNewSlice(alloc);
@@ -774,7 +774,7 @@ if(isMatrixLike!MatA && isMatrixLike!MatB)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         static if(!hasMemoryView!MatA && hasMemoryView!MatB)
@@ -933,7 +933,7 @@ if(isVectorLike!VecA && isVectorLike!VecB)
     }
 
 
-    void evalTo(E, SliceKind kindA, Alloc)(Slice!(E*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(E, SliceKind kindA, Alloc)(Slice!(E*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         static if(!hasMemoryView!VecA && hasMemoryView!VecB)
@@ -1090,7 +1090,7 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         auto viewA = _mat.makeViewOrNewSlice(alloc);
@@ -1113,7 +1113,7 @@ if(isMatrixLike!Mat || isVectorLike!Mat)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         auto viewA = _mat.makeViewOrNewSlice(alloc);
@@ -1190,7 +1190,7 @@ if(isMatrixLike!Mat)
     }
 
 
-    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         auto viewA = _mat.makeViewOrNewSlice(alloc);
@@ -1664,7 +1664,7 @@ if(isMatrixLike!M
     size_t length() const { return _cs[1] - _cs[0]; }
 
 
-    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 1, kind) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 1, kind) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         auto meval = makeViewOrNewSlice(_mat, alloc);
@@ -1690,7 +1690,7 @@ if(isMatrixLike!M
     size_t length() const { return _rs[1] - _rs[0]; }
 
 
-    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 1, kind) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 1, kind) dst, ref Alloc alloc)
     in(dst.length == this.length)
     {
         auto meval = makeViewOrNewSlice(_mat, alloc);
@@ -1722,7 +1722,7 @@ if(isMatrixLike!M
     }
 
 
-    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 2, kind) dst, ref Alloc alloc) const
+    void evalTo(T, SliceKind kind, Alloc)(Slice!(T*, 2, kind) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
         auto meval = makeViewOrNewSlice(_mat, alloc);
