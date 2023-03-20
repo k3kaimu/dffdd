@@ -649,3 +649,165 @@ unittest
     assert(s2[3, 1] == 0);
     assert(s2[3, 2] == 0);
 }
+
+
+/**
+Unitary DFTMatrix
+*/
+struct DFTMatrix(C, Flag!"isFwd" isFwd = Yes.isFwd)
+if(isNarrowComplex!C)
+{
+    alias ElementType = C;
+    enum float exprTreeCost = 0;
+
+    import std.traits : TemplateOf;
+    private alias CpxTemplate = TemplateOf!C;
+
+    import dffdd.utils.fft;
+
+    /**
+    make Unitary DFT Matrix
+    */
+    this(size_t n)
+    {
+        _N = n;
+        _fftw = makeFFTWObject!CpxTemplate(_N);
+    }
+
+
+    size_t length(size_t dim)() const if(dim == 0 || dim == 1) { return _N; }
+
+
+    auto opIndex(size_t i, size_t j) const
+    {
+        import std.math : PI;
+        import dffdd.math.math : fast_expi, fast_sqrt;
+
+        return fast_expi!C(2*PI/_N*i*j * (isFwd ? -1 : 1)) / fast_sqrt!(typeof(C.init.re))(_N*1.0);
+    }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+    {
+        foreach(i; 0 .. _N)
+            foreach(j; 0 .. _N)
+                dst[i, j] = this[i, j];
+    }
+
+
+    auto H()
+    {
+        DFTMatrix!(C, isFwd ? No.isFwd : Yes.isFwd) dst;
+        dst._N = this._N;
+        dst._fftw = this._fftw;
+        return dst;
+    }
+
+
+    auto H() const
+    {
+        return DFTMatrix!(C, isFwd ? No.isFwd : Yes.isFwd)(_N);
+    }
+
+
+    auto lightConst() const
+    {
+        return DFTMatrix!(C, isFwd)(_N);
+    }
+
+
+    // auto _opB_Impl_(string op : "*", V)(V vec)
+    // if(isVectorLike!V)
+    // in(vec.length == this.length!1)
+    // {
+    //     auto mm = _matvec * vec;
+    //     return MulDiagonal!(ArrayLike, typeof(mm))(_M, _N, _diag, mm);
+    // }
+
+
+    // auto _opB_Impl_(string op : "*", M)(M mat)
+    // if(isMatrixLike!M)
+    // in(mat.length!0 == this.length!1)
+    // {
+    //     auto mm = _matvec * mat;
+    //     return MulDiagonal!(ArrayLike, typeof(mm))(_M, _N, _diag, mm);
+    // }
+
+
+    import dffdd.math.exprtemplate;
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*V", "M*S", ".T"]));
+
+
+  private:
+    size_t _N;
+    FFTWObject!CpxTemplate _fftw;
+}
+
+
+auto dftMatrix(C)(size_t n)
+{
+    return DFTMatrix!(C, Yes.isFwd)(n);
+}
+
+
+auto idftMatrix(C)(size_t n)
+{
+    return DFTMatrix!(C, No.isFwd)(n);
+}
+
+
+unittest
+{
+    import std.math : isClose;
+
+    alias C = Complex!double;
+    auto dftmat = dftMatrix!C(4) * 2;
+    auto idftmat = dftmat.H;
+
+    enum float REPS = 0,        // 相対誤差でのチェックを無効
+               AEPS = 1e-9;     // 絶対誤差でチェック
+
+    assert(isClose(dftmat[0, 0].re, 1, REPS, AEPS) && isClose(dftmat[0, 0].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[0, 1].re, 1, REPS, AEPS) && isClose(dftmat[0, 1].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[0, 2].re, 1, REPS, AEPS) && isClose(dftmat[0, 2].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[0, 3].re, 1, REPS, AEPS) && isClose(dftmat[0, 3].im, 0, REPS, AEPS));
+
+    assert(isClose(dftmat[1, 0].re, 1, REPS, AEPS) && isClose(dftmat[1, 0].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[1, 1].re, 0, REPS, AEPS) && isClose(dftmat[1, 1].im, -1, REPS, AEPS));
+    assert(isClose(dftmat[1, 2].re, -1, REPS, AEPS) && isClose(dftmat[1, 2].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[1, 3].re, 0, REPS, AEPS) && isClose(dftmat[1, 3].im, 1, REPS, AEPS));
+
+    assert(isClose(dftmat[2, 0].re, 1, REPS, AEPS) && isClose(dftmat[2, 0].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[2, 1].re, -1, REPS, AEPS) && isClose(dftmat[2, 1].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[2, 2].re, 1, REPS, AEPS) && isClose(dftmat[2, 2].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[2, 3].re, -1, REPS, AEPS) && isClose(dftmat[2, 3].im, 0, REPS, AEPS));
+
+    assert(isClose(dftmat[3, 0].re, 1, REPS, AEPS) && isClose(dftmat[3, 0].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[3, 1].re, 0, REPS, AEPS) && isClose(dftmat[3, 1].im, 1, REPS, AEPS));
+    assert(isClose(dftmat[3, 2].re, -1, REPS, AEPS) && isClose(dftmat[3, 2].im, 0, REPS, AEPS));
+    assert(isClose(dftmat[3, 3].re, 0, REPS, AEPS) && isClose(dftmat[3, 3].im, -1, REPS, AEPS));
+
+    assert(isClose(idftmat[0, 0].re, 1, REPS, AEPS) && isClose(idftmat[0, 0].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[0, 1].re, 1, REPS, AEPS) && isClose(idftmat[0, 1].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[0, 2].re, 1, REPS, AEPS) && isClose(idftmat[0, 2].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[0, 3].re, 1, REPS, AEPS) && isClose(idftmat[0, 3].im, 0, REPS, AEPS));
+
+    assert(isClose(idftmat[1, 0].re, 1, REPS, AEPS) && isClose(idftmat[1, 0].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[1, 1].re, 0, REPS, AEPS) && isClose(idftmat[1, 1].im, 1, REPS, AEPS));
+    assert(isClose(idftmat[1, 2].re, -1, REPS, AEPS) && isClose(idftmat[1, 2].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[1, 3].re, 0, REPS, AEPS) && isClose(idftmat[1, 3].im, -1, REPS, AEPS));
+
+    assert(isClose(idftmat[2, 0].re, 1, REPS, AEPS) && isClose(idftmat[2, 0].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[2, 1].re, -1, REPS, AEPS) && isClose(idftmat[2, 1].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[2, 2].re, 1, REPS, AEPS) && isClose(idftmat[2, 2].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[2, 3].re, -1, REPS, AEPS) && isClose(idftmat[2, 3].im, 0, REPS, AEPS));
+
+    assert(isClose(idftmat[3, 0].re, 1, REPS, AEPS) && isClose(idftmat[3, 0].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[3, 1].re, 0, REPS, AEPS) && isClose(idftmat[3, 1].im, -1, REPS, AEPS));
+    assert(isClose(idftmat[3, 2].re, -1, REPS, AEPS) && isClose(idftmat[3, 2].im, 0, REPS, AEPS));
+    assert(isClose(idftmat[3, 3].re, 0, REPS, AEPS) && isClose(idftmat[3, 3].im, 1, REPS, AEPS));
+}
+
+
+// struct MulDFTMatrix

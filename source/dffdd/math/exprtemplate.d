@@ -1214,7 +1214,7 @@ if(isMatrixLike!Mat)
 }
 
 
-Transposed!Mat matrixTransposed(Mat)(in Mat mat)
+Transposed!Mat matrixTransposed(Mat)(Mat mat)
 {
     return Transposed!Mat(mat);
 }
