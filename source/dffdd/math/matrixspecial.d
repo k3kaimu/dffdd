@@ -273,6 +273,18 @@ struct ConstEye(E, E value)
     }
 
 
+  static if(isComplex!E)
+  {
+    auto H() {
+        return ConstEye!(E, conj(value))(_len);
+    }
+  }
+  else
+  {
+    alias H = T;
+  }
+
+
     static if(value == 1)
     {
         auto _opB_Impl_(string op : "*", V)(V vec)
@@ -711,32 +723,52 @@ if(isNarrowComplex!C)
     }
 
 
+    auto T() inout
+    {
+        return this;
+    }
+
+
     auto lightConst() const
     {
         return DFTMatrix!(C, isFwd)(_N);
     }
 
 
-    // auto _opB_Impl_(string op : "*", V)(V vec)
-    // if(isVectorLike!V)
-    // in(vec.length == this.length!1)
-    // {
-    //     auto mm = _matvec * vec;
-    //     return MulDiagonal!(ArrayLike, typeof(mm))(_M, _N, _diag, mm);
-    // }
+    auto _opB_Impl_(string op : "*", V)(V vec)
+    if(isVectorLike!V)
+    in(vec.length == this.length!1)
+    {
+        return DFTMatrixMulMV!(C, isFwd, V)(this, vec);
+    }
 
 
-    // auto _opB_Impl_(string op : "*", M)(M mat)
-    // if(isMatrixLike!M)
-    // in(mat.length!0 == this.length!1)
-    // {
-    //     auto mm = _matvec * mat;
-    //     return MulDiagonal!(ArrayLike, typeof(mm))(_M, _N, _diag, mm);
-    // }
+    auto _opB_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(this.length!1 == mat.length!0)
+    {
+        return DFTMatrixMulMM!(C, isFwd, Yes.applyFromLHS, M)(this, mat);
+    }
+
+
+    auto _opBR_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(this.length!0 == mat.length!1)
+    {
+        return DFTMatrixMulMM!(C, isFwd, No.applyFromLHS, M)(this, mat);
+    }
+
+
+    auto _opB_Impl_(string op : "*", V)(V vec)
+    if(isVectorLike!V)
+    in(this.length!1 == vec.length!0)
+    {
+        return DFTMatrixMulMM!(C, isFwd, Yes.applyFromLHS, M)(this, vec);
+    }
 
 
     import dffdd.math.exprtemplate;
-    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*V", "M*S", ".T"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
 
 
   private:
@@ -812,7 +844,7 @@ unittest
 }
 
 
-struct DFTMatrixMulMM(C, Flag!"isFwd" isFwd, Mat)
+struct DFTMatrixMulMM(C, Flag!"isFwd" isFwd, Flag!"applyFromLHS" applyFromLHS = Yes.applyFromLHS, Mat)
 if(isMatrixLike!Mat)
 {
     private alias StupidGEMM = MatrixMatrixMulGEMM!(C, DFTMatrix!(C, isFwd), Mat, ZeroMatrix!C);
@@ -825,17 +857,21 @@ if(isMatrixLike!Mat)
     size_t length(size_t dim)() const
     {
         static if(dim == 0)
-            return _dftM.length!0;
+            return applyFromLHS ? _dftM.length!0 : _target.length!0;
         else
-            return _rhs.length!1;
+            return applyFromLHS ? _target.length!1 : _dftM.length!1;
     }
 
 
     ElementType opIndex(size_t i, size_t j) const
     {
         ElementType sum = ElementType(0);
-        foreach(n; 0 .. _dftM.length!1)
-            sum += _dftM[i, n] * _rhs[n, j];
+        foreach(n; 0 .. _dftM.length!1) {
+            static if(applyFromLHS)
+                sum += _dftM[i, n] * _target[n, j];
+            else
+                sum += _target[i, n] * _dftM[n, j];
+        }
         
         return sum;
     }
@@ -850,16 +886,22 @@ if(isMatrixLike!Mat)
         import dffdd.math.math : fast_sqrt;
         F norm = fast_sqrt!F(_dftM.length!0);
 
-        _rhs.evalTo(dst, alloc);
+        _target.evalTo(dst, alloc);
         foreach(j; 0 .. this.length!1) {
-            fftw.inputs!F.sliced[] = dst[0 .. $, j];
+            static if(applyFromLHS)
+                fftw.inputs!F.sliced[] = dst[0 .. $, j];
+            else
+                fftw.inputs!F.sliced[] = dst[j, 0 .. $];
 
             static if(isFwd)
                 fftw.fft!F();
             else
                 fftw.ifft!F();
 
-            dst[0 .. $, j] = fftw.outputs!F.sliced[];
+            static if(applyFromLHS)
+                dst[0 .. $, j] = fftw.outputs!F.sliced[];
+            else
+                dst[j, 0 .. $] = fftw.outputs!F.sliced[];
         }
 
         static if(isFwd)
@@ -869,13 +911,42 @@ if(isMatrixLike!Mat)
     }
 
 
+    auto _opB_Impl_(string op : "*", V)(V vec)
+    if(isVectorLike!V)
+    in(vec.length == this.length!1)
+    {
+        static if(applyFromLHS)
+            return _dftM * (_target * vec);
+        else
+            return _target * (_dftM * vec);
+    }
+
+
+    auto T()
+    {
+        static if(applyFromLHS)
+            return _target.T * _dftM.T;
+        else
+            return _dftM.T * _target.T;
+    }
+
+
+    auto H()
+    {
+        static if(applyFromLHS)
+            return _target.H * _dftM.H;
+        else
+            return _dftM.H * _target.H;
+    }
+
+
     import dffdd.math.exprtemplate;
-    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*V", "M*S", ".H", ".T"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
 
 
   private:
     DFTMatrix!(C, isFwd) _dftM;
-    Mat _rhs;
+    Mat _target;
 }
 
 
@@ -885,8 +956,8 @@ unittest
 
     alias C = Complex!double;
 
-    auto dftmat = DFTMatrixMulMM!(C, Yes.isFwd, Identity!C)(dftMatrix!C(4), identity!C(4)) * 2;
-    auto idftmat = DFTMatrixMulMM!(C, No.isFwd, Identity!C)(idftMatrix!C(4), identity!C(4)) * 2;
+    auto dftmat = DFTMatrixMulMM!(C, Yes.isFwd, Yes.applyFromLHS, Identity!C)(dftMatrix!C(4), identity!C(4)) * 2;
+    auto idftmat = DFTMatrixMulMM!(C, No.isFwd, Yes.applyFromLHS, Identity!C)(idftMatrix!C(4), identity!C(4)) * 2;
 
     static assert(isMatrixLike!(typeof(dftmat)));
 
@@ -985,7 +1056,7 @@ unittest
     rhs[2, 0] = C(1, 5); rhs[2, 1] = C(4, 1); rhs[2, 2] = C(1, 3); rhs[2, 3] = C(4, 3);
     rhs[3, 0] = C(1, 1); rhs[3, 1] = C(2, 0); rhs[3, 2] = C(0, 3); rhs[3, 3] = C(4, 1);
 
-    auto mul1 = DFTMatrixMulMM!(C, Yes.isFwd, typeof(rhs))(dftMatrix!C(4), rhs);
+    auto mul1 = DFTMatrixMulMM!(C, Yes.isFwd, Yes.applyFromLHS, typeof(rhs))(dftMatrix!C(4), rhs);
 
     import dffdd.math.exprtemplate : matrixGemm;
     auto mul2 = matrixGemm(C(1), dftMatrix!C(4), rhs, C(0), zeros!C(4, 4));
@@ -1019,7 +1090,7 @@ if(isVectorLike!Vec)
     {
         ElementType sum = ElementType(0);
         foreach(n; 0 .. _dftM.length!1)
-            sum += _dftM[i, n] * _rhs[n];
+            sum += _dftM[i, n] * _target[n];
         
         return sum;
     }
@@ -1034,7 +1105,7 @@ if(isVectorLike!Vec)
         import dffdd.math.math : fast_sqrt;
         F norm = fast_sqrt!F(_dftM.length!0);
 
-        _rhs.evalTo(dst, alloc);
+        _target.evalTo(dst, alloc);
         fftw.inputs!F.sliced[] = dst;
 
         static if(isFwd)
@@ -1057,7 +1128,7 @@ if(isVectorLike!Vec)
 
   private:
     DFTMatrix!(C, isFwd) _dftM;
-    Vec _rhs;
+    Vec _target;
 }
 
 unittest
