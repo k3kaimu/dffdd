@@ -658,7 +658,7 @@ struct DFTMatrix(C, Flag!"isFwd" isFwd = Yes.isFwd)
 if(isNarrowComplex!C)
 {
     alias ElementType = C;
-    enum float exprTreeCost = 0;
+    enum float exprTreeCost = 1;
 
     import std.traits : TemplateOf;
     private alias CpxTemplate = TemplateOf!C;
