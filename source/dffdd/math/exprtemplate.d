@@ -401,7 +401,26 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     }
 
 
-    mixin(definitionsOfMatrixOperators(["defaults", "M*M", ".H", ".T"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M*M"]));
+
+
+    auto T()()
+    {
+        return _alpha * (_matB.T * _matA.T) + _beta * _matC.T;
+    }
+
+
+  static if(isComplex!ElementType)
+  {
+    auto H()()
+    {
+        return conj(_alpha) * (_matB.H * _matA.H) + conj(_beta) * _matC.H;
+    }
+  }
+  else
+  {
+    alias H = T;
+  }
 
 
     auto _opB_Impl_(string op : "*", U)(U u)
@@ -1161,12 +1180,12 @@ unittest
 }
 
 
-// transpose
-struct Transposed(Mat)
-if(isMatrixLike!Mat)
+struct TransposedAndOrConjugated(Flag!"isTransposed" isTransposed, Flag!"isConjugated" isConjugated, Mat)
+if(isConjugated ? isComplex!(Mat.ElementType) : true)
 {
     alias ElementType = Mat.ElementType;
     enum float exprTreeCost = Mat.exprTreeCost + 1;
+
 
     this(Mat mat)
     {
@@ -1176,14 +1195,23 @@ if(isMatrixLike!Mat)
 
     ElementType opIndex(size_t i, size_t j) const
     {
-        return _mat[j, i];
+        ElementType ret;
+        static if(isTransposed)
+            ret = _mat[j, i];
+        else
+            ret = _mat[i, j];
+        
+        static if(isConjugated && isComplex!ElementType)
+            return conj(ret);
+        else
+            return ret;
     }
 
 
     size_t length(size_t dim)() const
     if(dim == 0 || dim == 1)
     {
-        static if(dim == 0)
+        static if((dim == 0 && isTransposed) || (dim == 1 && !isTransposed))
             return _mat.length!1;
         else
             return _mat.length!0;
@@ -1193,20 +1221,45 @@ if(isMatrixLike!Mat)
     void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
     in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
     {
-        auto viewA = _mat.makeViewOrNewSlice(alloc);
-        scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
+        static if(isTransposed)
+            _mat.evalTo(dst.transposed, alloc);
+        else
+            _mat.evalTo(dst, alloc);
 
-        dst[] = viewA.view.transposed;
+        static if(isConjugated && isComplex!ElementType) {
+            foreach(i; 0 .. dst.length!0)
+                foreach(j; 0 .. dst.length!1)
+                    dst[i, j] = conj(dst[i, j]);
+        }
     }
 
 
-    Mat T()
+    auto T()
     {
-        return _mat;
+        static if(isTransposed && !isConjugated)
+            return _mat;
+        else
+            return TransposedAndOrConjugated!(isTransposed ? No.isTransposed : Yes.isTransposed, isConjugated, Mat)(_mat);
     }
 
 
-    mixin MatrixOperators!(["defaults", "M*M", "M*V", "M+M", ".H"]);
+  static if(isComplex!ElementType)
+  {
+    auto H()
+    {
+        static if(isTransposed && isConjugated)
+            return _mat;
+        else
+            return TransposedAndOrConjugated!(isTransposed ? No.isTransposed : Yes.isTransposed, isConjugated ? No.isConjugated : Yes.isConjugated, Mat)(_mat);
+    }
+  }
+  else
+  {
+    alias H = T;
+  }
+
+
+    mixin MatrixOperators!(["defaults", "M*M", "M*V", "M+M"]);
 
 
   private:
@@ -1214,9 +1267,9 @@ if(isMatrixLike!Mat)
 }
 
 
-Transposed!Mat matrixTransposed(Mat)(Mat mat)
+TransposedAndOrConjugated!(Yes.isTransposed, No.isConjugated, M) matrixTransposed(M)(M mat)
 {
-    return Transposed!Mat(mat);
+    return typeof(return)(mat);
 }
 
 
@@ -1406,7 +1459,8 @@ string definitionsOfMatrixOperators(string[] list)
     import std.algorithm : canFind;
 
     string dst = q{
-    import std.typecons : Tuple;
+    import dffdd.math.complex : isComplex;
+    import std.typecons : Tuple, Flag, Yes, No;
     import std.traits : isFloatingPoint, isIntegral;
     import dffdd.math.linalg : isBlasType;
     import dffdd.math.exprtemplate;
@@ -1601,21 +1655,23 @@ string definitionsOfMatrixOperators(string[] list)
     dst ~= q{
         auto T()()
         {
-            return matrixTransposed(this);
+            return TransposedAndOrConjugated!(Yes.isTransposed, No.isConjugated, typeof(this))(this);
         }
     };
 
 
     if(canFind(list, ".H"))
     dst ~= q{
-        auto H()()
+        static if(isComplex!ElementType)
         {
-            import dffdd.math.complex : isComplex, conj;
-            static if(isComplex!ElementType) {
-                return elementMap!conj(this.T());
-            } else {
-                return this.T();
+            auto H()()
+            {
+                return TransposedAndOrConjugated!(Yes.isTransposed, Yes.isConjugated, typeof(this))(this);
             }
+        }
+        else
+        {
+            alias H = T;
         }
     };
 
