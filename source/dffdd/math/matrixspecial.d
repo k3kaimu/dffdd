@@ -1000,4 +1000,89 @@ unittest
 }
 
 
-// struct MulDFTMatrix
+struct DFTMatrixMulMV(C, Flag!"isFwd" isFwd, Vec)
+if(isVectorLike!Vec)
+{
+    alias ElementType = typeof(C.init * Vec.ElementType.init);
+
+    import std.math : log2;
+    enum float exprTreeCost = Vec.exprTreeCost + EXPR_COST_N * log2(EXPR_COST_N);
+
+
+    size_t length() const
+    {
+        return _dftM.length!0;
+    }
+
+
+    ElementType opIndex(size_t i) const
+    {
+        ElementType sum = ElementType(0);
+        foreach(n; 0 .. _dftM.length!1)
+            sum += _dftM[i, n] * _rhs[n];
+        
+        return sum;
+    }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
+    in(dst.length == this.length)
+    {
+        alias F = typeof(ElementType.init.re);
+        auto fftw = _dftM._fftw;
+
+        import dffdd.math.math : fast_sqrt;
+        F norm = fast_sqrt!F(_dftM.length!0);
+
+        _rhs.evalTo(dst, alloc);
+        fftw.inputs!F.sliced[] = dst;
+
+        static if(isFwd)
+            fftw.fft!F();
+        else
+            fftw.ifft!F();
+
+        dst[] = fftw.outputs!F.sliced;
+
+        static if(isFwd)
+            dst[] /= norm;
+        else
+            dst[] *= norm;
+    }
+
+
+    import dffdd.math.exprtemplate;
+    mixin(definitionsOfVectorOperators(["defaults", "V+V", "V*S"]));
+
+
+  private:
+    DFTMatrix!(C, isFwd) _dftM;
+    Vec _rhs;
+}
+
+unittest
+{
+    import std.math : isClose;
+
+    alias C = Complex!double;
+    enum float REPS = 0,        // 相対誤差でのチェックを無効
+               AEPS = 1e-9;     // 絶対誤差でチェック
+
+    auto rhs = vector!C(4, C(0));
+    rhs[0] = C(1, 1); rhs[1] = C(2, 1); rhs[2] = C(1, 3); rhs[3] = C(4, 1);
+
+    auto mul1 = DFTMatrixMulMV!(C, Yes.isFwd, typeof(rhs))(dftMatrix!C(4), rhs);
+    checkIsVectorLike(mul1);
+    static assert(isVectorLike!(typeof(mul1)));
+
+    import dffdd.math.exprtemplate : vectorGemv;
+    auto mul2 = vectorGemv(C(1), dftMatrix!C(4), rhs, C(0), zeros!C(4));
+
+    auto s = slice!C(4);
+    mul1.evalTo(s, theAllocator);
+
+    foreach(i; 0 .. 4) {
+        assert(isClose(mul1[i].re, s[i].re, REPS, AEPS) && isClose(mul1[i].im, s[i].im, REPS, AEPS));
+        assert(isClose(mul2[i].re, s[i].re, REPS, AEPS) && isClose(mul2[i].im, s[i].im, REPS, AEPS));
+    }
+}
