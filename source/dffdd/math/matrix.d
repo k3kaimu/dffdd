@@ -71,6 +71,20 @@ enum isMatrixLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
 }));
 
 
+void checkIsMatrixLike(T)(T _)
+{
+    auto dg = (size_t i, T t){
+        T.ElementType e = t[i, i];
+        size_t rowlen = t.length!0;
+        size_t collen = t.length!1;
+
+        auto dst = slice!(typeof(e))(rowlen, collen);
+        auto allocator = std.experimental.allocator.theAllocator;
+        t.evalTo(dst, allocator);
+    };
+}
+
+
 struct MatrixedSlice(Iterator, SliceKind kind)
 {
     alias ElementType = Unqual!(typeof(Slice!(Iterator, 2, kind).init[0, 0]));
