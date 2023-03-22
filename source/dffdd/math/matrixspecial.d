@@ -911,6 +911,32 @@ if(isMatrixLike!Mat)
     }
 
 
+    auto _opB_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(mat.length!0 == this.length!1)
+    {
+        static if(applyFromLHS)
+        {
+            return _dftM * (_target * mat);
+        }
+        else
+        {
+            return _target * (_dftM * mat);
+        }
+    }
+
+
+    auto _opBR_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(mat.length!1 == this.length!0)
+    {
+        static if(applyFromLHS)
+            return (mat * _dftM) * _target;
+        else
+            return (mat * _target) * _dftM;
+    }
+
+
     auto _opB_Impl_(string op : "*", V)(V vec)
     if(isVectorLike!V)
     in(vec.length == this.length!1)
