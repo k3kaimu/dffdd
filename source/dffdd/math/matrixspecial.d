@@ -1183,3 +1183,340 @@ unittest
         assert(isClose(mul2[i].re, s[i].re, REPS, AEPS) && isClose(mul2[i].im, s[i].im, REPS, AEPS));
     }
 }
+
+
+
+struct PermutationMatrix
+{
+    alias ElementType = int;
+    enum float exprTreeCost = 1;
+
+
+    this(in size_t[] perm, Flag!"isRev" isRev = No.isRev)
+    in(checkIsUnitary(perm))
+    {
+        _fwdperm = perm;
+        auto revperm = new size_t[perm.length];
+        foreach(i, e; perm)
+            revperm[e] = i;
+
+        _revperm = revperm;
+        _isRev = isRev;
+    }
+
+
+    size_t length(size_t dim)() const
+    {
+        return _fwdperm.length;
+    }
+
+
+    ElementType opIndex(size_t i, size_t j) const
+    {
+        if(!_isRev)
+        {
+            return _fwdperm[i] == j ? ElementType(1) : ElementType(0);
+        }
+        else
+        {
+            return _revperm[i] == j ? ElementType(1) : ElementType(0);
+        }
+    }
+
+
+    void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc) const
+    in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+    {
+        dst[] = T(0);
+
+        if(!_isRev)
+        {
+            foreach(i, j; _fwdperm)
+                dst[i, j] = T(1);
+        }
+        else
+        {
+            foreach(i, j; _revperm)
+                dst[i, j] = T(1);
+        }
+    }
+
+
+    PermutationMatrix T() const
+    {
+        PermutationMatrix dst = this;
+        dst._isRev = !this._isRev;
+        return dst;
+    }
+
+
+    auto _opB_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(mat.length!0 == this.length!1)
+    {
+        return MulToMatrix!(M, true)(mat, this);
+    }
+
+
+    auto _opBR_Impl_(string op : "*", M)(M mat)
+    if(isMatrixLike!M)
+    in(mat.length!1 == this.length!0)
+    {
+        return MulToMatrix!(M, false)(mat, this);
+    }
+
+
+    auto _opB_Impl_(string op : "*", V)(V vec)
+    if(isVectorLike!V)
+    in(vec.length == this.length!1)
+    {
+        return MulToVector!V(vec, this);
+    }
+
+
+    alias H = T;
+
+
+  private:
+    const(size_t)[] _fwdperm;
+    const(size_t)[] _revperm;
+    bool _isRev;
+
+
+    static
+    bool checkIsUnitary(in size_t[] perm)
+    {
+        auto check = new bool[perm.length];
+        foreach(i, e; perm) {
+            if(e >= perm.length || check[e])
+                return false;
+
+            check[e] = true;
+        }
+
+        foreach(i, e; check)
+            if(!e) return false;
+        
+        return true;
+    }
+
+
+    static
+    void applyRowPermutation(T, size_t dim, SliceKind kindA)(Slice!(T*, dim, kindA) dst, const(size_t)[] plist)
+    {
+        import std.algorithm : swap;
+
+        if(dst.length!0 < 2)
+            return;
+
+        foreach(i; 0 .. dst.length!0 - 1) {
+            size_t tidx = plist[i];
+            while(tidx < i)
+                tidx = plist[tidx];
+            
+            static if(dim == 2) {
+                foreach(j; 0 .. dst.length!1)
+                    swap(dst[i, j], dst[tidx, j]);
+            } else {
+                swap(dst[i], dst[tidx]);
+            }
+        }
+    }
+
+
+    static struct MulToMatrix(M, bool isRowPerm)
+    {
+        alias ElementType = M.ElementType;
+        enum float exprTreeCost = M.exprTreeCost + 1;
+
+        size_t length(size_t dim)() const
+        {
+            static if((isRowPerm && dim == 0) || (!isRowPerm && dim == 1))
+                return _pm.length!0;
+            else
+                return _target.length!dim;
+        }
+
+
+        ElementType opIndex(size_t i, size_t j) const
+        {
+            static if(isRowPerm)
+            {
+                auto plist = _pm._isRev ? _pm._revperm : _pm._fwdperm;
+                return _target[plist[i], j];
+            }
+            else
+            {
+                auto plist = !_pm._isRev ? _pm._revperm : _pm._fwdperm;
+                return _target[i, plist[j]];
+            }
+        }
+
+
+        void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 2, kindA) dst, ref Alloc alloc)
+        in(dst.length!0 == this.length!0 && dst.length!1 == this.length!1)
+        {
+            _target.evalTo(dst, alloc);
+
+            static if(isRowPerm)
+                applyRowPermutation(dst, !_pm._isRev ? _pm._fwdperm : _pm._revperm);
+            else
+                applyRowPermutation(dst.transposed, _pm._isRev ? _pm._fwdperm : _pm._revperm);
+        }
+
+
+        auto _opB_Impl_(string op : "*", M)(M mat)
+        if(isMatrixLike!M)
+        in(mat.length!0 == this.length!1)
+        {
+            static if(isRowPerm)
+            {
+                return _pm * (_target * mat);
+            }
+            else
+            {
+                return _target * (_pm * mat);
+            }
+        }
+
+
+        auto _opBR_Impl_(string op : "*", M)(M mat)
+        if(isMatrixLike!M)
+        in(mat.length!1 == this.length!0)
+        {
+            static if(isRowPerm)
+                return (mat * _pm) * _target;
+            else
+                return (mat * _target) * _pm;
+        }
+
+
+        auto _opB_Impl_(string op : "*", V)(V vec)
+        if(isVectorLike!V)
+        in(vec.length == this.length!1)
+        {
+            static if(isRowPerm)
+                return _pm * (_target * vec);
+            else
+                return _target * (_pm * vec);
+        }
+
+
+        auto T()()
+        {
+            static if(isRowPerm)
+                return _pm.T * _target.T;
+            else
+                return _target.T * _pm.T;
+        }
+
+
+        auto H()()
+        {
+            static if(isRowPerm)
+                return _pm.H * _target.H;
+            else
+                return _target.H * _pm.H;
+        }
+
+
+        import dffdd.math.exprtemplate;
+        mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
+
+      private:
+        M _target;
+        PermutationMatrix _pm;
+    }
+
+
+    static struct MulToVector(V)
+    {
+        alias ElementType = V.ElementType;
+        enum float exprTreeCost = V.exprTreeCost + 1;
+
+        size_t length() const
+        {
+            return _target.length;
+        }
+
+
+        ElementType opIndex(size_t i, size_t j) const
+        {
+            auto plist = _pm._isRev ? _pm._revperm : _pm._fwdperm;
+            return _target[plist[i]];
+        }
+
+
+        void evalTo(T, SliceKind kindA, Alloc)(Slice!(T*, 1, kindA) dst, ref Alloc alloc)
+        in(dst.length == this.length)
+        {
+            _target.evalTo(dst, alloc);
+            applyRowPermutation(dst, !_pm._isRev ? _pm._fwdperm : _pm._revperm);
+        }
+
+
+        import dffdd.math.exprtemplate;
+        mixin(definitionsOfMatrixOperators(["defaults", "V+V", "V*S"]));
+
+
+      private:
+        M _target;
+        PermutationMatrix _pm;
+    }
+}
+
+unittest
+{
+    bool checkM(A, B)(A ma, B mb)
+    {
+        bool ret = true;
+        ret = ret && ma.length!0 == mb.length!0;
+        ret = ret && ma.length!1 == mb.length!1;
+
+        foreach(i; 0 .. ma.length!0)
+            foreach(j; 0 .. ma.length!1)
+                ret = ret && ma[i, j] == mb[i, j];
+        
+        return ret;
+    }
+
+    size_t[] perm = [1, 3, 2, 0];
+    auto pm1 = PermutationMatrix(perm);
+    assert(pm1[0, 0] == 0); assert(pm1[0, 1] == 1); assert(pm1[0, 2] == 0); assert(pm1[0, 3] == 0);
+    assert(pm1[1, 0] == 0); assert(pm1[1, 1] == 0); assert(pm1[1, 2] == 0); assert(pm1[1, 3] == 1);
+    assert(pm1[2, 0] == 0); assert(pm1[2, 1] == 0); assert(pm1[2, 2] == 1); assert(pm1[2, 3] == 0);
+    assert(pm1[3, 0] == 1); assert(pm1[3, 1] == 0); assert(pm1[3, 2] == 0); assert(pm1[3, 3] == 0);
+
+    auto slice1 = slice!size_t(4, 4);
+    pm1.evalTo(slice1, matvecAllocator);
+    assert(checkM(pm1, slice1));
+
+    auto pm2 = pm1.T;
+    assert(checkM(pm2, slice1.transposed));
+    auto slice2 = slice!size_t(4, 4);
+    pm2.evalTo(slice2, matvecAllocator);
+    assert(checkM(pm2, slice2));
+
+    auto mat = matrix!int(4, 4, 0);
+    mat[0, 0] = 0; mat[1, 1] = 1; mat[2, 2] = 2; mat[3, 3] = 3;
+    
+    auto mul1 = pm1 * mat;
+    static assert(isMatrixLike!(typeof(mul1)));
+    assert(mul1[0, 0] == 0); assert(mul1[0, 1] == 1); assert(mul1[0, 2] == 0); assert(mul1[0, 3] == 0);
+    assert(mul1[1, 0] == 0); assert(mul1[1, 1] == 0); assert(mul1[1, 2] == 0); assert(mul1[1, 3] == 3);
+    assert(mul1[2, 0] == 0); assert(mul1[2, 1] == 0); assert(mul1[2, 2] == 2); assert(mul1[2, 3] == 0);
+    assert(mul1[3, 0] == 0); assert(mul1[3, 1] == 0); assert(mul1[3, 2] == 0); assert(mul1[3, 3] == 0);
+
+    mul1.evalTo(slice1, matvecAllocator);
+    assert(checkM(slice1, mul1));
+
+    auto mul2 = mat * pm1;
+    static assert(isMatrixLike!(typeof(mul2)));
+    assert(mul2[0, 0] == 0); assert(mul2[0, 1] == 0); assert(mul2[0, 2] == 0); assert(mul2[0, 3] == 0);
+    assert(mul2[1, 0] == 0); assert(mul2[1, 1] == 0); assert(mul2[1, 2] == 0); assert(mul2[1, 3] == 1);
+    assert(mul2[2, 0] == 0); assert(mul2[2, 1] == 0); assert(mul2[2, 2] == 2); assert(mul2[2, 3] == 0);
+    assert(mul2[3, 0] == 3); assert(mul2[3, 1] == 0); assert(mul2[3, 2] == 0); assert(mul2[3, 3] == 0);
+
+    mul2.evalTo(slice1, matvecAllocator);
+    assert(checkM(slice1, mul2));
+}
