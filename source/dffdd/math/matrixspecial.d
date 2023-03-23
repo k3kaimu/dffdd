@@ -759,14 +759,6 @@ if(isNarrowComplex!C)
     }
 
 
-    auto _opB_Impl_(string op : "*", V)(V vec)
-    if(isVectorLike!V)
-    in(this.length!1 == vec.length!0)
-    {
-        return DFTMatrixMulMM!(C, isFwd, Yes.applyFromLHS, M)(this, vec);
-    }
-
-
     import dffdd.math.exprtemplate;
     mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
 
@@ -1277,6 +1269,10 @@ struct PermutationMatrix
     alias H = T;
 
 
+    import dffdd.math.exprtemplate;
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
+
+
   private:
     const(size_t)[] _fwdperm;
     const(size_t)[] _revperm;
@@ -1456,11 +1452,11 @@ struct PermutationMatrix
 
 
         import dffdd.math.exprtemplate;
-        mixin(definitionsOfMatrixOperators(["defaults", "V+V", "V*S"]));
+        mixin(definitionsOfVectorOperators(["defaults", "V+V", "V*S"]));
 
 
       private:
-        M _target;
+        V _target;
         PermutationMatrix _pm;
     }
 }
@@ -1519,6 +1515,29 @@ unittest
 
     mul2.evalTo(slice1, matvecAllocator);
     assert(checkM(slice1, mul2));
+}
+
+unittest
+{
+    size_t[] perm = [1, 3, 2, 0];
+    auto pm1 = PermutationMatrix(perm);
+
+    auto v = vector!int(4);
+    v[0] = 0; v[1] = 1; v[2] = 2; v[3] = 3;
+
+    auto w = pm1 * v;
+    static assert(isVectorLike!(typeof(w)));
+    assert(w[0] == 1);
+    assert(w[1] == 3);
+    assert(w[2] == 2);
+    assert(w[3] == 0);
+
+    auto s = slice!int(4);
+    w.evalTo(s, matvecAllocator);
+    assert(s[0] == 1);
+    assert(s[1] == 3);
+    assert(s[2] == 2);
+    assert(s[3] == 0);
 }
 
 
