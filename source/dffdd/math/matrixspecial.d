@@ -1520,3 +1520,64 @@ unittest
     mul2.evalTo(slice1, matvecAllocator);
     assert(checkM(slice1, mul2));
 }
+
+
+/+
+unittest
+{
+
+    Matrix!(C, Contiguous) makeCirculantIIDChannelMatrix(C)(size_t N, size_t nTaps, uint seed)
+    {
+        auto row = new C[N];
+        row[] = C(0);
+        row[0] = 1;
+
+        foreach(i; 1 .. nTaps)
+            row[$-i] = i+1;
+
+        auto mat = matrix!C(N, N, C(0));
+        foreach(i; 0 .. N) {
+            mat.sliced()[i, 0 .. $] = row;
+            {
+                auto last = row[N-1];
+                foreach_reverse(j; 1 .. N)
+                    row[j] = row[j-1];
+
+                row[0] = last;
+            }
+        }
+
+        return mat;
+    }
+
+    alias C = Complex!float;
+    auto chMat = makeCirculantIIDChannelMatrix!C(8, 3, 0);
+    auto dftMat = forceEvaluate(dftMatrix!C(8));
+
+    auto result1 = forceEvaluate(dftMat * chMat * dftMat.H);    // 第0列目のフーリエ変換の結果が対角に並ぶ
+    auto result2 = forceEvaluate(dftMat.H * chMat * dftMat);    // 標準形（第0行目のフーリエ変換の結果が対角に並ぶ）
+
+    import std.stdio;
+    writeln(result1);
+    writeln(result2);
+
+    C[] arr = new C[8];
+    foreach(i; 0 .. 8)
+        arr[i] = result1[i, i];
+    
+    import dffdd.utils.fft;
+    auto fftw = makeFFTWObject!Complex(8);
+    fftw.inputs!float[] = arr[];
+
+    fftw.ifft!float();
+    writeln(fftw.outputs!float);
+
+    foreach(i; 0 .. 8)
+        arr[i] = result2[i, i];
+
+    fftw.inputs!float[] = arr[];
+
+    fftw.ifft!float();
+    writeln(fftw.outputs!float);
+}
++/
