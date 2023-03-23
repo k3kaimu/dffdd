@@ -1436,7 +1436,7 @@ struct PermutationMatrix
         }
 
 
-        ElementType opIndex(size_t i, size_t j) const
+        ElementType opIndex(size_t i) const
         {
             auto plist = _pm._isRev ? _pm._revperm : _pm._fwdperm;
             return _target[plist[i]];
