@@ -1401,18 +1401,18 @@ struct PermutationMatrix
         auto T()()
         {
             static if(isRowPerm)
-                return _pm.T * _target.T;
-            else
                 return _target.T * _pm.T;
+            else
+                return _pm.T * _target.T;
         }
 
 
         auto H()()
         {
             static if(isRowPerm)
-                return _pm.H * _target.H;
-            else
                 return _target.H * _pm.H;
+            else
+                return _pm.H * _target.H;
         }
 
 
