@@ -2,13 +2,14 @@ module app;
 
 import std.algorithm;
 import std.complex;
+import std.math;
 import std.random;
 import std.range;
 import std.stdio;
 import std.traits;
 
 import dffdd.mod;
-
+import dffdd.utils.fft;
 
 alias F = double;
 alias C = Complex!F;
@@ -16,17 +17,51 @@ alias C = Complex!F;
 
 void main()
 {
-    // writeln("Hello");
-    foreach(vEbN0dB; [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
-        SimParams!(QPSK!C) params;
-        params.sefdm.nFFT = 64*4*4;
-        params.sefdm.nTone = 40*4*4;
-        params.sefdm.rndSeed = 0;
-        params.vEbN0dB = vEbN0dB;
+    void run(size_t nFFT, size_t nTone, bool isChNorm, size_t nChTap, size_t nIter)
+    {
+        writefln!"[nFFT = %s, isChNorm = %s, nTone = %s, nChTap = %s, nIter = %s]"(nFFT, isChNorm, nTone, nChTap, nIter);
+        foreach(vEbN0dB; iota(21)) {
+            SimParams!(QPSK!C) params;
+            params.sefdm.nFFT = nFFT;
+            params.sefdm.nTone = nTone;
+            params.sefdm.nIter = nIter;
+            params.sefdm.rndSeed = 0;
+            params.vEbN0dB = vEbN0dB;
+            params.nChTaps = nChTap;
+            params.isChNorm = isChNorm;
+            params.rndSeed = 0;
 
-        auto simResult = runSimImpl(params);
-        writefln!"%s: %s, Mod: %s [Mbps], Demod: %s [Mbps]"(vEbN0dB, simResult.ber, simResult.modThroughput / 1e6, simResult.demodThroughput / 1e6);
+            auto simResult = runSimImpl(params);
+            writefln!"\t%s: %s"(vEbN0dB, simResult.ber);
+
+            if(simResult.ber < 1e-7)
+                break;
+        }
+        writeln();
     }
+
+    // // AWGN
+    // foreach(nFFT; [64*4, 64*4*4]) {
+    //     foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
+    //         run(nFFT, nTone, true, 1, 100);
+    //     }
+    // }
+
+    // Rayleigh
+    foreach(nFFT; [64*4, 64*4*4]) {
+        foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5])
+        foreach(nChTap; [1, /*nFFT / 32, nFFT / 32 * 2, nFFT / 32 * 3,*/ nFFT / 32 * 4]) {
+            run(nFFT, nTone, false, nChTap, 100);
+        }
+    }
+
+
+    // foreach(nFFT; [64*4, 64*4*4]) {
+    //     foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5])
+    //     foreach(nChTap; [1, /*nFFT / 32, nFFT / 32 * 2, nFFT / 32 * 3,*/ nFFT / 32 * 4]) {
+    //         run(nFFT, nTone, false, nChTap, 100);
+    //     }
+    // }
 }
 
 
@@ -45,7 +80,7 @@ struct RDFTsSEFDMParams(Mod)
     size_t nFFT;
     size_t nTone;
     size_t rndSeed = 0;
-
+    size_t nIter;
     alias nData = nFFT;
 }
 
@@ -54,8 +89,11 @@ struct SimParams(Mod)
 {
     RDFTsSEFDMParams!Mod sefdm;
     double vEbN0dB;
-    size_t maxErrbits = 100;
+    size_t maxErrbits = 1000;
     size_t minTotalbits = 100_000_000;
+    size_t nChTaps = 8;
+    bool isChNorm = false;
+    size_t rndSeed;
 }
 
 
@@ -76,6 +114,7 @@ SimResult runSimImpl(Mod)(SimParams!Mod params)
     while(totalbits < params.minTotalbits && errbits < params.maxErrbits)
     {
         ++rndSeed;
+        auto chFR = makeChannel(params, rndSeed);
 
         // 送信ビット系列の生成
         swMod.start();
@@ -85,11 +124,11 @@ SimResult runSimImpl(Mod)(SimParams!Mod params)
 
         // RDFT-s-SEFDM変調
         auto txsignal = modulateSEFDM(params.sefdm, txbits);
-        // auto txsignal = sefdm.modulate(txbits);
-        txsignal = txsignal.addAWGN(rndSeed, SIGMA2);
+        auto rxsignal = txsignal.applyChannel(chFR);
+        rxsignal = rxsignal.addAWGN(rndSeed, SIGMA2);
 
         swDem.start();
-        Bit[] rxbits = demodulateSEFDM(params.sefdm, txsignal, SIGMA2);
+        Bit[] rxbits = demodulateSEFDM(params.sefdm, rxsignal, chFR, SIGMA2);
         // auto rxbits = sefdm.demodulate(txsignal);
         swDem.stop();
         errbits += txbits.zip(rxbits).map!"a[0] != a[1] ? 1 : 0".sum();
@@ -146,7 +185,7 @@ in(txbits.length == params.mod.symInputLength * params.nData)
 }
 
 
-Bit[] demodulateSEFDM(Mod)(in ref RDFTsSEFDMParams!Mod params, C[] rxsignal, double N0)
+Bit[] demodulateSEFDM(Mod)(in ref RDFTsSEFDMParams!Mod params, C[] rxsignal, C[] chFR, double N0)
 {
     import std;
     import mir.ndslice : sliced;
@@ -166,10 +205,12 @@ Bit[] demodulateSEFDM(Mod)(in ref RDFTsSEFDMParams!Mod params, C[] rxsignal, dou
     // 圧縮&電力割当
     C[] dlist = new C[params.nTone];
     dlist[] = C(1/sqrt(params.nTone * 1.0 / params.nData));
+    foreach(i; 0 .. params.nTone)
+        dlist[i] *= chFR[i];
 
     // auto W2 = idftMatrix!C(params.nFFT);
     // EP復調器
-    auto detector = makeSVDEPDetector!C(params.mod, identity!C(params.nTone), dlist.sliced.vectored, P * W1, N0, 20);
+    auto detector = makeSVDEPDetector!C(params.mod, identity!C(params.nTone), dlist.sliced.vectored, P * W1, N0, params.nIter);
 
     // 受信信号を周波数領域へ変換
     {
@@ -222,4 +263,59 @@ R addAWGN(R)(R received, size_t seed, double SIGMA)
     }
 
     return received;
+}
+
+
+C[] makeChannel(Mod)(in ref SimParams!Mod params, size_t rndSeed)
+{
+    import dffdd.blockdiagram.noise;
+    import dffdd.utils.distribution;
+
+    auto rnd = makeRNG(params.rndSeed + rndSeed, "CHANNEL");
+    auto bm = BoxMuller!(Random, C)(rnd);
+
+    C[] impResp = new C[params.sefdm.nFFT];
+    impResp[] = C(0);
+    foreach(i; 0 .. params.nChTaps) {
+        impResp[i] = bm.front / sqrt(params.nChTaps * 2.0);
+        bm.popFront();
+    }
+
+    auto fftw = makeFFTWObject!(TemplateOf!C)(params.sefdm.nFFT);
+    fftw.inputs!F[] = impResp[];
+    fftw.fft!F();
+
+    C[] dstFR = new C[params.sefdm.nFFT];
+    dstFR[] = fftw.outputs!F[];
+
+    if(params.isChNorm) {
+        F sumP = 0;
+        foreach(i; 0 .. params.sefdm.nTone)
+            sumP += dstFR[i].sqAbs;
+
+        sumP /= params.sefdm.nTone;
+        
+        foreach(ref e; dstFR)
+            e /= sqrt(sumP);
+    }
+    
+    return dstFR;
+}
+
+
+C[] applyChannel(C[] sig, C[] chFR)
+in(sig.length == chFR.length)
+{
+    auto fftw = makeFFTWObject!(TemplateOf!C)(sig.length);
+    fftw.inputs!F[] = sig[];
+    fftw.fft!F();
+    foreach(i; 0 .. sig.length)
+        fftw.inputs!F[i] = fftw.outputs!F[i] * chFR[i];
+    
+    fftw.ifft!F();
+    foreach(i; 0 .. sig.length)
+        fftw.outputs!F[i] = fftw.outputs!F[i];
+
+
+    return fftw.outputs!F().dup;
 }
