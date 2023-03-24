@@ -28,7 +28,7 @@ import mir.ndslice : slice, sliced, Contiguous, SliceKind;
 
 
 class EPDetector(C, Mod, F = typeof(C.init.re), MatU = Matrix!(F, Contiguous), MatV = Matrix!(F, Contiguous)) : IDetector!(C, C)
-if((is(Mod == QPSK!C) || is(Mod == QAM!C)) && isComplex!C && (is(typeof(C.init.re) == float) || is(typeof(C.init.re) == double)) )
+if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re) == float) || is(typeof(C.init.re) == double)) )
 {
     alias InputElementType = C;
     alias OutputElementType = C;
@@ -85,7 +85,8 @@ if((is(Mod == QPSK!C) || is(Mod == QAM!C)) && isComplex!C && (is(typeof(C.init.r
         _mod = mod;
         _rowScales = vector!F(chMatU.length!0, F(1));
         _chMatU = chMatU;
-        _chMatSigma = chMatSigma;
+        _chMatSigma = vector!F(min(chMatU.length!0, chMatVh.length!1));
+        _chMatSigma[] = chMatSigma;
         _chMatV = chMatVh;
         _maxIter = maxIter;
         _N0 = N0;
@@ -105,7 +106,7 @@ if((is(Mod == QPSK!C) || is(Mod == QAM!C)) && isComplex!C && (is(typeof(C.init.r
 
 
 
-    C[] detect(in C[] received, return ref C[] detected) const
+    C[] detect(in C[] received, return ref C[] detected) /*const*/
     in(received.length % this.inputLength == 0)
     {
         immutable M = this.inputLength;
@@ -255,22 +256,17 @@ if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F && isVectorLike!VecY 
 
 Vector!(C, Contiguous)
     EP(alias prox, C = VecY.ElementType, F, VecY, MatAU, VecAS, MatAV)
-        (in VecY y_, in MatAU AU_, in VecAS AS_, in MatAV AV_, in F theta0, in F sigma2, size_t nIteration)
+        (VecY y, MatAU U, VecAS AS_, MatAV V, in F theta0, in F sigma2, size_t nIteration)
 if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F
     && isVectorLike!VecY && hasMemoryView!VecY
     && isMatrixLike!MatAU && isMatrixLike!MatAV && isVectorLike!VecAS
     && is(VecY.ElementType == C) && is(MatAU.ElementType == C) && is(MatAV.ElementType == C)
     && (is(VecAS.ElementType == C) || is(VecAS.ElementType == F)))
-in(AU_.length!0 <= AV_.length!1)
+in(U.length!0 <= V.length!1)
 {
     import dffdd.math.complex : abs;
     import mir.ndslice : map;
     import mir.math.stat : mean;
-
-    auto y = y_.lightConst;
-    // auto A = A_.lightConst;
-    auto U = AU_.lightConst;
-    auto V = AV_.lightConst;
 
     // Mが観測数，Nが未知変数の数
     immutable size_t M = U.length!0,
