@@ -17,8 +17,14 @@ alias C = Complex!F;
 
 void main()
 {
-    void run(size_t nFFT, size_t nTone, bool isChNorm, size_t nChTap, size_t nIter)
+    import std.file;
+
+    void run(string dir, size_t nFFT, size_t nTone, bool isChNorm, size_t nChTap, size_t nIter)
     {
+        import std.format;
+        import std.json;
+        JSONValue[] berList;
+
         writefln!"[nFFT = %s, isChNorm = %s, nTone = %s, nChTap = %s, nIter = %s]"(nFFT, isChNorm, nTone, nChTap, nIter);
         foreach(vEbN0dB; iota(21)) {
             SimParams!(QPSK!C) params;
@@ -34,29 +40,43 @@ void main()
             auto simResult = runSimImpl(params);
             writefln!"\t%s: %s"(vEbN0dB, simResult.ber);
 
+            berList ~= JSONValue(simResult.ber);
+
             if(simResult.ber < 1e-7)
                 break;
         }
         writeln();
+
+        auto filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s.json", dir, nFFT, isChNorm, nTone, nChTap, nIter);
+        std.file.write(filename, JSONValue(berList).toString());
     }
 
-    // // AWGN
-    // foreach(nFFT; [64*4, 64*4*4]) {
-    //     foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
-    //         run(nFFT, nTone, true, 1, 100);
-    //     }
-    // }
-
-    // Rayleigh
-    foreach(nFFT; [64*4, 64*4*4]) {
-        foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5])
-        foreach(nChTap; [1, /*nFFT / 32, nFFT / 32 * 2, nFFT / 32 * 3,*/ nFFT / 32 * 4]) {
-            run(nFFT, nTone, false, nChTap, 100);
+    // AWGN
+    foreach(nFFT; [64*4]) {
+        mkdirRecurse("AWGN");
+        foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5]) {
+            run("AWGN", nFFT, nTone, true, 1, 20);
         }
     }
 
+    // Rayleigh
+    foreach(nFFT; [64*4]) {
+        mkdirRecurse("Rayleigh");
+        foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5])
+        foreach(nChTap; [1, nFFT / 32, nFFT / 32 * 2, nFFT / 32 * 3, nFFT / 32 * 4]) {
+            run("Rayleigh", nFFT, nTone, false, nChTap, 20);
+        }
+    }
 
-    // foreach(nFFT; [64*4, 64*4*4]) {
+    // foreach(nFFT; [64*4]) {
+    //     mkdirRecurse("Rayleigh_Iter");
+    //     foreach(nIter; [1, 2, 4, 8, 16, 32, 64, 128]) {
+    //         run("Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, nFFT / 32 * 4, nIter);
+    //     }
+    // }
+
+
+    // foreach(nFFT; [64*4]) {
     //     foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5])
     //     foreach(nChTap; [1, /*nFFT / 32, nFFT / 32 * 2, nFFT / 32 * 3,*/ nFFT / 32 * 4]) {
     //         run(nFFT, nTone, false, nChTap, 100);
