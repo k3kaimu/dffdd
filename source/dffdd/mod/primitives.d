@@ -868,7 +868,7 @@ if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && ar
 
     F xr2_min = F.infinity;
     static foreach(i; 0 .. arrP.length) {
-        if(arrP[i] != 0)
+        static if(arrP[i] != 0)
             xr2_min = min((arrR[i] - x)^^2, xr2_min);
     }
 
@@ -878,19 +878,19 @@ if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && ar
     p_r_e = F(0),
     p_r2_e = F(0);
 
-    F[arrP.length] _pes;
     static foreach(i; 0 .. arrP.length) {{
-        if(arrP[i] != 0) {
+        static if(arrP[i] != 0)
+        {{
             immutable xr2 = (arrR[i] - x)^^2;
 
             F expvalue = fast_exp!F(expCoef * (xr2 - xr2_min));
             if(expvalue.isNaN) expvalue = 1;
 
-            _pes[i] = arrP[i] * expvalue;
-            p_e += _pes[i];
-            p_r_e += _pes[i] * arrR[i];
-            p_r2_e += _pes[i] * arrR[i]^^2;
-        }
+            immutable pes = arrP[i] * expvalue;
+            p_e += pes;
+            p_r_e += pes * arrR[i];
+            p_r2_e += pes * arrR[i]^^2;
+        }}
     }}
 
     immutable drv = -2 * expCoef * (p_r2_e * p_e - p_r_e^^2) / p_e^^2;
