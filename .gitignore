@@ -10,3 +10,6 @@ __dummy.html
 *.exe
 *.txt
 apps/sim/result*
+*.json
+!dub.json
+*.log
