@@ -11,19 +11,38 @@ import std.traits;
 import dffdd.mod;
 import dffdd.utils.fft;
 
+import tuthpc.taskqueue;
+
 alias F = double;
 alias C = Complex!F;
 
 
+extern(C) void openblas_set_num_threads(int num_threads);
+extern(C) int openblas_get_num_threads();
+
+shared static this()
+{
+    openblas_set_num_threads(1);
+}
+
+
 void main()
 {
-    import std.file;
+    import std.file : mkdirRecurse;
+
+    auto env = defaultJobEnvironment();
+    auto taskList = new MultiTaskList!void();
 
     void run(string dir, size_t nFFT, size_t nTone, bool isChNorm, size_t nChTap, size_t nIter)
     {
         import std.format;
         import std.json;
+        import std.file;
         JSONValue[] berList;
+
+        auto filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s.json", dir, nFFT, isChNorm, nTone, nChTap, nIter);
+        if(std.file.exists(filename))
+            return;
 
         writefln!"[nFFT = %s, isChNorm = %s, nTone = %s, nChTap = %s, nIter = %s]"(nFFT, isChNorm, nTone, nChTap, nIter);
         foreach(vEbN0dB; iota(21)) {
@@ -47,41 +66,43 @@ void main()
         }
         writeln();
 
-        auto filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s.json", dir, nFFT, isChNorm, nTone, nChTap, nIter);
         std.file.write(filename, JSONValue(berList).toString());
     }
 
     // AWGN
-    foreach(nFFT; [64*4]) {
+    foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
         mkdirRecurse("AWGN");
-        foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5]) {
-            run("AWGN", nFFT, nTone, true, 1, 20);
+        foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
+            taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20);
         }
     }
 
     // Rayleigh
-    foreach(nFFT; [64*4]) {
+    foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
         mkdirRecurse("Rayleigh");
-        foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5])
-        foreach(nChTap; [1, nFFT / 32, nFFT / 32 * 2, nFFT / 32 * 3, nFFT / 32 * 4]) {
-            run("Rayleigh", nFFT, nTone, false, nChTap, 20);
+        foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
+        foreach(nChTap; [1, 4, 8, 16, 32, 64]) {
+            taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20);
         }
     }
 
-    // foreach(nFFT; [64*4]) {
-    //     mkdirRecurse("Rayleigh_Iter");
-    //     foreach(nIter; [1, 2, 4, 8, 16, 32, 64, 128]) {
-    //         run("Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, nFFT / 32 * 4, nIter);
-    //     }
-    // }
+    foreach(nFFT; [2048]) {
+        mkdirRecurse("Rayleigh_Iter");
+        foreach(nIter; iota(2, 41, 2)) {
+            taskList.append(&run, "Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, 8, nIter);
+        }
+    }
 
 
-    // foreach(nFFT; [64*4]) {
+    // foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
     //     foreach(nTone; [/*nFFT, nFFT / 8 * 7, nFFT / 8 * 6,*/ nFFT / 8 * 5])
     //     foreach(nChTap; [1, /*nFFT / 32, nFFT / 32 * 2, nFFT / 32 * 3,*/ nFFT / 32 * 4]) {
-    //         run(nFFT, nTone, false, nChTap, 100);
+    //         taskList.append(&run, nFFT, nTone, false, nChTap, 100);
     //     }
     // }
+
+
+    tuthpc.taskqueue.run(taskList, env);
 }
 
 
@@ -110,7 +131,8 @@ struct SimParams(Mod)
     RDFTsSEFDMParams!Mod sefdm;
     double vEbN0dB;
     size_t maxErrbits = 1000;
-    size_t minTotalbits = 100_000_000;
+    size_t maxTotalbits = 100_000_000;
+    size_t minTotalbits = 1_000_000;
     size_t nChTaps = 8;
     bool isChNorm = false;
     size_t rndSeed;
@@ -131,8 +153,12 @@ SimResult runSimImpl(Mod)(SimParams!Mod params)
     // auto sefdm = new RDFTsSEFDM!Mod(params.sefdm, SIGMA2);
     StopWatch swMod, swDem;
 
-    while(totalbits < params.minTotalbits && errbits < params.maxErrbits)
+    while(totalbits < params.minTotalbits || errbits < params.maxErrbits )
     {
+        if(totalbits > params.maxTotalbits)
+            break;
+
+
         ++rndSeed;
         auto chFR = makeChannel(params, rndSeed);
 
@@ -175,8 +201,9 @@ in(txbits.length == params.mod.symInputLength * params.nData)
     C[] scmod;
     scmod = params.mod.modulate(txbits, scmod);
 
-    // DFTスプレッド
     auto fftw = makeFFTWObject!(TemplateOf!C)(params.nData);
+
+    // DFTスプレッド
     fftw.inputs!F[] = scmod[];
     fftw.fft!F();
     scmod[] = fftw.outputs!F[];
