@@ -940,7 +940,7 @@ if(isMatrixLike!Mat)
     }
 
 
-    auto T()
+    auto T()()
     {
         static if(applyFromLHS)
             return _target.T * _dftM.T;
@@ -949,7 +949,7 @@ if(isMatrixLike!Mat)
     }
 
 
-    auto H()
+    auto H()()
     {
         static if(applyFromLHS)
             return _target.H * _dftM.H;
