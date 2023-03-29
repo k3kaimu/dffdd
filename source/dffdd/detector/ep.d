@@ -314,15 +314,24 @@ in(U.length!0 <= V.length!1)
         tmpVecM.noalias = y2 - UTA * x_BA;
         tmpVecN2[] = F(0);
         foreach(i; 0 .. M) tmpVecN2[i] = vecAHinvXi[i] * tmpVecM[i];
+        // tmpVecN2.sliced[0 .. M] = tmpVecM.sliced;
+        // tmpVecN2.sliced[0 .. M] *= vecAHinvXi;
         tmpVecN.noalias = V.H * tmpVecN2;
 
         gamma_vBA = N / traceInvXiAA;
         x_AB.noalias = x_BA + gamma_vBA * tmpVecN;
         v_AB = gamma_vBA - v_BA;
         
-        pxs[] = x_AB.sliced.map!(e => prox(e, v_AB));
-        x_B.noalias = pxs.map!"a.value".vectored;
-        v_B = pxs.map!"a.var".mean;
+        // pxs[] = x_AB.sliced.map!(e => prox(e, v_AB));
+        // x_B.noalias = pxs.map!"a.value".vectored;
+        // v_B = pxs.map!"a.var".mean;
+        v_B = 0;
+        foreach(i; 0 .. x_AB.length) {
+            auto p = prox(x_AB[i], v_AB);
+            x_B[i] = p.value;
+            v_B += p.var;
+        }
+        v_B /= x_AB.length;
 
         F vden = v_AB - v_B;
         if(fast_abs!F(vden) < EPS)
