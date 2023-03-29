@@ -898,7 +898,7 @@ if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && ar
         {{
             immutable xr2 = (arrR[i] - x)^^2;
 
-            F expvalue = fast_exp!F(expCoef * (xr2 - xr2_offset));
+            F expvalue = fast_exp!float(expCoef * (xr2 - xr2_offset));
             immutable pes = arrP[i] * expvalue;
             p_e += pes;
             p_r_e += pes * arrR[i];
