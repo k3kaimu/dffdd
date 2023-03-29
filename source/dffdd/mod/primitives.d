@@ -9,6 +9,15 @@ import std.typecons;
 import dffdd.math.math;
 import dffdd.math.complex;
 
+version(LDC)
+{
+    import ldc.attributes : fastmath;
+}
+else
+{
+    enum fastmath = 0;
+}
+
 
 
 enum bool isModulator(T) = is(typeof((T t){
@@ -856,22 +865,28 @@ unittest
 /**
  事後平均とその微分値と事後分散を計算します
 */
+@fastmath
 Tuple!(F, "value", F, "drv", F, "var") softDecision(alias arrP_, alias arrR_, F)(F x, F sigma2)
 if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && arrP_.length >= 2 && arrP_.length == arrR_.length)
 {
     import std.math : isNaN, abs;
-    import std.algorithm : min;
+    import std.algorithm : min, max;
     import dffdd.math.math : fast_exp;
 
     enum F[] arrP = arrP_;
     enum F[] arrR = arrR_;
 
     F xr2_min = F.infinity;
+    F xr2_max = 0;
     static foreach(i; 0 .. arrP.length) {
-        static if(arrP[i] != 0)
-            xr2_min = min((arrR[i] - x)^^2, xr2_min);
+        static if(arrP[i] != 0) {{
+            immutable xr2 = (arrR[i] - x)^^2;
+            xr2_min = min(xr2, xr2_min);
+            xr2_max = max(xr2, xr2_max);
+        }}
     }
 
+    immutable xr2_offset = (xr2_max + xr2_min) / 2;
     immutable expCoef = -0.5 / sigma2;
 
     F p_e = F(0),
@@ -883,9 +898,7 @@ if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && ar
         {{
             immutable xr2 = (arrR[i] - x)^^2;
 
-            F expvalue = fast_exp!F(expCoef * (xr2 - xr2_min));
-            if(expvalue.isNaN) expvalue = 1;
-
+            F expvalue = fast_exp!F(expCoef * (xr2 - xr2_offset));
             immutable pes = arrP[i] * expvalue;
             p_e += pes;
             p_r_e += pes * arrR[i];
