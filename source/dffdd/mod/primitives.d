@@ -877,16 +877,16 @@ if(isArray!(typeof(arrP_)) && isArray!(typeof(arrR_)) && isFloatingPoint!F && ar
     enum F[] arrR = arrR_;
 
     F xr2_min = F.infinity;
-    F xr2_max = 0;
+    // F xr2_max = 0;
     static foreach(i; 0 .. arrP.length) {
         static if(arrP[i] != 0) {{
             immutable xr2 = (arrR[i] - x)^^2;
             xr2_min = min(xr2, xr2_min);
-            xr2_max = max(xr2, xr2_max);
+            // xr2_max = max(xr2, xr2_max);
         }}
     }
 
-    immutable xr2_offset = (xr2_max + xr2_min) / 2;
+    immutable xr2_offset = xr2_min;
     immutable expCoef = -0.5 / sigma2;
 
     F p_e = F(0),
