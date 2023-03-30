@@ -1,5 +1,7 @@
 module dffdd.mod.primitives;
 
+import core.simd;
+
 import std.complex;
 import std.math;
 import std.numeric : gcd;
@@ -941,3 +943,58 @@ if(isComplex!C)
 alias softDecisionQPSK(C) = softDecisionComplex!(softDecision2PAM_QPSK, C);
 alias softDecision16QAM(C) = softDecisionComplex!(softDecision4PAM_16QAM, C);
 alias softDecision64QAM(C) = softDecisionComplex!(softDecision8PAM_64QAM, C);
+
+
+@fastmath
+Tuple!(float8, "value", float8, "var") approx_softDecision(alias arrP_, alias arrR_)(float8 x, float8 sigma2)
+{
+    import dffdd.math.simdmath : min, approx_exp;
+
+    enum float[] arrP = arrP_;
+    enum float[] arrR = arrR_;
+
+    float8[arrP.length] xr2list;
+    float8 xr2_min = float.infinity;
+    static foreach(i; 0 .. arrP.length) {
+        static if(arrP[i] != 0) {{
+            xr2list[i] = (arrR[i] - x)*(arrR[i] - x);
+            xr2_min = min(xr2_min, xr2list[i]);
+        }}
+    }
+
+    immutable expCoef = -0.5 / sigma2;
+
+    float8 p_e = 0,
+           p_r_e = 0,
+           p_r2_e = 0;
+    
+    static foreach(i; 0 .. arrP.length) {{
+        static if(arrP[i] != 0)
+        {{
+            immutable expvalue = approx_exp(expCoef * (xr2list[i] - xr2_min));
+            immutable pes = arrP[i] * expvalue;
+            p_e += pes;
+            p_r_e += pes * arrR[i];
+
+            enum float arrR2 = arrR[i]*arrR[i];
+            p_r2_e += pes * arrR2;
+        }}
+    }}
+
+    // immutable drv = -2 * expCoef * (p_r2_e * p_e - p_r_e * p_r_e) / (p_e * p_e);
+    immutable mean = p_r_e / p_e;
+    return typeof(return)(mean, (p_r2_e / p_e) - mean * mean);
+}
+
+
+Tuple!(float8, "re", float8, "im", float8, "var") approx_softDecisionComplex(alias arrP_, alias arrR_)(float8 re, float8 im, float sigma2)
+{
+    auto dst_re = approx_softDecision!(arrP_, arrR_)(re, sigma2 / 2);
+    auto dst_im = approx_softDecision!(arrP_, arrR_)(im, sigma2 / 2);
+
+    return typeof(return)(dst_re.value, dst_im.value, dst_re.var + dst_im.var);
+}
+
+alias approx_softDecisionQPSK = approx_softDecisionComplex!([0.5, 0.5], [-SQRT1_2, SQRT1_2]);
+alias approx_softDecision16QAM = approx_softDecisionComplex!([0.25, 0.25, 0.25, 0.25], [-3/sqrt(10.0L), -1/sqrt(10.0L), 1/sqrt(10.0L), 3/sqrt(10.0L)]);
+alias approx_softDecision64QAM = approx_softDecisionComplex!([0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125], [-7/sqrt(42.0L), -5/sqrt(42.0L), -3/sqrt(42.0L), -1/sqrt(42.0L), 1/sqrt(42.0L), 3/sqrt(42.0L), 5/sqrt(42.0L), 7/sqrt(42.0L)]);
