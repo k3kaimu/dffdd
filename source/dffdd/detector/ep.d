@@ -25,6 +25,15 @@ import mir.ndslice : slice, sliced, Contiguous, SliceKind;
 
 
 
+version(LDC)
+{
+    import ldc.attributes : fastmath;
+}
+else
+{
+    enum fastmath = 0;
+}
+
 
 
 class EPDetector(C, Mod, F = typeof(C.init.re), MatU = Matrix!(F, Contiguous), MatV = Matrix!(F, Contiguous)) : IDetector!(C, C)
@@ -137,7 +146,8 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
                     }
                     else
                     {
-                        res = EP!(softDecisionQPSK!C, C, typeof(C.init.re))
+                        import std.math : SQRT1_2;
+                        res = EP!(/*softDecisionQPSK!C*/approx_softDecisionQPSK, C, typeof(C.init.re))
                             (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
                     }
                     break;
@@ -149,7 +159,7 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
                     }
                     else
                     {
-                        res = EP!(softDecision16QAM!C, C, typeof(C.init.re))
+                        res = EP!(/*softDecision16QAM!C*/approx_softDecision16QAM, C, typeof(C.init.re))
                             (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
                     }
                     break;
@@ -161,7 +171,7 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
                     }
                     else
                     {
-                        res = EP!(softDecision64QAM!C, C, typeof(C.init.re))
+                        res = EP!(/*softDecision64QAM!C*/approx_softDecision64QAM, C, typeof(C.init.re))
                             (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
                     }
                     break;
@@ -254,35 +264,40 @@ if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F && isVectorLike!VecY 
 }
 
 
+@fastmath
 Vector!(C, Contiguous)
     EP(alias prox, C = VecY.ElementType, F, VecY, MatAU, VecAS, MatAV)
         (VecY y, MatAU U, VecAS AS_, MatAV V, in F theta0, in F sigma2, size_t nIteration)
-if((isComplex!C || isFloatingPoint!C) && isFloatingPoint!F
+if((isNarrowComplex!C || isFloatingPoint!C) && isFloatingPoint!F
     && isVectorLike!VecY && hasMemoryView!VecY
     && isMatrixLike!MatAU && isMatrixLike!MatAV && isVectorLike!VecAS
     && is(VecY.ElementType == C) && is(MatAU.ElementType == C) && is(MatAV.ElementType == C)
     && (is(VecAS.ElementType == C) || is(VecAS.ElementType == F)))
 in(U.length!0 <= V.length!1)
 {
+    import std.typecons : scoped;
     import dffdd.math.complex : abs;
     import mir.ndslice : map;
     import mir.math.stat : mean;
+    import dffdd.math.exprtemplate : TempMemoryManager;
 
     // Mが観測数，Nが未知変数の数
     immutable size_t M = U.length!0,
                      N = V.length!0;
 
-    auto x_AB = vector!C(N, C(0));
-    auto x_BA = vector!C(N, C(0));
-    auto x_B = vector!C(N, C(0));
+    auto tmm = scoped!TempMemoryManager(M * C.sizeof * 8 + N * C.sizeof * 8);
 
-    auto vecAHinvXi = slice!C(M);
+    auto x_AB = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
+    auto x_BA = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
+    auto x_B = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
 
-    auto tmpVecM = vector!C(M, C(0));
-    auto tmpVecN = vector!C(N, C(0));
-    auto tmpVecN2 = vector!C(N, C(0));
+    auto vecAHinvXi = tmm.makeSlice!C(M);
 
-    auto y2 = vector!C(M, C(0));
+    auto tmpVecM = tmm.makeVectorFromTMM_SIMD!(C, 4)(M, C(0));
+    auto tmpVecN = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
+    auto tmpVecN2 = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
+
+    auto y2 = tmm.makeVectorFromTMM_SIMD!(C, 4)(M, C(0));
     y2.noalias = U.H * y;
 
     // UTA = U.T * A 
@@ -294,9 +309,6 @@ in(U.length!0 <= V.length!1)
       gamma_vBA = 0;
 
     enum F EPS = 1e-6;
-
-    alias ProxResult = typeof(prox(C(0), theta0));
-    auto pxs = slice!ProxResult(N);
 
     // writeln("START");
     foreach(iter; 1 .. nIteration)
@@ -325,13 +337,56 @@ in(U.length!0 <= V.length!1)
         // pxs[] = x_AB.sliced.map!(e => prox(e, v_AB));
         // x_B.noalias = pxs.map!"a.value".vectored;
         // v_B = pxs.map!"a.var".mean;
-        v_B = 0;
-        foreach(i; 0 .. x_AB.length) {
-            auto p = prox(x_AB[i], v_AB);
-            x_B[i] = p.value;
-            v_B += p.var;
+        import core.simd;
+        static if(isNarrowComplex!C && is(typeof((float8 re, float8 im, float v){ auto a = prox(re, im, v); })))
+        {
+            v_B = 0;
+            C* p_AB = x_AB.sliced.iterator;
+            C* p_B = x_B.sliced.iterator;
+            immutable size_t LEN = x_AB.length;
+            size_t k = 0;
+            while(LEN - k >= 8) {
+                float8 re, im;
+                static foreach(i; 0 .. 8) {
+                    re[i] = x_AB[k + i].re;
+                    im[i] = x_AB[k + i].im;
+                }
+
+                auto p = prox(re, im, v_AB);
+                static foreach(i; 0 .. 8) {
+                    x_B[k + i].re = p.re[i]; 
+                    x_B[k + i].im = p.im[i];
+                    v_B += p.var;
+                }
+
+                k += 8;
+            }
+            {
+                float8 re = 0, im = 0;
+                foreach(i; 0 .. (LEN - k)) {
+                    re[i] = x_AB[k + i].re;
+                    im[i] = x_AB[k + i].im;
+                }
+                auto p = prox(re, im, v_AB);
+                foreach(i; 0 .. (LEN - k)) {
+                    x_B[k + i].re = p.re[i]; 
+                    x_B[k + i].im = p.im[i];
+                    v_B += p.var;
+                }
+            }
+
+            v_B /= x_AB.length;
         }
-        v_B /= x_AB.length;
+        else
+        {
+            v_B = 0;
+            foreach(i; 0 .. x_AB.length) {
+                auto p = prox(x_AB[i], v_AB);
+                x_B[i] = p.value;
+                v_B += p.var;
+            }
+            v_B /= x_AB.length;
+        }
 
         F vden = v_AB - v_B;
         if(fast_abs!F(vden) < EPS)
@@ -342,7 +397,11 @@ in(U.length!0 <= V.length!1)
     }
     // writeln("STOP");
 
-    return x_B;
+    // return x_B;
+
+    auto dst = vector!C(N);
+    dst[] = x_B;
+    return dst;
 }
 
 
