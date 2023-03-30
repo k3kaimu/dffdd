@@ -3,9 +3,10 @@ module dffdd.math.vector;
 import std.traits;
 
 import mir.ndslice;
+import dffdd.math.complex : isNarrowComplex;
 import dffdd.math.linalg;
 import std.experimental.allocator;
-import dffdd.math.exprtemplate : isExpressionTemplate;
+import dffdd.math.exprtemplate : isExpressionTemplate, TempMemoryManager;
 
 
 
@@ -48,6 +49,36 @@ auto makeVector(T, Alloc)(ref Alloc alloc, size_t size, T init)
 }
 
 
+Vector!(T, Contiguous) makeVectorFromTMM(T)(TempMemoryManager tmm, size_t n)
+{
+    auto s = tmm.makeSlice!T(n);
+    return typeof(return)(s, tmm);
+}
+
+
+Vector!(T, Contiguous) makeVectorFromTMM(T)(TempMemoryManager tmm, size_t n, T init)
+{
+    auto s = tmm.makeSlice!T(n);
+    s[] = init;
+    return typeof(return)(s, tmm);
+}
+
+
+Vector!(T, Contiguous) makeVectorFromTMM_SIMD(T, size_t N = 32 / T.sizeof)(TempMemoryManager tmm, size_t n)
+{
+    auto s = tmm.makeSlice!T((n / N + 1) * N);
+    return typeof(return)(s[0 .. n], tmm);
+}
+
+
+Vector!(T, Contiguous) makeVectorFromTMM_SIMD(T, size_t N = 32 / T.sizeof)(TempMemoryManager tmm, size_t n, T init)
+{
+    auto s = tmm.makeSlice!T((n / N + 1) * N);
+    s[] = init;
+    return typeof(return)(s[0 .. n], tmm);
+}
+
+
 enum isVectorLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
     T.ElementType e = t[i];
     size_t len = t.length;
@@ -81,6 +112,16 @@ struct VectoredSlice(Iterator, SliceKind kind)
     {
         _slice = s;
     }
+
+
+  static if(is(Iterator == ElementType*))
+  {
+    this(Slice!(Iterator, 1, kind) s, TempMemoryManager tmm)
+    {
+        _slice = s;
+        _tmm = tmm;
+    }
+  }
 
 
     size_t length() const @property { return _slice.length; }

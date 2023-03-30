@@ -60,6 +60,21 @@ auto disposeMatrix(T, Alloc, SliceKind kindA)(ref Alloc alloc, ref Matrix!(T*, k
 }
 
 
+Matrix!(T, Contiguous) makeMatrixFromTMM(T)(TempMemoryManager tmm, size_t row, size_t col)
+{
+    auto s = tmm.makeSlice!T(row, col);
+    return typeof(return)(s, tmm);
+}
+
+
+Matrix!(T, Contiguous) makeMatrixFromTMM(T)(TempMemoryManager tmm, size_t row, size_t col, T init)
+{
+    auto s = tmm.makeSlice!T(row, col);
+    s[] = init;
+    return typeof(return)(s, tmm);
+}
+
+
 enum isMatrixLike(T) = isExpressionTemplate!T && is(typeof((T t, size_t i){
     T.ElementType e = t[i, i];
     size_t rowlen = t.length!0;
@@ -94,6 +109,16 @@ struct MatrixedSlice(Iterator, SliceKind kind)
     {
         _slice = s;
     }
+
+
+  static if(is(Iterator == ElementType*))
+  {
+    this(Slice!(Iterator, 2, kind) s, TempMemoryManager tmm)
+    {
+        _slice = s;
+        _tmm = tmm;
+    }
+  }
 
 
     size_t length(size_t dim = 0)() const @property
