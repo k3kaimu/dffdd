@@ -291,7 +291,8 @@ in(U.length!0 <= V.length!1)
     auto x_BA = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
     auto x_B = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
 
-    auto vecAHinvXi = tmm.makeSlice!C(M);
+    // auto vecAHinvXi = tmm.makeSlice!C(M);
+    auto vecAHinvXi = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
 
     auto tmpVecM = tmm.makeVectorFromTMM_SIMD!(C, 4)(M, C(0));
     auto tmpVecN = tmm.makeVectorFromTMM_SIMD!(C, 4)(N, C(0));
@@ -341,8 +342,6 @@ in(U.length!0 <= V.length!1)
         static if(isNarrowComplex!C && is(typeof((float8 re, float8 im, float v){ auto a = prox(re, im, v); })))
         {
             v_B = 0;
-            C* p_AB = x_AB.sliced.iterator;
-            C* p_B = x_B.sliced.iterator;
             immutable size_t LEN = x_AB.length;
             size_t k = 0;
             while(LEN - k >= 8) {
