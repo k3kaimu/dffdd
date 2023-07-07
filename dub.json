@@ -24,7 +24,8 @@
         "mir-blas": "~>1.1.13",
         "dffdd_simd": { "path": "dffdd_simd" },
         "libcerf": "~>1.4.2",
-        "deint": "~>0.3.3"
+        "deint": "~>0.3.3",
+        "intel-intrinsics": "~>1.11.2"
     },
 
     "subConfigurations": {

@@ -200,18 +200,17 @@ SimResult runSimImpl(Mod)(SimParams!Mod params)
         if(totalbits > params.maxTotalbits)
             break;
 
-
         ++rndSeed;
         auto chFR = makeChannel(params, rndSeed);
 
         // 送信ビット系列の生成
-        swMod.start();
         Bit[] txbits;
         txbits = genBits(params.sefdm.nData * params.sefdm.mod.symInputLength, rndSeed, txbits);
-        swMod.stop();
 
         // RDFT-s-SEFDM変調
+        swMod.start();
         auto txsignal = modulateSEFDM(params.sefdm, txbits);
+        swMod.stop();
         auto rxsignal = txsignal.applyChannel(chFR);
         rxsignal = rxsignal.addAWGN(rndSeed, SIGMA2);
 

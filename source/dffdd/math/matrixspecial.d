@@ -1194,6 +1194,17 @@ struct PermutationMatrix
 
         _revperm = revperm;
         _isRev = isRev;
+
+        // make _p2list
+        size_t[] p2list = new size_t[perm.length - 1];
+        foreach(i; 0 .. perm.length - 1) {
+            size_t tidx = _fwdperm[i];
+            while(tidx < i)
+                tidx = _fwdperm[tidx];
+            
+            p2list[i] = tidx;
+        }
+        _p2list = p2list;
     }
 
 
@@ -1276,6 +1287,7 @@ struct PermutationMatrix
   private:
     const(size_t)[] _fwdperm;
     const(size_t)[] _revperm;
+    const(size_t)[] _p2list;
     bool _isRev;
 
 
@@ -1298,23 +1310,55 @@ struct PermutationMatrix
 
 
     static
-    void applyRowPermutation(T, size_t dim, SliceKind kindA)(Slice!(T*, dim, kindA) dst, const(size_t)[] plist)
+    void applyRowPermutation(T, size_t dim, SliceKind kindA)(Slice!(T*, dim, kindA) dst, const(size_t)[] p2list, bool isRev)
     {
-        import std.algorithm : swap;
-
         if(dst.length!0 < 2)
             return;
 
-        foreach(i; 0 .. dst.length!0 - 1) {
-            size_t tidx = plist[i];
-            while(tidx < i)
-                tidx = plist[tidx];
-            
+        static
+        void swap_by_blas(T, SliceKind kindX, SliceKind kindY)(Slice!(T*, 1, kindX) x, Slice!(T*, 1, kindY) y)
+        {
+            static if(isNarrowComplex!T) {{
+                import cblas;
+                alias F = typeof(T.init.re);
+                cblas.swap(
+                    cast(cblas.blasint) x.length,
+                    cast(MirComplex!F*) x.iterator,
+                    cast(cblas.blasint) x._stride,
+                    cast(MirComplex!F*) y.iterator,
+                    cast(cblas.blasint) y._stride,
+                );
+            }} else {
+                import mir.blas : swap;
+                swap(x, y);
+            }
+        }
+
+        void swap_impl(size_t i, size_t j)
+        {
             static if(dim == 2) {
-                foreach(j; 0 .. dst.length!1)
-                    swap(dst[i, j], dst[tidx, j]);
+                static if(isBlasType!T) {
+                    swap_by_blas(dst[i], dst[j]);
+                } else {
+                    import std.algorithm : swap;
+                    foreach(k; 0 .. dst.length!1)
+                        swap(dst[i, k], dst[j, k]);
+                }
             } else {
-                swap(dst[i], dst[tidx]);
+                import std.algorithm : swap;
+                swap(dst[i], dst[j]);
+            }
+        }
+
+        import dffdd.math.linalg : isBlasType;
+
+        if(!isRev) {
+            foreach(i, j; p2list) {                
+                swap_impl(i, j);
+            }
+        } else {
+            foreach_reverse(i, j; p2list) {                
+                swap_impl(i, j);
             }
         }
     }
@@ -1355,9 +1399,9 @@ struct PermutationMatrix
             _target.evalTo(dst, alloc);
 
             static if(isRowPerm)
-                applyRowPermutation(dst, !_pm._isRev ? _pm._fwdperm : _pm._revperm);
+                applyRowPermutation(dst, _pm._p2list, _pm._isRev);
             else
-                applyRowPermutation(dst.transposed, _pm._isRev ? _pm._fwdperm : _pm._revperm);
+                applyRowPermutation(dst.transposed, _pm._p2list, !_pm._isRev);
         }
 
 
@@ -1447,7 +1491,7 @@ struct PermutationMatrix
         in(dst.length == this.length)
         {
             _target.evalTo(dst, alloc);
-            applyRowPermutation(dst, !_pm._isRev ? _pm._fwdperm : _pm._revperm);
+            applyRowPermutation(dst, _pm._p2list, _pm._isRev);
         }
 
 
@@ -1496,7 +1540,7 @@ unittest
     auto mat = matrix!int(4, 4, 0);
     mat[0, 0] = 0; mat[1, 1] = 1; mat[2, 2] = 2; mat[3, 3] = 3;
     
-    auto mul1 = pm1 * mat;
+    auto mul1 = pm1._opB_Impl_!"*"(mat);
     static assert(isMatrixLike!(typeof(mul1)));
     assert(mul1[0, 0] == 0); assert(mul1[0, 1] == 1); assert(mul1[0, 2] == 0); assert(mul1[0, 3] == 0);
     assert(mul1[1, 0] == 0); assert(mul1[1, 1] == 0); assert(mul1[1, 2] == 0); assert(mul1[1, 3] == 3);

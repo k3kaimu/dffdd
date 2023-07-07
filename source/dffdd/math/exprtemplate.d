@@ -1316,6 +1316,11 @@ string definitionsOfVectorOperators(string[] list)
 
     if(canFind(list, "defaults"))
     dst ~= q{
+        unittest {
+            typeof(this) a;
+            checkIsVectorLike(a);
+        }
+
         auto opBinary(string op, X)(X rhs)
         if(op == "+" || op == "-" || op == "*")
         {
@@ -1472,6 +1477,12 @@ string definitionsOfMatrixOperators(string[] list)
 
     if(canFind(list, "defaults"))
     dst ~= q{
+        unittest {
+            typeof(this) a;
+            checkIsMatrixLike(a);
+        }
+
+
         auto opBinary(string op, X)(X rhs)
         if(op == "+" || op == "-" || op == "*")
         {
