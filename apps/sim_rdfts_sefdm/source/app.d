@@ -33,18 +33,23 @@ void main()
     auto env = defaultJobEnvironment();
     auto taskList = new MultiTaskList!void();
 
-    void run(string dir, size_t nFFT, size_t nTone, bool isChNorm, size_t nChTap, size_t nIter)
+    void run(string dir, size_t nFFT, size_t nTone, bool isChNorm, size_t nChTap, size_t nIter, Flag!"isPerfectChEst" isPerfectChEst, size_t numSymChEst, string chEstMethod)
     {
         import std.format;
         import std.json;
         import std.file;
         JSONValue[] berList;
 
-        auto filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s.json", dir, nFFT, isChNorm, nTone, nChTap, nIter);
+        string filename;
+        if(isPerfectChEst)
+            filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s_perfect.json", dir, nFFT, isChNorm, nTone, nChTap, nIter);
+        else
+            filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s_EstCh%s_%s.json", dir, nFFT, isChNorm, nTone, nChTap, nIter, numSymChEst, chEstMethod);
+
         if(std.file.exists(filename))
             return;
 
-        writefln!"[nFFT = %s, isChNorm = %s, nTone = %s, nChTap = %s, nIter = %s]"(nFFT, isChNorm, nTone, nChTap, nIter);
+        writefln!"[nFFT = %s, isChNorm = %s, nTone = %s, nChTap = %s, nIter = %s, Perfect = %s, numSymChEst = %s, chEstMethod = %s]"(nFFT, isChNorm, nTone, nChTap, nIter, isPerfectChEst, numSymChEst, chEstMethod);
         foreach(vEbN0dB; iota(21)) {
             SimParams!(QPSK!C) params;
             params.sefdm.nFFT = nFFT;
@@ -54,6 +59,9 @@ void main()
             params.vEbN0dB = vEbN0dB;
             params.nChTaps = nChTap;
             params.isChNorm = isChNorm;
+            params.isPerfectChEst = isPerfectChEst;
+            params.numSymChEst = numSymChEst;
+            params.chEstMethod = chEstMethod;
             params.rndSeed = 0;
 
             auto simResult = runSimImpl(params);
@@ -69,11 +77,12 @@ void main()
         std.file.write(filename, JSONValue(berList).toString());
     }
 
+    /+
     // AWGN
     foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
         mkdirRecurse("AWGN");
         foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
-            taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20);
+            taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1);
         }
     }
 
@@ -82,14 +91,44 @@ void main()
         mkdirRecurse("Rayleigh");
         foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
         foreach(nChTap; [1, 4, 8, 16, 32, 64]) {
-            taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20);
+            taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, Yes.isPerfectChEst, 1);
         }
     }
 
     foreach(nFFT; [2048]) {
         mkdirRecurse("Rayleigh_Iter");
         foreach(nIter; iota(2, 41, 2)) {
-            taskList.append(&run, "Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, 8, nIter);
+            taskList.append(&run, "Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, 8, nIter, Yes.isPerfectChEst, 1);
+        }
+    }
+    +/
+
+    // AWGN, nonPerfectChEst
+    foreach(chEstMethod; ["ZF", "MMSE"]) {
+        foreach(numSymChEst; [0, 1, 2, 4, 8, 16]) {
+            foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
+                mkdirRecurse("AWGN");
+                foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
+                    if(numSymChEst == 0)
+                        taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1, chEstMethod);
+                    else
+                        taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, No.isPerfectChEst, numSymChEst, chEstMethod);
+                }
+            }
+        }
+
+        // Rayleigh, nonPerfectChEst
+        foreach(numSymChEst; [0, 1, 2, 4, 8, 16]) {
+            foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
+                mkdirRecurse("Rayleigh");
+                foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
+                foreach(nChTap; [1, 4, 8, 16, 32, 64]) {
+                    if(numSymChEst == 0)
+                        taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, Yes.isPerfectChEst, 0, chEstMethod);
+                    else
+                        taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, No.isPerfectChEst, numSymChEst, chEstMethod);
+                }
+            }
         }
     }
 
@@ -135,6 +174,9 @@ struct SimParams(Mod)
     size_t minTotalbits = 1_000_000;
     size_t nChTaps = 8;
     bool isChNorm = false;
+    bool isPerfectChEst = true;
+    string chEstMethod = "ZF";
+    size_t numSymChEst = 1;
     size_t rndSeed;
 }
 
@@ -173,8 +215,11 @@ SimResult runSimImpl(Mod)(SimParams!Mod params)
         auto rxsignal = txsignal.applyChannel(chFR);
         rxsignal = rxsignal.addAWGN(rndSeed, SIGMA2);
 
+        // OFDMによるチャネル推定
+        auto estChFR = estimateChannelByOFDM(params, chFR, SIGMA2);
+
         swDem.start();
-        Bit[] rxbits = demodulateSEFDM(params.sefdm, rxsignal, chFR, SIGMA2);
+        Bit[] rxbits = demodulateSEFDM(params.sefdm, rxsignal, estChFR, SIGMA2);
         // auto rxbits = sefdm.demodulate(txsignal);
         swDem.stop();
         errbits += txbits.zip(rxbits).map!"a[0] != a[1] ? 1 : 0".sum();
@@ -350,7 +395,7 @@ C[] makeChannel(Mod)(in ref SimParams!Mod params, size_t rndSeed)
 }
 
 
-C[] applyChannel(C[] sig, C[] chFR)
+C[] applyChannel(in C[] sig, in C[] chFR)
 in(sig.length == chFR.length)
 {
     auto fftw = makeFFTWObject!(TemplateOf!C)(sig.length);
@@ -365,4 +410,62 @@ in(sig.length == chFR.length)
 
 
     return fftw.outputs!F().dup;
+}
+
+
+
+C[] estimateChannelByOFDM(Mod)(in ref SimParams!Mod params, in C[] chFR, double SIGMA2)
+{
+    if(params.isPerfectChEst) {
+        return chFR.dup;
+    }
+
+    C[] estChFR = new C[params.sefdm.nFFT];
+    estChFR[] = C(0);
+
+    auto fftw = makeFFTWObject!(TemplateOf!C)(params.sefdm.nFFT);
+
+    // チャネル推定用のOFDMを生成する
+    C[] ofdm;
+    C[] scs;
+    {
+        foreach(i; 0 .. params.sefdm.nTone)
+            fftw.inputs!F[i] = (i % 2 == 0) ? 1 : -1;
+
+        scs = fftw.inputs!F.dup;
+        fftw.ifft!F();
+        foreach(ref e; fftw.outputs!F[]) {
+            e *= sqrt(params.sefdm.nFFT * 1.0);          // IFFTをユニタリにする
+        }
+
+        ofdm = fftw.outputs!F.dup;
+    }
+
+    foreach(i; 0 .. params.numSymChEst) {
+        auto sig = ofdm.dup;
+        auto rxsignal = sig.applyChannel(chFR);
+        rxsignal = rxsignal.addAWGN(i, SIGMA2);
+
+        fftw.inputs!F[] = rxsignal[];
+        fftw.fft!F();
+        foreach(ref e; fftw.outputs!F[]) {
+            e /= sqrt(params.sefdm.nFFT * 1.0);          // FFTをユニタリにする
+        }
+
+        foreach(j; 0 .. params.sefdm.nTone) {
+            if(params.chEstMethod == "MMSE")
+                estChFR[j] += fftw.outputs!F[j] / (scs[j].sqAbs + SIGMA2) * scs[j].conj;
+            else if(params.chEstMethod == "ZF")
+                estChFR[j] += fftw.outputs!F[j] / scs[j];
+            else {
+                import std.exception;
+                enforce(0, "Unknow channel estimation method");
+            }
+        }
+    }
+
+    foreach(i; 0 .. params.sefdm.nFFT)
+        estChFR[i] /= params.numSymChEst;
+
+    return estChFR;
 }
