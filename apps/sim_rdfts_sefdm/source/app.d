@@ -77,12 +77,11 @@ void main()
         std.file.write(filename, JSONValue(berList).toString());
     }
 
-    /+
     // AWGN
     foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
         mkdirRecurse("AWGN");
         foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
-            taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1);
+            taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1, null);
         }
     }
 
@@ -91,20 +90,19 @@ void main()
         mkdirRecurse("Rayleigh");
         foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
         foreach(nChTap; [1, 4, 8, 16, 32, 64]) {
-            taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, Yes.isPerfectChEst, 1);
+            taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, Yes.isPerfectChEst, 1, null);
         }
     }
 
     foreach(nFFT; [2048]) {
         mkdirRecurse("Rayleigh_Iter");
         foreach(nIter; iota(2, 41, 2)) {
-            taskList.append(&run, "Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, 8, nIter, Yes.isPerfectChEst, 1);
+            taskList.append(&run, "Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, 8, nIter, Yes.isPerfectChEst, 1, null);
         }
     }
-    +/
 
-    // AWGN, nonPerfectChEst
     foreach(chEstMethod; ["ZF", "MMSE"]) {
+        // AWGN, nonPerfectChEst
         foreach(numSymChEst; [0, 1, 2, 4, 8, 16]) {
             foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
                 mkdirRecurse("AWGN");
