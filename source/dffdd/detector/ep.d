@@ -192,6 +192,24 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
     }
 
 
+    ref inout(MatU) channelLeftSingularMatrix() inout
+    {
+        return _chMatU;
+    }
+
+
+    ref inout(MatV) channelRightSingularMatrix() inout
+    {
+        return _chMatV;
+    }
+
+
+    ref inout(Vector!(F, Contiguous)) channelSingularValues() inout
+    {
+        return _chMatSigma;
+    }
+
+
   private:
     Mod _mod; 
     Vector!(F, Contiguous) _rowScales;
@@ -220,6 +238,8 @@ unittest
     assert(dst[0].im.isClose(recv[0].im));
     assert(dst[1].re.isClose(recv[1].re));
     assert(dst[1].im.isClose(recv[1].im));
+
+    detector.channelSingularValues[] = detector.channelSingularValues / 2;
 }
 
 unittest
