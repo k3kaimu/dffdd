@@ -401,7 +401,9 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
     }
 
 
-    mixin(definitionsOfMatrixOperators(["defaults", "M*M"]));
+    mixin(definitionsOfMatrixOperators(
+            ["defaults", "M*M"]
+            ~ (isZeros!MatC ? [] : ["M+M"])));
 
 
     auto T()()
@@ -476,10 +478,10 @@ struct MatrixMatrixMulGEMM(S, MatA, MatB, MatC)
             return matrixGemm(op == "+" ? _alpha : -alpha, _matA, _matB, ElementType(1), mat);
     }
   }
-  else
-  {
-    mixin(definitionsOfMatrixOperators(["M+M"]));
-  }
+//   else
+//   {
+//     mixin(definitionsOfMatrixOperators(["M+M"]));
+//   }
 
 
   private:
@@ -588,7 +590,8 @@ unittest
 
     auto vec1 = [2, 3].sliced.vectored;
 
-    auto z1 = mat1 * mat2 * 2 + mat3 * 3;
+    // auto z1 = mat1 * mat2 * 2 + mat3 * 3;
+    auto z1 = (mat1 * mat2 * 2)._opB_Impl_!"+"(mat3 * 3);
     assert(z1.makeViewOrNewSlice(theAllocator).view == [[20, 29], [62, 89]]);
 
     auto z2 = z1 * vec1;
@@ -816,7 +819,10 @@ if(isMatrixLike!MatA && isMatrixLike!MatB)
 
 
     // mixin MatrixOperators!(["M+M", "M*M"]) OpImpls;
-    mixin(definitionsOfMatrixOperators(["defaults", ".H", ".T"]));
+    mixin(definitionsOfMatrixOperators(
+        ["defaults", ".H", ".T"]
+        ~ (isZeros!MatB ? [] : ["M+M", "M*M", "M*V"])
+    ));
 
 
     auto _opB_Impl_(string op : "*", U)(U u)
@@ -869,10 +875,10 @@ if(isMatrixLike!MatA && isMatrixLike!MatB)
         return _alpha * (mat * _matA);
     }
   }
-  else
-  {
-    mixin(definitionsOfMatrixOperators(["M+M", "M*M", "M*V"]));
-  }
+//   else
+//   {
+//     mixin(definitionsOfMatrixOperators(["M+M", "M*M", "M*V"]));
+//   }
 
 
   private:
