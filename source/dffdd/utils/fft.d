@@ -85,7 +85,7 @@ if(!isArray!R1 || !isArray!R2)
 /**
 
 */
-void fft(F, FftObj, Ri, Ro)(FftObj obj, Ri input, Ro output)
+void fft(F, FftObj, Ri, Ro)(FftObj obj, Ri input, Ro output, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ri && isComplex!(Unqual!(ElementType!Ri), F)
         && isInputRange!Ro && hasAssignableElements!Ro)
 in{
@@ -97,12 +97,12 @@ in{
 }
 do{
     fastCopy(input, obj.inputs!F);
-    obj.fft!F();
+    obj.fft!F(isNormalized);
     fastCopy(obj.outputs!F, output);
 }
 
 
-auto fft(F = void, Ri)(Ri input)
+auto fft(F = void, Ri)(Ri input, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ri && hasLength!Ri)
 do{
     static if(is(F == void)) {
@@ -113,7 +113,7 @@ do{
 
     auto obj = makePhobosFFTObject!Complex(input.length);
     fastCopy(input, obj.inputs!F_);
-    obj.fft!F_();
+    obj.fft!F_(isNormalized);
     return obj.outputs!F_.dup;
 }
 
@@ -122,24 +122,49 @@ do{
 unittest
 {
     auto fftObj = makePhobosFFTObject!Complex(2);
+    auto fftw = makeFFTWObject!Complex(2);
 
-    foreach(F; AliasSeq!(float, double, real))
+
+    static foreach(alias obj; AliasSeq!(fftObj, fftw))
     {
-        Complex!F[] inps = new Complex!F[2],
-                    outs = new Complex!F[2];
+        foreach(F; AliasSeq!(float, double, real))
+        {
+            Complex!F[] inps = new Complex!F[2],
+                        outs = new Complex!F[2];
 
-        .fft!F(fftObj, [complex!F(1, 1), complex!F(1, 1)], outs);
+            .fft!F(obj, [complex!F(1, 1), complex!F(1, 1)], outs);
 
-        auto outs2 = .fft([complex!F(1, 1), complex!F(1, 1)]);
+            auto outs2 = .fft([complex!F(1, 1), complex!F(1, 1)]);
 
-        assert(isClose(outs[0].re, 2));
-        assert(isClose(outs[0].im, 2));
-        assert(isClose(outs[1].re, 0));
-        assert(isClose(outs[1].re, 0));
-        assert(isClose(outs2[0].re, 2));
-        assert(isClose(outs2[0].im, 2));
-        assert(isClose(outs2[1].re, 0));
-        assert(isClose(outs2[1].re, 0));
+            assert(isClose(outs[0].re, 2));
+            assert(isClose(outs[0].im, 2));
+            assert(isClose(outs[1].re, 0));
+            assert(isClose(outs[1].re, 0));
+            assert(isClose(outs2[0].re, 2));
+            assert(isClose(outs2[0].im, 2));
+            assert(isClose(outs2[1].re, 0));
+            assert(isClose(outs2[1].re, 0));
+        }
+
+
+        foreach(F; AliasSeq!(float, double, real))
+        {
+            Complex!F[] inps = new Complex!F[2],
+                        outs = new Complex!F[2];
+
+            .fft!F(obj, [complex!F(1, 1), complex!F(1, 1)], outs, Yes.isNormalized);
+
+            auto outs2 = .fft([complex!F(1, 1), complex!F(1, 1)], Yes.isNormalized);
+
+            assert(isClose(outs[0].re, SQRT2));
+            assert(isClose(outs[0].im, SQRT2));
+            assert(isClose(outs[1].re, 0));
+            assert(isClose(outs[1].re, 0));
+            assert(isClose(outs2[0].re, SQRT2));
+            assert(isClose(outs2[0].im, SQRT2));
+            assert(isClose(outs2[1].re, 0));
+            assert(isClose(outs2[1].re, 0));
+        }
     }
 }
 
@@ -147,7 +172,7 @@ unittest
 /**
 
 */
-void fftFrom(F, FftObj, Ri)(FftObj obj, Ri input)
+void fftFrom(F, FftObj, Ri)(FftObj obj, Ri input, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ri && isComplex!(Unqual!(ElementType!Ri), F))
 in{
     static if(hasLength!Ri)
@@ -155,7 +180,7 @@ in{
 }
 do{
     fastCopy(input, obj.inputs!F);
-    obj.fft!F();
+    obj.fft!F(isNormalized);
 }
 
 ///
@@ -180,14 +205,14 @@ unittest
 /**
 
 */
-void fftTo(F, FftObj, Ro)(FftObj obj, Ro output)
+void fftTo(F, FftObj, Ro)(FftObj obj, Ro output, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ro && hasAssignableElements!Ro)
 in{
     static if(hasLength!Ro)
         assert(output.length == obj.outputs!F.length);
 }
 do{
-    obj.fft!F();
+    obj.fft!F(isNormalized);
     fastCopy(obj.outputs!F, output);
 }
 
@@ -215,7 +240,7 @@ unittest
 /**
 
 */
-void ifft(F, FftObj, Ri, Ro)(FftObj obj, Ri input, Ro output)
+void ifft(F, FftObj, Ri, Ro)(FftObj obj, Ri input, Ro output, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ri && isComplex!(Unqual!(ElementType!Ri), F)
         && isInputRange!Ro && hasAssignableElements!Ro)
 in{
@@ -227,7 +252,7 @@ in{
 }
 do{
     fastCopy(input, obj.inputs!F);
-    obj.ifft!F();
+    obj.ifft!F(isNormalized);
     fastCopy(obj.outputs!F, output);
 }
 
@@ -235,7 +260,7 @@ do{
 /**
 
 */
-auto ifft(F = void, Ri)(Ri input)
+auto ifft(F = void, Ri)(Ri input, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ri && hasLength!Ri)
 {
     static if(is(F == void)) {
@@ -246,7 +271,7 @@ if(isInputRange!Ri && hasLength!Ri)
 
     auto obj = makePhobosFFTObject!Complex(input.length);
     fastCopy(input, obj.inputs!F_);
-    obj.ifft!F_();
+    obj.ifft!F_(isNormalized);
     return obj.outputs!F_.dup;
 }
 
@@ -255,24 +280,47 @@ if(isInputRange!Ri && hasLength!Ri)
 unittest
 {
     auto fftObj = makePhobosFFTObject!Complex(2);
+    auto fftw = makeFFTWObject!Complex(2);
 
-    foreach(F; AliasSeq!(float, double, real))
+    static foreach(alias obj; AliasSeq!(fftObj, fftw))
     {
-        Complex!F[] inps = new Complex!F[2],
-                    outs = new Complex!F[2];
+        foreach(F; AliasSeq!(float, double, real))
+        {
+            Complex!F[] inps = new Complex!F[2],
+                        outs = new Complex!F[2];
 
-        .ifft!F(fftObj, [complex!F(2, 2), complex!F(0, 0)], outs);
+            .ifft!F(obj, [complex!F(2, 2), complex!F(0, 0)], outs);
 
-        auto out2 = ifft!F([complex!F(2, 2), complex!F(0, 0)]);
+            auto out2 = ifft!F([complex!F(2, 2), complex!F(0, 0)]);
 
-        assert(isClose(outs[0].re, 1));
-        assert(isClose(outs[0].im, 1));
-        assert(isClose(outs[1].re, 1));
-        assert(isClose(outs[1].re, 1));
-        assert(isClose(out2[0].re, 1));
-        assert(isClose(out2[0].im, 1));
-        assert(isClose(out2[1].re, 1));
-        assert(isClose(out2[1].re, 1));
+            assert(isClose(outs[0].re, 1));
+            assert(isClose(outs[0].im, 1));
+            assert(isClose(outs[1].re, 1));
+            assert(isClose(outs[1].re, 1));
+            assert(isClose(out2[0].re, 1));
+            assert(isClose(out2[0].im, 1));
+            assert(isClose(out2[1].re, 1));
+            assert(isClose(out2[1].re, 1));
+        }
+
+        foreach(F; AliasSeq!(float, double, real))
+        {
+            Complex!F[] inps = new Complex!F[2],
+                        outs = new Complex!F[2];
+
+            .ifft!F(obj, [complex!F(2, 2), complex!F(0, 0)], outs, Yes.isNormalized);
+
+            auto out2 = ifft!F([complex!F(2, 2), complex!F(0, 0)], Yes.isNormalized);
+
+            assert(isClose(outs[0].re, SQRT2));
+            assert(isClose(outs[0].im, SQRT2));
+            assert(isClose(outs[1].re, SQRT2));
+            assert(isClose(outs[1].re, SQRT2));
+            assert(isClose(out2[0].re, SQRT2));
+            assert(isClose(out2[0].im, SQRT2));
+            assert(isClose(out2[1].re, SQRT2));
+            assert(isClose(out2[1].re, SQRT2));
+        }
     }
 }
 
@@ -281,7 +329,7 @@ unittest
 /**
 
 */
-void ifftFrom(F, FftObj, Ri)(FftObj obj, Ri input)
+void ifftFrom(F, FftObj, Ri)(FftObj obj, Ri input, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ri && isComplex!(Unqual!(ElementType!Ri), F))
 in{
     static if(hasLength!Ri)
@@ -289,7 +337,7 @@ in{
 }
 do{
     fastCopy(input, obj.inputs!F);
-    obj.ifft!F();
+    obj.ifft!F(isNormalized);
 }
 
 ///
@@ -314,14 +362,14 @@ unittest
 /**
 
 */
-void ifftTo(F, FftObj, Ro)(FftObj obj, Ro output)
+void ifftTo(F, FftObj, Ro)(FftObj obj, Ro output, Flag!"isNormalized" isNormalized = No.isNormalized)
 if(isInputRange!Ro && hasAssignableElements!Ro)
 in{
     static if(hasLength!Ro)
         assert(output.length == obj.outputs!F.length);
 }
 do{
-    obj.ifft!F();
+    obj.ifft!F(isNormalized);
     fastCopy(obj.outputs!F, output);
 }
 
@@ -520,20 +568,30 @@ struct FFTWObjectImpl(alias Cpx)
     }
 
 
-    void fft(F)()
+    void fft(F)(Flag!"isNormalized" isNormalized = No.isNormalized)
     {
         fftImpl!(F, FFTW_FORWARD);
+
+        if(isNormalized) {
+            immutable F scale = 1/std.math.sqrt(_fftsize * 1.0);
+            foreach(i; 0 .. _fftsize){
+                static if(is(F == float)) _float_out[i] *= scale;
+                else static if(is(F == double)) _double_out[i] *= scale;
+                else static if(is(F == real)) _real_out[i] *= scale;
+            }
+        }
     }
 
 
-    void ifft(F)()
+    void ifft(F)(Flag!"isNormalized" isNormalized = No.isNormalized)
     {
         fftImpl!(F, FFTW_BACKWARD);
 
+        immutable F scale = isNormalized ? 1/std.math.sqrt(_fftsize * 1.0) : 1/(_fftsize*1.0);
         foreach(i; 0 .. _fftsize){
-            static if(is(F == float)) _float_out[i] /= _fftsize;
-            else static if(is(F == double)) _double_out[i] /= _fftsize;
-            else static if(is(F == real)) _real_out[i] /= _fftsize;
+            static if(is(F == float)) _float_out[i] *= scale;
+            else static if(is(F == double)) _double_out[i] *= scale;
+            else static if(is(F == real)) _real_out[i] *= scale;
         }
     }
 
@@ -700,7 +758,7 @@ final class PhobosFFTObject(alias Cpx)
     }
 
 
-    void fft(F)()
+    void fft(F)(Flag!"isNormalized" isNormalized = No.isNormalized)
     {
       static if(is(F == float))
       {
@@ -718,11 +776,17 @@ final class PhobosFFTObject(alias Cpx)
         auto op = cast(Complex!F*)(_real_out.ptr);
       }
 
-      _impl.fft(ip[0 .. _size], op[0 .. _size]);
+        _impl.fft(ip[0 .. _size], op[0 .. _size]);
+        if(isNormalized) {
+            immutable F scale = 1/std.math.sqrt(_size * 1.0);
+            foreach(i; 0 .. _size){
+                op[i] *= scale;
+            }
+        }
     }
 
 
-    void ifft(F)()
+    void ifft(F)(Flag!"isNormalized" isNormalized = No.isNormalized)
     {
       static if(is(F == float))
       {
@@ -740,7 +804,13 @@ final class PhobosFFTObject(alias Cpx)
         auto op = cast(Complex!F*)(_real_out.ptr);
       }
 
-      _impl.inverseFft(ip[0 .. _size], op[0 .. _size]);
+        _impl.inverseFft(ip[0 .. _size], op[0 .. _size]);
+        if(isNormalized) {
+            immutable F scale = std.math.sqrt(_size * 1.0);
+            foreach(i; 0 .. _size){
+                op[i] *= scale;
+            }
+        }
     }
 
 
