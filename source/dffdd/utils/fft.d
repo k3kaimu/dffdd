@@ -101,6 +101,23 @@ do{
     fastCopy(obj.outputs!F, output);
 }
 
+
+auto fft(F = void, Ri)(Ri input)
+if(isInputRange!Ri && hasLength!Ri)
+do{
+    static if(is(F == void)) {
+        alias F_ = typeof(ElementType!Ri.init.re);
+    } else {
+        alias F_ = F;
+    }
+
+    auto obj = makePhobosFFTObject!Complex(input.length);
+    fastCopy(input, obj.inputs!F_);
+    obj.fft!F_();
+    return obj.outputs!F_.dup;
+}
+
+
 ///
 unittest
 {
@@ -113,10 +130,16 @@ unittest
 
         .fft!F(fftObj, [complex!F(1, 1), complex!F(1, 1)], outs);
 
+        auto outs2 = .fft([complex!F(1, 1), complex!F(1, 1)]);
+
         assert(isClose(outs[0].re, 2));
         assert(isClose(outs[0].im, 2));
         assert(isClose(outs[1].re, 0));
         assert(isClose(outs[1].re, 0));
+        assert(isClose(outs2[0].re, 2));
+        assert(isClose(outs2[0].im, 2));
+        assert(isClose(outs2[1].re, 0));
+        assert(isClose(outs2[1].re, 0));
     }
 }
 
@@ -208,6 +231,26 @@ do{
     fastCopy(obj.outputs!F, output);
 }
 
+
+/**
+
+*/
+auto ifft(F = void, Ri)(Ri input)
+if(isInputRange!Ri && hasLength!Ri)
+{
+    static if(is(F == void)) {
+        alias F_ = typeof(ElementType!Ri.init.re);
+    } else {
+        alias F_ = F;
+    }
+
+    auto obj = makePhobosFFTObject!Complex(input.length);
+    fastCopy(input, obj.inputs!F_);
+    obj.ifft!F_();
+    return obj.outputs!F_.dup;
+}
+
+
 ///
 unittest
 {
@@ -220,10 +263,16 @@ unittest
 
         .ifft!F(fftObj, [complex!F(2, 2), complex!F(0, 0)], outs);
 
+        auto out2 = ifft!F([complex!F(2, 2), complex!F(0, 0)]);
+
         assert(isClose(outs[0].re, 1));
         assert(isClose(outs[0].im, 1));
         assert(isClose(outs[1].re, 1));
         assert(isClose(outs[1].re, 1));
+        assert(isClose(out2[0].re, 1));
+        assert(isClose(out2[0].im, 1));
+        assert(isClose(out2[1].re, 1));
+        assert(isClose(out2[1].re, 1));
     }
 }
 
