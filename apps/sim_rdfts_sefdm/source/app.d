@@ -10,6 +10,7 @@ import std.traits;
 
 import dffdd.mod;
 import dffdd.utils.fft;
+import dffdd.mod.sefdm;
 
 import tuthpc.taskqueue;
 
@@ -33,7 +34,7 @@ void main()
     auto env = defaultJobEnvironment();
     auto taskList = new MultiTaskList!void();
 
-    void run(string dir, size_t nFFT, size_t nTone, bool isChNorm, size_t nChTap, size_t nIter, Flag!"isPerfectChEst" isPerfectChEst, size_t numSymChEst, string chEstMethod)
+    void run(string dir, uint nFFT, uint nTone, bool isChNorm, uint nChTap, uint nIter, Flag!"isPerfectChEst" isPerfectChEst, size_t numSymChEst, string chEstMethod)
     {
         import std.format;
         import std.json;
@@ -54,6 +55,7 @@ void main()
             SimParams!(QPSK!C) params;
             params.sefdm.nFFT = nFFT;
             params.sefdm.nTone = nTone;
+            params.sefdm.nData = nFFT;
             params.sefdm.nIter = nIter;
             params.sefdm.rndSeed = 0;
             params.vEbN0dB = vEbN0dB;
@@ -84,6 +86,7 @@ void main()
             taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1, null);
         }
     }
+
 
     // Rayleigh
     foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
@@ -155,10 +158,10 @@ struct SimResult
 struct RDFTsSEFDMParams(Mod)
 {
     Mod mod;
-    size_t nFFT;
-    size_t nTone;
-    size_t rndSeed = 0;
-    size_t nIter;
+    uint nFFT;
+    uint nTone;
+    uint rndSeed = 0;
+    uint nIter;
     alias nData = nFFT;
 }
 
@@ -183,7 +186,7 @@ SimResult runSimImpl(Mod)(SimParams!Mod params)
 {
     import std.datetime.stopwatch;
 
-    immutable double SIGMA2 = 1.0 / (10^^(params.vEbN0dB/10.0) * params.sefdm.mod.symInputLength);
+    immutable double SIGMA2 = 1.0 / (10^^(params.vEbN0dB/10.0) * params.sefdm.mod.symInputLength) * params.sefdm.nFFT / params.sefdm.nData;
 
     size_t totalbits = 0;
     size_t errbits = 0;
@@ -237,86 +240,98 @@ SimResult runSimImpl(Mod)(SimParams!Mod params)
 C[] modulateSEFDM(Mod)(in ref RDFTsSEFDMParams!Mod params, Bit[] txbits)
 in(txbits.length == params.mod.symInputLength * params.nData)
 {
-    import std;
-    import dffdd.utils.fft;
+    auto sefdm = new RDFTsSEFDM!(Mod, C)(params.mod, params.nFFT, 0, params.nTone, 1, params.nData, null, params.rndSeed);
 
-    C[] scmod;
-    scmod = params.mod.modulate(txbits, scmod);
+    C[] dst;
+    return sefdm.modulate(txbits, dst);
+    // import std;
+    // import dffdd.utils.fft;
 
-    auto fftw = makeFFTWObject!(TemplateOf!C)(params.nData);
+    // C[] scmod;
+    // scmod = params.mod.modulate(txbits, scmod);
 
-    // DFTスプレッド
-    fftw.inputs!F[] = scmod[];
-    fftw.fft!F();
-    scmod[] = fftw.outputs!F[];
-    foreach(ref e; scmod) {
-        e /= sqrt(scmod.length * 1.0);          // FFTをユニタリにする
-        e /= sqrt(params.nTone * 1.0 / params.nData);  // 1/sqrt(alpha)
-    }
+    // auto fftw = makeFFTWObject!(TemplateOf!C)(params.nData);
 
-    // ランダムシャッフル
-    auto rnd = makeRNG(params.rndSeed, "RND_SHUF_SEFDM");
-    scmod = randomShuffle(scmod, rnd);
+    // // DFTスプレッド
+    // fftw.inputs!F[] = scmod[];
+    // fftw.fft!F();
+    // scmod[] = fftw.outputs!F[];
+    // foreach(ref e; scmod) {
+    //     e /= sqrt(scmod.length * 1.0);          // FFTをユニタリにする
+    //     e /= sqrt(params.nTone * 1.0 / params.nData);  // 1/sqrt(alpha)
+    // }
 
-    // 帯域圧縮
-    scmod.length = params.nFFT;
-    scmod[params.nTone .. $] = C(0);
+    // // ランダムシャッフル
+    // auto rnd = makeRNG(params.rndSeed, "RND_SHUF_SEFDM");
+    // scmod = randomShuffle(scmod, rnd);
 
-    fftw = makeFFTWObject!(TemplateOf!C)(params.nFFT);
-    fftw.inputs!F[] = scmod;
-    fftw.ifft!F();
-    scmod[] = fftw.outputs!F[];
-    foreach(ref e; scmod) {
-        e *= sqrt(scmod.length * 1.0);          // IFFTをユニタリにする
-    }
+    // // 帯域圧縮
+    // scmod.length = params.nFFT;
+    // scmod[params.nTone .. $] = C(0);
 
-    return scmod;
+    // fftw = makeFFTWObject!(TemplateOf!C)(params.nFFT);
+    // fftw.inputs!F[] = scmod;
+    // fftw.ifft!F();
+    // scmod[] = fftw.outputs!F[];
+    // foreach(ref e; scmod) {
+    //     e *= sqrt(scmod.length * 1.0);          // IFFTをユニタリにする
+    // }
+
+    // return scmod;
 }
 
 
 Bit[] demodulateSEFDM(Mod)(in ref RDFTsSEFDMParams!Mod params, C[] rxsignal, C[] chFR, double N0)
 {
-    import std;
+    auto sefdm = new RDFTsSEFDM!(Mod, C)(params.mod, params.nFFT, 0, params.nTone, 1, params.nData, null, params.rndSeed, N0, params.nIter);
+
     import mir.ndslice : sliced;
-    import dffdd.math;
-    import dffdd.detector.ep;
-    import dffdd.utils.fft;
+    import dffdd.math.vector : vectored;
+    sefdm.epDetector.channelSingularValues[] = chFR.sliced.vectored;
 
-    // DFTスプレッド
-    auto W1 = dftMatrix!C(params.nData);
+    Bit[] dst;
+    return sefdm.demodulate(rxsignal, dst);
+    // import std;
+    // import mir.ndslice : sliced;
+    // import dffdd.math;
+    // import dffdd.detector.ep;
+    // import dffdd.utils.fft;
 
-    // ランダムシャッフル
-    auto rnd = makeRNG(params.rndSeed, "RND_SHUF_SEFDM");
-    size_t[] plist = iota(params.nData).map!"cast(size_t)a".array();
-    plist = randomShuffle(plist, rnd);
-    auto P = PermutationMatrix(plist);
+    // // DFTスプレッド
+    // auto W1 = dftMatrix!C(params.nData);
 
-    // 圧縮&電力割当
-    C[] dlist = new C[params.nTone];
-    dlist[] = C(1/sqrt(params.nTone * 1.0 / params.nData));
-    foreach(i; 0 .. params.nTone)
-        dlist[i] *= chFR[i];
+    // // ランダムシャッフル
+    // auto rnd = makeRNG(params.rndSeed, "RND_SHUF_SEFDM");
+    // size_t[] plist = iota(params.nData).map!"cast(size_t)a".array();
+    // plist = randomShuffle(plist, rnd);
+    // auto P = PermutationMatrix(plist);
 
-    // auto W2 = idftMatrix!C(params.nFFT);
-    // EP復調器
-    auto detector = makeSVDEPDetector!C(params.mod, identity!C(params.nTone), dlist.sliced.vectored, P * W1, N0, params.nIter);
+    // // 圧縮&電力割当
+    // C[] dlist = new C[params.nTone];
+    // dlist[] = C(1/sqrt(params.nTone * 1.0 / params.nData));
+    // foreach(i; 0 .. params.nTone)
+    //     dlist[i] *= chFR[i];
 
-    // 受信信号を周波数領域へ変換
-    {
-        auto fftw = makeFFTWObject!(TemplateOf!C)(params.nFFT);
-        fftw.inputs!F[] = rxsignal[];
-        fftw.fft!F();
-        rxsignal[] = fftw.outputs!F[];
-        foreach(ref e; rxsignal)
-            e /= sqrt(params.nFFT * 1.0);
-    }
+    // // auto W2 = idftMatrix!C(params.nFFT);
+    // // EP復調器
+    // auto detector = makeSVDEPDetector!C(params.mod, identity!C(params.nTone), dlist.sliced.vectored, P * W1, N0, params.nIter);
 
-    C[] detected;
-    detected = detector.detect(rxsignal[0 .. params.nTone], detected);
+    // // 受信信号を周波数領域へ変換
+    // {
+    //     auto fftw = makeFFTWObject!(TemplateOf!C)(params.nFFT);
+    //     fftw.inputs!F[] = rxsignal[];
+    //     fftw.fft!F();
+    //     rxsignal[] = fftw.outputs!F[];
+    //     foreach(ref e; rxsignal)
+    //         e /= sqrt(params.nFFT * 1.0);
+    // }
 
-    Bit[] demodBits;
-    demodBits = params.mod.demodulate(detected, demodBits);
-    return demodBits;
+    // C[] detected;
+    // detected = detector.detect(rxsignal[0 .. params.nTone], detected);
+
+    // Bit[] demodBits;
+    // demodBits = params.mod.demodulate(detected, demodBits);
+    // return demodBits;
 }
 
 
@@ -413,47 +428,37 @@ in(sig.length == chFR.length)
 
 C[] estimateChannelByOFDM(Mod)(in ref SimParams!Mod params, in C[] chFR, double SIGMA2)
 {
-    if(params.isPerfectChEst) {
-        return chFR.dup;
-    }
+    if(params.isPerfectChEst)
+        SIGMA2 = 0;
+    
+    auto sefdm = new RDFTsSEFDM!(Mod, C)(params.sefdm.mod, params.sefdm.nFFT, 0, params.sefdm.nTone, 1, params.sefdm.nData, null, params.sefdm.rndSeed, SIGMA2, params.sefdm.nIter);
+    auto ofdm = sefdm.ofdm;
 
-    C[] estChFR = new C[params.sefdm.nFFT];
+    // チャネル推定用のOFDM信号の生成
+    C[] chEstSCtx = new C[params.sefdm.nTone];
+    foreach(i; 0 .. params.sefdm.nTone)
+        chEstSCtx[i] = i % 2 == 0 ? C(1) : C(-1);
+    
+    C[] chEstOFDMtx;
+    ofdm.modulate(chEstSCtx, chEstOFDMtx);
+
+    C[] estChFR = new C[params.sefdm.nTone];
     estChFR[] = C(0);
-
-    auto fftw = makeFFTWObject!(TemplateOf!C)(params.sefdm.nFFT);
-
-    // チャネル推定用のOFDMを生成する
-    C[] ofdm;
-    C[] scs;
-    {
-        foreach(i; 0 .. params.sefdm.nTone)
-            fftw.inputs!F[i] = (i % 2 == 0) ? 1 : -1;
-
-        scs = fftw.inputs!F.dup;
-        fftw.ifft!F();
-        foreach(ref e; fftw.outputs!F[]) {
-            e *= sqrt(params.sefdm.nFFT * 1.0);          // IFFTをユニタリにする
-        }
-
-        ofdm = fftw.outputs!F.dup;
-    }
-
     foreach(i; 0 .. params.numSymChEst) {
-        auto sig = ofdm.dup;
+        auto sig = chEstOFDMtx.dup;
         auto rxsignal = sig.applyChannel(chFR);
         rxsignal = rxsignal.addAWGN(i, SIGMA2);
 
-        fftw.inputs!F[] = rxsignal[];
-        fftw.fft!F();
-        foreach(ref e; fftw.outputs!F[]) {
-            e /= sqrt(params.sefdm.nFFT * 1.0);          // FFTをユニタリにする
-        }
+        C[] chEstSCrx;
+        ofdm.demodulate(rxsignal, chEstSCrx);
+        // foreach(k; 0 .. params.sefdm.nTone)
+        //     estChFR[k] += (chEstSCrx[k] / chEstSCtx[k]) / params.numSymChEst;
 
-        foreach(j; 0 .. params.sefdm.nTone) {
+        foreach(k; 0 .. params.sefdm.nTone) {
             if(params.chEstMethod == "MMSE")
-                estChFR[j] += fftw.outputs!F[j] / (scs[j].sqAbs + SIGMA2) * scs[j].conj;
+                estChFR[k] += chEstSCrx[k] / (chEstSCtx[k].sqAbs + SIGMA2) * chEstSCtx[k].conj;
             else if(params.chEstMethod == "ZF")
-                estChFR[j] += fftw.outputs!F[j] / scs[j];
+                estChFR[k] += chEstSCrx[k] / chEstSCtx[k];
             else {
                 import std.exception;
                 enforce(0, "Unknow channel estimation method");
@@ -461,8 +466,63 @@ C[] estimateChannelByOFDM(Mod)(in ref SimParams!Mod params, in C[] chFR, double 
         }
     }
 
-    foreach(i; 0 .. params.sefdm.nFFT)
-        estChFR[i] /= params.numSymChEst;
+
+    foreach(k; 0 .. params.sefdm.nTone) {
+        estChFR[k] /= params.numSymChEst;
+    }
 
     return estChFR;
+
+    // if(params.isPerfectChEst) {
+    //     return chFR.dup;
+    // }
+
+    // C[] estChFR = new C[params.sefdm.nFFT];
+    // estChFR[] = C(0);
+
+    // auto fftw = makeFFTWObject!(TemplateOf!C)(params.sefdm.nFFT);
+
+    // // チャネル推定用のOFDMを生成する
+    // C[] ofdm;
+    // C[] scs;
+    // {
+    //     foreach(i; 0 .. params.sefdm.nTone)
+    //         fftw.inputs!F[i] = (i % 2 == 0) ? 1 : -1;
+
+    //     scs = fftw.inputs!F.dup;
+    //     fftw.ifft!F();
+    //     foreach(ref e; fftw.outputs!F[]) {
+    //         e *= sqrt(params.sefdm.nFFT * 1.0);          // IFFTをユニタリにする
+    //     }
+
+    //     ofdm = fftw.outputs!F.dup;
+    // }
+
+    // foreach(i; 0 .. params.numSymChEst) {
+    //     auto sig = ofdm.dup;
+    //     auto rxsignal = sig.applyChannel(chFR);
+    //     rxsignal = rxsignal.addAWGN(i, SIGMA2);
+
+    //     fftw.inputs!F[] = rxsignal[];
+    //     fftw.fft!F();
+    //     foreach(ref e; fftw.outputs!F[]) {
+    //         e /= sqrt(params.sefdm.nFFT * 1.0);          // FFTをユニタリにする
+    //     }
+
+    //     foreach(j; 0 .. params.sefdm.nTone) {
+    //         if(params.chEstMethod == "MMSE")
+    //             estChFR[j] += fftw.outputs!F[j] / (scs[j].sqAbs + SIGMA2) * scs[j].conj;
+    //         else if(params.chEstMethod == "ZF")
+    //             estChFR[j] += fftw.outputs!F[j] / scs[j];
+    //         else {
+    //             import std.exception;
+    //             enforce(0, "Unknow channel estimation method");
+    //         }
+    //     }
+    // }
+
+    // foreach(i; 0 .. params.sefdm.nFFT)
+    //     estChFR[i] /= params.numSymChEst;
+
+    // return estChFR;
 }

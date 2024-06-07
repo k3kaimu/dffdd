@@ -51,7 +51,8 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputELementType)
             _rndIdx = assumeUnique(perm);
         }
 
-        _epdet = _makeEPDet(N0, maxIter);
+        // OFDM.demodulateの中で係数がかけられるのでその分だけN0に補正をかけておく
+        _epdet = _makeEPDet(N0 * nTone / nFFT, maxIter);
     }
 
 
@@ -129,6 +130,9 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputELementType)
     }
 
 
+    immutable(size_t)[] scShuffle() const { return _rndIdx; }
+
+
   private:
     alias F = typeof(C.init.re);
 
@@ -160,7 +164,7 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputELementType)
     in(outbuf.length == _nTone)
     {
         alias F = typeof(C.init.re);
-        immutable F scale = 1/fast_sqrt!F(inbuf.length);
+        immutable F scale = 1/fast_sqrt!F(_nData);
 
         _fftw.inputs!F[] = inbuf[];
         _fftw.fft!F();
@@ -263,4 +267,12 @@ unittest
 
     runTestLTI(64, 16, 52, 1, 52, 1, [C(1), C(0.1), C(-0.1)]);
     runTestLTI(64, 16, 52, 1, 80, 1, [C(0.1), C(1), C(-0.1), C(0.1), C(-0.1), C(0.1), C(-0.1)]);
+
+
+    // auto sefdm = new RDFTsSEFDM!(QPSK!C, C)(qpsk, 32, 0, 20, 1, 20, null, 0);
+    // C[] xs = [C(1)] ~ iota(31).map!(a => C(0)).array();
+    // C[] ys;
+    // sefdm.ofdm.demodulate(xs, ys);
+    // import std.stdio;
+    // writeln(ys);
 }
