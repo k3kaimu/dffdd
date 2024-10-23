@@ -6,7 +6,7 @@ import mir.ndslice;
 import carbon.math;
 
 
-struct MultiFIRState(C, SliceKind kind = Contiguous)
+struct MultiFIRState(C, SliceKind kind = Canonical)
 if(kind == Contiguous || kind == Canonical)
 {
     alias StateElementType = C;
