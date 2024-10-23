@@ -394,6 +394,24 @@ final class Laguerre2DDistorter(C, size_t P)
     mixin ConverterOpCalls!(const(C), C[]);
 }
 
+
+final class LaguerreOnlyPADistorter(C, size_t P)
+{
+    enum size_t outputDim = (P + 1)/2;
+    enum size_t inputBlockLength = 1;
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        output.length = outputDim;
+        foreach(i; 0 .. (P+1)/2){
+            output[i] = laguerreOBF(input, i+1, i);
+        }
+    }
+
+    mixin ConverterOpCalls!(const(C), C[]);
+}
+
+
 __EOF__
 
 /**
