@@ -9,6 +9,7 @@ import dffdd.filter.traits;
 import dffdd.mod.primitives;
 import dffdd.utils.fft;
 import dffdd.filter.state;
+import dffdd.math.math;
 
 
 final class LimitedTrainingAdaptor(Adaptor)
@@ -124,6 +125,46 @@ unittest
     import dffdd.filter.traits;
 
     static assert(isBlockConverter!(Distorter!(Complex!float, x => x, x => x*2), Complex!float, Complex!float[]));
+}
+
+
+final class MemoryDistorter(C, size_t M, funcs...)
+{
+    enum size_t outputDim = funcs.length;
+    enum size_t inputBlockLength = 1;
+
+    this(C[M] init) {
+        _state = init;
+    }
+
+    void opCallImpl(C input, ref C[] outputs)
+    {
+        outputs.length = outputDim;
+        foreach_reverse(j; 1 .. _state.length) _state[j] = _state[j-1];
+        _state[0] = input;
+
+        foreach(p, f; funcs)
+            outputs[p] = f(_state);
+    }
+
+    mixin ConverterOpCalls!(const(C), C[]);
+
+  private:
+    C[M] _state;
+}
+
+
+unittest
+{
+    auto dist1 = new MemoryDistorter!(int, 2, (ref s) => s[0] * s[1])([0, 0]);
+    assert(dist1(1)[0] == 0);        // state = [1, 0]
+    assert(dist1(2)[0] == 2);        // state = [2, 1]
+    assert(dist1(3)[0] == 6);        // state = [3, 2]
+
+    auto dist2 = new MemoryDistorter!(int, 2, (ref s) => s[0])([0, 0]);
+    assert(dist2(1)[0] == 1);        // state = [1, 0]
+    assert(dist2(2)[0] == 2);        // state = [2, 1]
+    assert(dist2(3)[0] == 3);        // state = [3, 2]
 }
 
 
@@ -400,15 +441,74 @@ final class LaguerreOnlyPADistorter(C, size_t P)
     enum size_t outputDim = (P + 1)/2;
     enum size_t inputBlockLength = 1;
 
+    this() {}
+
     void opCallImpl(C input, ref C[] output)
     {
         output.length = outputDim;
-        foreach(i; 0 .. (P+1)/2){
+        foreach(int i; 0 .. cast(int)(P+1)/2){
             output[i] = laguerreOBF(input, i+1, i);
         }
     }
 
     mixin ConverterOpCalls!(const(C), C[]);
+}
+
+
+final class ZipDistorter(C, DistList...)
+{
+    import std.meta : staticMap;
+    import std.numeric : lcm;
+    enum size_t _getDim(E) = E.outputDim;
+    enum size_t _getInputBlockLength(E) = E.inputBlockLength;
+
+    enum size_t outputDim = reduce!"a+b"(0UL, [staticMap!(_getDim, DistList)]);
+    enum size_t inputBlockLength = reduce!lcm(1UL, [staticMap!(_getInputBlockLength, DistList)]);
+
+    this(DistList dists)
+    {
+        _dists = dists;
+    }
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        output.length = outputDim;
+        size_t cnt = 0;
+        foreach(k, E; DistList) {
+            auto buf = output[cnt .. cnt + E.outputDim];
+            _dists[k](input, buf);
+            cnt += E.outputDim;
+        }
+    }
+
+    mixin ConverterOpCalls!(const(C), C[]);
+
+    DistList _dists;
+}
+
+
+auto zipDistorter(C, DistList...)(DistList distorters)
+{
+    return new ZipDistorter!(C, DistList)(distorters);
+}
+
+
+unittest
+{
+    import std.complex;
+
+    auto dist1 = new Distorter!(Complex!float, x => x, x => x*2)();
+    auto dist2 = new Distorter!(Complex!float, x => x)();
+    auto zipdist = zipDistorter!(Complex!float)(dist1, dist2);
+    static assert(isBlockConverter!(typeof(zipdist), Complex!float, Complex!float[]));
+
+    auto x = Complex!float(2, 0);
+    Complex!float[] buf;
+    zipdist(x, buf);
+    assert(buf.length == 3);
+    assert(buf[0] == x);
+    assert(buf[1] == x*2);
+    assert(buf[2] == x);
 }
 
 
