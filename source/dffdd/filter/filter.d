@@ -292,6 +292,47 @@ if(isBlockConverter!(Dist, C, C[]))
     C[][] _buffer;
 }
 
+
+
+final class SimpleTimeDomainMultiInputFilter(C, alias genAdaptor)
+{
+    this(size_t numInputs, size_t numOfTaps)
+    {
+        _state = MultiFIRState!C(numInputs, numOfTaps);
+        _adaptor = genAdaptor(_state);
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[][] inputs, in C[] desired, C[] errors)
+    in{
+        assert(inputs.length == desired.length);
+        assert(inputs.length == errors.length);
+        if(inputs.length > 0) assert(inputs[0].length == _state.numOfFIR);
+    }
+    do{
+        foreach(i; 0 .. inputs.length) {
+            _state.update(inputs[i]);
+            errors[i] = desired[i] - _state.output;
+
+            static if(doLearning)
+                _adaptor.adapt(_state, errors[i]);
+        }
+    }
+
+
+    ref MultiFIRState!C state() return @property 
+    {
+        return _state;
+    }
+
+
+  private:
+    MultiFIRState!C _state;
+    typeof(genAdaptor(_state)) _adaptor;
+}
+
+
+
 final class SimpleTimeDomainParallelHammersteinFilterWithDCM(C, Dist, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
