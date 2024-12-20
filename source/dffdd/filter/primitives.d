@@ -409,22 +409,31 @@ final class PADistorterWithEvenOrder(C, size_t P)
 }
 
 
-final class Laguerre2DDistorter(C, size_t P)
+final class Laguerre2DDistorter(C, uint P = 0)
 {
-    enum size_t outputDim = P + P*(P+1)/2 + 1;
     enum size_t inputBlockLength = 1;
 
-
+  static if(P == 0)
+  {
+    private { size_t _P; }
+    size_t outputDim() const { return _P + _P*(_P+1)/2 + 1; }
+    this(size_t P) { _P = P; }
+  }
+  else
+  {
+    private { alias _P = P; }
+    enum size_t outputDim = P + P*(P+1)/2 + 1;
     this() {}
+  }
 
 
     void opCallImpl(C input, ref C[] output)
     {
         import dffdd.math.math;
 
-        output.length = outputDim;
+        output.length = this.outputDim;
         size_t i = 0;
-        foreach(int p; 0 .. P+1){
+        foreach(int p; 0 .. cast(int)_P+1){
             foreach(int j; 0 .. p+1){
                 output[i] = laguerreOBF(input, p-j, j);
                 ++i;
@@ -433,6 +442,31 @@ final class Laguerre2DDistorter(C, size_t P)
     }
 
     mixin ConverterOpCalls!(const(C), C[]);
+}
+
+unittest
+{
+    import std.math;
+    import dffdd.filter.traits;
+    import std.stdio;
+
+    enum expi = (real x){ return cast(Complex!float)std.complex.expi(x); };
+
+    static assert(isBlockConverter!(Laguerre2DDistorter!(Complex!float, 3), Complex!float, Complex!float[]));
+
+    auto sta5 = new Laguerre2DDistorter!(Complex!float, 5);
+    auto dyn5 = new Laguerre2DDistorter!(Complex!float, 0)(5);
+    assert(sta5.outputDim == dyn5.outputDim);
+    
+    Complex!float[] sta_os, dyn_os;
+    sta5(expi(PI_4)*2, sta_os);
+    dyn5(expi(PI_4)*2, dyn_os);
+
+    foreach(i; 0 .. sta5.outputDim)
+    {
+        assert(isClose(sta_os[i].re, dyn_os[i].re));
+        assert(isClose(sta_os[i].im, dyn_os[i].im));
+    }
 }
 
 
