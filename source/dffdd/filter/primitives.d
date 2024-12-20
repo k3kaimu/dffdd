@@ -168,7 +168,7 @@ unittest
 }
 
 
-final class OnlyPADistorter(C, size_t P)
+final class XApDistorter(C, size_t P)
 if(P % 2 == 1)
 {
     enum size_t outputDim = (P + 1)/2;

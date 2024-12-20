@@ -448,7 +448,7 @@ if(isBlockConverter!(Dist, C, C[]))
         } else {
             if(_lastState == State.train) {
                 // 1ブランチずつ学習していく
-                auto linear = new OnlyPADistorter!(C, 1)();
+                auto linear = new XApDistorter!(C, 1)();
                 assert(linear.outputDim == 1);
                 auto errorTr = new C[_ysTr.length];
                 auto _distTrXs = new C[][](_xsTr.length, _distorter.outputDim);

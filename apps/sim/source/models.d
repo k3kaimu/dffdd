@@ -373,7 +373,7 @@ auto makeParallelHammersteinFilter(string optimizer, alias Dist, bool isOrthogon
 //   {
 //     // static assert(distortionOrder == 1);
 //     // alias Dist = Distorter!(C, x => x);
-//     alias Dist = OnlyPADistorter!(C, distortionOrder);
+//     alias Dist = XApDistorter!(C, distortionOrder);
 //   }
 
     static if(isOrthogonalized)
@@ -436,7 +436,7 @@ auto makeFrequencyHammersteinFilter2(string optimizer, Dist)(Dist dist, Model mo
     // static if(useWL)
     //     alias Dist = CompleteDistorter!(distortionOrder);
     // else
-    //     alias Dist = OnlyPADistorter!(C, distortionOrder);
+    //     alias Dist = XApDistorter!(C, distortionOrder);
 
     auto makeOptimizer(State)(State state)
     {

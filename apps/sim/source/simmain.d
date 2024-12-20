@@ -226,7 +226,7 @@ auto makeFilter(string filterType)(Model model)
   else static if(filterStructure[0 .. $-1].endsWith("PHPAOnly"))
   {
     enum size_t POrder = filterStructure[$-1 .. $].to!int;
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, OnlyPADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, XApDistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
   }
   else static if(filterStructure[0 .. $-1].endsWith("PH"))
   {
@@ -288,7 +288,7 @@ auto makeFilter(string filterType)(Model model)
     static if(filterStructure.canFind("Sub"))
         alias Dist = XAp_XcApDistorter!(Complex!float, POrder);
     else static if(filterStructure.canFind("PHPAOnly"))
-        alias Dist = OnlyPADistorter!(Complex!float, POrder);
+        alias Dist = XApDistorter!(Complex!float, POrder);
     else
         alias Dist = XpXcqDistorter!(Complex!float, POrder);
 
@@ -317,7 +317,7 @@ auto makeFilter(string filterType)(Model model)
   }else static if(filterStructure.endsWith("WL"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, XpXcqDistorter!(Complex!float, 1), isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, OnlyPADistorter!(Complex!float, 1), false)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, XApDistorter!(Complex!float, 1), false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))
     auto filter = makeTaylorApproximationFilter!(1, false)(model);
   else static if(filterStructure.endsWith("Nop"))
