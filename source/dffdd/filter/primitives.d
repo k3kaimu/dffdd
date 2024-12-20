@@ -256,36 +256,12 @@ unittest
 }
 
 
-final class PADistorter(C, size_t P)
+final class XpXcqDistorter(C, size_t P)
 if(P % 2 == 1)
 {
     enum size_t outputDim = (P+1) * ((P+1)/2 + 1) / 2;
     enum size_t inputBlockLength = 1;
 
-
-    // template indexOfPQ(size_t i, size_t pq = 1)
-    // {
-    //     enum size_t odim = (pq+1) * ((pq+1)/2 + 1) / 2
-    //     static if(i < odim)
-    //         enum ptrdiff_t[2] indexOfPQ = indexOfPQ_FindPair!(odim, i - (pq-1) * ((p1-1)/2 + 1) / 2);
-    //     else
-    //         enum ptrdiff_t[2] indexOfPQ = indexOfPQ!(i, pq+2);
-    // }
-
-
-    // template indexOfPQ_FindPair(size_t pq, size_t j)
-    // {
-    //     enum ptrdiff_t[2] indexOfPQ_FindPair = [pq-j, j];
-    // }
-
-
-    // template indexOfConjugated(size_t i)
-    // {
-    //     enum ptrdiff_t[2] pq = indexOfPQ(i);
-    //     enum ptrdiff_t M = (pq[0] + pq[1] - 2);
-
-    //     alias indexOfConjugated = (M+1)*((M+1)/2 + 1)/2 + pq[1];
-    // }
 
     static @nogc pure nothrow @safe
     ptrdiff_t indexOfConjugated(size_t k)
@@ -335,9 +311,9 @@ unittest
 
     enum expi = (real x){ return cast(Complex!float)std.complex.expi(x); };
 
-    static assert(isBlockConverter!(PADistorter!(Complex!float, 3), Complex!float, Complex!float[]));
+    static assert(isBlockConverter!(XpXcqDistorter!(Complex!float, 3), Complex!float, Complex!float[]));
 
-    auto dist1 = new PADistorter!(Complex!float, 1);
+    auto dist1 = new XpXcqDistorter!(Complex!float, 1);
     Complex!float[] outputs;
     dist1(expi(PI_4), outputs);
     foreach(i, e; [expi(PI_4), expi(-PI_4)])
@@ -346,7 +322,7 @@ unittest
         assert(isClose(e.im, outputs[i].im));
     }
 
-    auto dist3 = new PADistorter!(Complex!float, 3);
+    auto dist3 = new XpXcqDistorter!(Complex!float, 3);
     dist3(expi(PI_4)*2, outputs);
     foreach(i, e; [expi(PI_4)*2, expi(-PI_4)*2,
                    expi(PI_4*3)*8, expi(PI_4)*8, expi(-PI_4)*8, expi(-PI_4*3)*8])
@@ -355,7 +331,7 @@ unittest
         assert(isClose(e.im, outputs[i].im));
     }
 
-    auto dist5 = new PADistorter!(Complex!float, 5);
+    auto dist5 = new XpXcqDistorter!(Complex!float, 5);
     dist5(expi(PI_4)*2, outputs);
     foreach(i, e; [expi(PI_4)*2, expi(-PI_4)*2,
                    expi(PI_4*3)*8, expi(PI_4)*8, expi(-PI_4)*8, expi(-PI_4*3)*8,
@@ -367,7 +343,7 @@ unittest
 }
 unittest
 {
-    alias D = PADistorter!(Complex!float, 9);
+    alias D = XpXcqDistorter!(Complex!float, 9);
     assert(D.indexOfConjugated(0) == 1);
     assert(D.indexOfConjugated(1) == 0);
     assert(D.indexOfConjugated(2) == 5);

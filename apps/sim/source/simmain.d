@@ -231,7 +231,7 @@ auto makeFilter(string filterType)(Model model)
   else static if(filterStructure[0 .. $-1].endsWith("PH"))
   {
     enum size_t POrder = filterStructure[$-1 .. $].to!int;
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, PADistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, XpXcqDistorter!(Complex!float, POrder), isOrthogonalized)(modOFDM(model), model);
   }
   else static if(filterStructure.endsWith("CH"))
     auto filter = makeCascadeHammersteinFilter!(filterOptimizer)(modOFDM(model), model);
@@ -290,7 +290,7 @@ auto makeFilter(string filterType)(Model model)
     else static if(filterStructure.canFind("PHPAOnly"))
         alias Dist = OnlyPADistorter!(Complex!float, POrder);
     else
-        alias Dist = PADistorter!(Complex!float, POrder);
+        alias Dist = XpXcqDistorter!(Complex!float, POrder);
 
     static if(isOrthogonalized)
     {
@@ -315,7 +315,7 @@ auto makeFilter(string filterType)(Model model)
         alias filter = freqFilter;
     }
   }else static if(filterStructure.endsWith("WL"))
-    auto filter = makeParallelHammersteinFilter!(filterOptimizer, PADistorter!(Complex!float, 1), isOrthogonalized)(modOFDM(model), model);
+    auto filter = makeParallelHammersteinFilter!(filterOptimizer, XpXcqDistorter!(Complex!float, 1), isOrthogonalized)(modOFDM(model), model);
   else static if(filterStructure.endsWith("L"))
     auto filter = makeParallelHammersteinFilter!(filterOptimizer, OnlyPADistorter!(Complex!float, 1), false)(modOFDM(model), model);
   else static if(filterStructure.endsWith("TAYLOR"))

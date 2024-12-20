@@ -57,7 +57,7 @@ import constant;
 import snippet;
 
 enum size_t defaultDistortionOrder = 7;
-alias CompleteDistorter(size_t P = defaultDistortionOrder) = PADistorter!(Complex!float, P);
+alias CompleteDistorter(size_t P = defaultDistortionOrder) = XpXcqDistorter!(Complex!float, P);
 
 
 struct TransceiverModel
