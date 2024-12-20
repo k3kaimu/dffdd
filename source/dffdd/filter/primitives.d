@@ -459,31 +459,56 @@ final class ZipDistorter(C, DistList...)
 {
     import std.meta : staticMap;
     import std.numeric : lcm;
-    enum size_t _getDim(E) = E.outputDim;
-    enum size_t _getInputBlockLength(E) = E.inputBlockLength;
 
-    enum size_t outputDim = reduce!"a+b"(0UL, [staticMap!(_getDim, DistList)]);
-    enum size_t inputBlockLength = reduce!lcm(1UL, [staticMap!(_getInputBlockLength, DistList)]);
 
     this(DistList dists)
     {
         _dists = dists;
-    }
 
-    void opCallImpl(C input, ref C[] output)
-    {
-        output.length = outputDim;
-        size_t cnt = 0;
-        foreach(k, E; DistList) {
-            auto buf = output[cnt .. cnt + E.outputDim];
-            _dists[k](input, buf);
-            cnt += E.outputDim;
+        {
+            size_t sum;
+            foreach(ref e; _dists) sum += e.outputDim;
+            _dim = sum;
+        }
+
+        {
+            size_t dst = _dists[0].inputBlockLength;
+            static foreach(i; 1 .. DistList.length) dst = lcm(dst, _dists[i].inputBlockLength);
+            _blen = dst;
         }
     }
 
+
+    size_t outputDim() const
+    {
+        return _dim;
+    }
+
+
+    size_t inputBlockLength() const
+    {
+        return _blen;
+    }
+
+
+    void opCallImpl(C input, ref C[] output)
+    {
+        output.length = this.outputDim;
+        size_t cnt = 0;
+        foreach(k, E; DistList) {
+            immutable dk = _dists[k].outputDim;
+            auto buf = output[cnt .. cnt + dk];
+            _dists[k](input, buf);
+            cnt += dk;
+        }
+    }
+
+
     mixin ConverterOpCalls!(const(C), C[]);
 
+  private:
     DistList _dists;
+    size_t _dim, _blen;
 }
 
 
