@@ -187,7 +187,7 @@ if(P % 2 == 1)
 }
 
 
-final class SubSetOfPADistorter(C, size_t P)
+final class XAp_XcApDistorter(C, size_t P)
 if(P % 2 == 1)
 {
     enum size_t outputDim = P + 1;
@@ -227,9 +227,9 @@ unittest
     import dffdd.filter.traits;
     import std.stdio;
 
-    static assert(isBlockConverter!(SubSetOfPADistorter!(Complex!float, 3), Complex!float, Complex!float[]));
+    static assert(isBlockConverter!(XAp_XcApDistorter!(Complex!float, 3), Complex!float, Complex!float[]));
 
-    auto dist1 = new SubSetOfPADistorter!(Complex!float, 1);
+    auto dist1 = new XAp_XcApDistorter!(Complex!float, 1);
     Complex!float[] outputs;
     dist1(Complex!float(1, 1), outputs);
     foreach(i, e; [Complex!float(1, 1), Complex!float(1, -1)])
@@ -238,7 +238,7 @@ unittest
         assert(isClose(e.im, outputs[i].im));
     }
 
-    auto dist3 = new SubSetOfPADistorter!(Complex!float, 3);
+    auto dist3 = new XAp_XcApDistorter!(Complex!float, 3);
     dist3(Complex!float(1, 1), outputs);
     foreach(i, e; [Complex!float(1, 1), Complex!float(1, -1), Complex!float(2, 2), Complex!float(2, -2)])
     {
@@ -246,7 +246,7 @@ unittest
         assert(isClose(e.im, outputs[i].im));
     }
 
-    auto dist5 = new SubSetOfPADistorter!(Complex!float, 5);
+    auto dist5 = new XAp_XcApDistorter!(Complex!float, 5);
     dist5(Complex!float(1, 1), outputs);
     foreach(i, e; [Complex!float(1, 1), Complex!float(1, -1), Complex!float(2, 2), Complex!float(2, -2), Complex!float(4, 4), Complex!float(4, -4)])
     {
