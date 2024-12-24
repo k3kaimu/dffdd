@@ -15,14 +15,14 @@
 +/
 
 
-/// Basis X(3,0) L(1,0) M(1,2,3)
-/// X(p,q) := x^p conj(x[n])^q
-/// L(p,q) := laguerreOBF(x[n], p, q)
-/// M(a,*b,c,d,*e,...) := x[n-a] * conj(x[n-b]) * x[n-c] * x[n-d] * conj(x[n-e]) * ...
+/// BFList X[3,0] L[1,0] M[1,2,3]
+/// X[p,q] := x^p conj(x[n])^q
+/// L[p,q] := laguerreOBF(x[n], p, q)
+/// M[a,*b,c,d,*e,...] := x[n-a] * conj(x[n-b]) * x[n-c] * x[n-d] * conj(x[n-e]) * ...
 
 /// $ sigre <nTrain> <nRegenBlockSize> <Regenerator Type> [Regenerator Parameters...]
 /// $ sigre <nTrain> <nRegenBlockSize> <PHammLS/CHammLS> <nTaps> @ <Basis Function Type> [Basis Functions Parameters...]
-/// $ sigre 1000 2000 PHammLS 32 @ BFList X[1,0) X[0,1] X[3,0] X[2,1] X[1,2] X[3,0] # 32タップで(x, x^{*}, x^3, x|x|^2, x^{*}|x|^2, x^{*}^3)を基底にもつキャンセラ
+/// $ sigre 1000 2000 PHammLS 32 @ BFList X[1,0] X[0,1] X[3,0] X[2,1] X[1,2] X[3,0] # 32タップで(x, x^{*}, x^3, x|x|^2, x^{*}|x|^2, x^{*}^3)を基底にもつキャンセラ
 /// $ sigre 1000 2000 PHammLS 32 @ BFList L[3,0] L[2,1] L[1,2] # 32タップで(L_{3,0}, L_{2,1}, L_{1,2})を基底にもつキャンセラ
 /// $ sigre 1000 2000 PHammLS 32 @ BFList M[] M[0,1], M[0,*1] M[0,*0,1] # 32タップでメモリをもつ4つの基底（1, x[n] * x[n-1], x[n] * x^{*}[n-1], x[n] * x^{*}[n] * x[n-1]）からなるキャンセラ
 /// $ sigre 1000 2000 PHammLS 32 @ <Basis Function Type> [Basis Functions Paramters] % Orthonormalizer # 後続する基底関数を直交化する
@@ -41,7 +41,7 @@ immutable string helpText =
 `
 OVERVIEW: SigRe - Signal Regenerator
 
-USAGE: sigre <nTrain> <nRegen> <Regenerator Type> [Regenerator Parameters...] @ <Basis Function Builders...>
+USAGE: sigre <nTrain> <nRegenBlockSize> <Regenerator Type> [Regenerator Parameters...] @ <Basis Function Builders...>
 
 Examples:
 $ sigre 1000 80 PHammLS 32 @ OFDMUpSampler 64 16 8 % BFList X[1,0] L[0,1] X[3,0] M[0,1,*1] % OFDMDownSampler 64 16 8 % Orthonormalizer
