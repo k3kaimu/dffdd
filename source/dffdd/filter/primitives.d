@@ -128,40 +128,62 @@ unittest
 }
 
 
-final class MemoryDistorter(C, size_t M, funcs...)
+final class MemoryDistorter(C, funcs...)
 {
-    enum size_t outputDim = funcs.length;
     enum size_t inputBlockLength = 1;
 
-    this(C[M] init) {
-        _state = init;
+
+  static if(funcs.length > 0)
+  {
+    enum size_t outputDim = funcs.length;
+
+    this(C[] init)
+    in(init.length > 0)
+    {
+        _state = init.dup;
     }
+
+    private { alias _fs = funcs; }
+  }
+  else
+  {
+    this(C[] init, C delegate(C[])[] fs)
+    in(init.length > 0)
+    {
+        _state = init.dup;
+        _fs = fs.dup;
+    }
+
+    size_t outputDim() const { return _fs.length; }
+
+    private { C delegate(C[])[] _fs; }
+  }
 
     void opCallImpl(C input, ref C[] outputs)
     {
-        outputs.length = outputDim;
+        outputs.length = this.outputDim;
         foreach_reverse(j; 1 .. _state.length) _state[j] = _state[j-1];
         _state[0] = input;
 
-        foreach(p, f; funcs)
+        foreach(p, f; _fs)
             outputs[p] = f(_state);
     }
 
     mixin ConverterOpCalls!(const(C), C[]);
 
   private:
-    C[M] _state;
+    C[] _state;
 }
 
 
 unittest
 {
-    auto dist1 = new MemoryDistorter!(int, 2, (ref s) => s[0] * s[1])([0, 0]);
+    auto dist1 = new MemoryDistorter!(int, (ref s) => s[0] * s[1])([0, 0]);
     assert(dist1(1)[0] == 0);        // state = [1, 0]
     assert(dist1(2)[0] == 2);        // state = [2, 1]
     assert(dist1(3)[0] == 6);        // state = [3, 2]
 
-    auto dist2 = new MemoryDistorter!(int, 2, (ref s) => s[0])([0, 0]);
+    auto dist2 = new MemoryDistorter!(int, (ref s) => s[0])([0, 0]);
     assert(dist2(1)[0] == 1);        // state = [1, 0]
     assert(dist2(2)[0] == 2);        // state = [2, 1]
     assert(dist2(3)[0] == 3);        // state = [3, 2]
