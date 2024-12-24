@@ -83,7 +83,7 @@ void mainImpl(string[] args, File input, File output)
     IRegenerator!C regenImpl;
     switch(regenName) {
         case "PHammLS":
-            regenImpl = new PHammLSRegenerator!C(xsTrain, ysTrain, nRegenBlockSize, regenParams, makeBBB!C(basisParams));
+            regenImpl = new PHammLSRegenerator!C(xsTrain, ysTrain, regenParams, makeBBB!C(basisParams));
             break;
         case "CHammLS":
             break;
@@ -158,13 +158,12 @@ interface IRegenerator(C)
 
 final class PHammLSRegenerator(C) : IRegenerator!C
 {
-    this(in C[] trs, in C[] ysTrain, size_t blockSize, string[] params, IBasisBuildingBlock!C bbb)
+    this(in C[] trs, in C[] ysTrain, string[] params, IBasisBuildingBlock!C bbb)
     {
         _bbb = bbb;
         C[][] xsTrain = _bbb.generate([trs]);
 
         _nBF = xsTrain.length;
-        _nBlockSize = blockSize;
 
         enforce(xsTrain.length > 0, "[PHammLS] The dimension of input signal for training must be larger than 1.");
         enforce(params.length > 0, "[PHammLS] PHammLS needs nTaps as an argument.");
@@ -204,7 +203,7 @@ final class PHammLSRegenerator(C) : IRegenerator!C
 
 
   private:
-    size_t _nBF, _nTaps, _nBlockSize;
+    size_t _nBF, _nTaps;
     C[] _estCoeffs;
     IBasisBuildingBlock!C _bbb;
 
