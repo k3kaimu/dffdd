@@ -6,6 +6,20 @@
 $ sigre <nTrain> <nRegenBlockSize> <Regenerator Type> [Regenerator Parameters...] @ <Basis Function Builders...>
 ```
 
+## Build on Docker
+
+`dffdd`ディレクトリで以下を実行します．
+
+```sh
+$ docker build -t sigre -f apps/sigre/Dockerfile .
+```
+
+そうすると次のように実行できます．
+
+```sh
+$ docker run --rm sigre <args...>
+```
+
 ## Examples
 
 ```
