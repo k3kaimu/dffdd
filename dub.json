@@ -6,7 +6,7 @@
     "targetType": "library",
 
     "__foo": "/usr/local/opt/openblas/lib",
-    "libs": ["openblas", "nlopt", "lapacke"],
+    "libs": ["openblas", "lapacke"],
     "lflags-osx": ["-L/usr/local/opt/openblas/lib"],
     "lflags-linux": ["-L/opt/OpenBLAS/lib"],
     "dflags-ldc": ["-oq", ],
@@ -18,7 +18,6 @@
         "dfftw3": "~>1.0.1",
         "cblas": "~>2.3.4",
         "mir-algorithm": "~>3.22.1",
-        "libnlopt": "~>0.2.0",
         "lubeck": { "path": "../lubeck" },
         "mir-lapack": "~>1.2.12",
         "mir-blas": "~>1.1.17",

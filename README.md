@@ -28,10 +28,10 @@ $ brew install dmd dub ldc
 ```
 
 ### Step 1: Install FFTW, OpenBLAS, and NLopt
-This library requires `FFTW`, `OpenBLAS`, and `NLopt`.
+This library requires `FFTW`, `OpenBLAS`.
 
 ```sh
-$ brew install fftw openblas nlopt
+$ brew install fftw openblas
 ```
 
 ### Step 2: Clone repositories
