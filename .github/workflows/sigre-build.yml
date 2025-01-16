@@ -37,5 +37,5 @@ jobs:
           file: ./apps/sigre/Dockerfile  # Dockerfileのパスを指定
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.event.release.tag_name }}
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-sigre:latest
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-sigre:${{ github.event.release.tag_name }}
