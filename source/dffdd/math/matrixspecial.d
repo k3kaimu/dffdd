@@ -499,7 +499,7 @@ if(is(typeof((ArrayLike a){ auto e1 = a[0]; auto e2 = a.length; })) && (isMatrix
         return MulDiagonal!(ArrayLike, typeof(mm))(_M, _N, _diag, mm);
     }
 
-    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S"]));
+    mixin(definitionsOfMatrixOperators(["defaults", "M+M", "M*S", ".T", ".H"]));
   }
   else
   {
