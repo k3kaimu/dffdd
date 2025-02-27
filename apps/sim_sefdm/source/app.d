@@ -475,6 +475,8 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     }
     else static if(DETECT == "MMSE")
     {
+        auto recvMat = chMat * modMat;
+        auto rwMat = identity!C(nFFT);
         auto detector = makeMMSEDetector!(C, typeof(mod))(mod, recvMat, SIGMA);
     }
     else static if(DETECT == "ZF")
@@ -541,8 +543,8 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
         foreach(i; 0 .. syms.length / nFFT) {
             auto s = syms[i*nFFT .. (i+1)*nFFT].sliced.vectored;
             auto v = sum.sliced()[i*nFFT .. (i+1)*nFFT].vectored;
-            v[] = modMat * s;
-            v[] = chMat * v;
+            v[] = recvMat * s;
+            // v[] = chMat * v;
         }
 
         // 電力スペクトル密度
@@ -675,7 +677,7 @@ auto genSEFDMModMatrix(C)(uint N, double alpha)
         ones ~= C(1);
 
     auto diag1 = diag(M, N, ones);      // 入力N, 出力Mで，出力に(M-N)のゼロを追加する行列
-    auto idft = idftMatrix!C(M, M);     // M x MのIDFT行列
+    auto idft = idftMatrix!C(M);     // M x MのIDFT行列
     auto diag2 = diag(N, M, ones);      // 入力M, 出力Nで，出力の(M-N)個の要素を取り除く
     
     return diag2 * idft * diag1;
