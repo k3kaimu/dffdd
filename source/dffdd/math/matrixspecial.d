@@ -747,7 +747,10 @@ if(isNarrowComplex!C)
     if(isMatrixLike!M)
     in(this.length!1 == mat.length!0)
     {
-        return DFTMatrixMulMM!(C, isFwd, Yes.applyFromLHS, M)(this, mat);
+        static if(is(M == .DFTMatrix!(C, isFwd ? No.isFwd : Yes.isFwd)))
+            return identity!C(_N);
+        else
+            return DFTMatrixMulMM!(C, isFwd, Yes.applyFromLHS, M)(this, mat);
     }
 
 
@@ -833,6 +836,16 @@ unittest
     assert(isClose(idftmat[3, 1].re, 0, REPS, AEPS) && isClose(idftmat[3, 1].im, -1, REPS, AEPS));
     assert(isClose(idftmat[3, 2].re, -1, REPS, AEPS) && isClose(idftmat[3, 2].im, 0, REPS, AEPS));
     assert(isClose(idftmat[3, 3].re, 0, REPS, AEPS) && isClose(idftmat[3, 3].im, 1, REPS, AEPS));
+
+
+    {
+        auto a = dftMatrix!C(32);
+        auto b = idftMatrix!C(32);
+        auto c = a * b;
+        auto d = b * a;
+        static assert(is(typeof(c) == typeof(identity!C(32))));
+        static assert(is(typeof(d) == typeof(identity!C(32))));
+    }
 }
 
 
