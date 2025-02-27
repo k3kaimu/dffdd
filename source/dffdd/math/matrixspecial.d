@@ -183,6 +183,14 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
     auto T() {
         return ConstAll!(E, value, Dim)([_len[1], _len[0]]);
     }
+
+
+    auto H() {
+        static if(is(typeof(E.init.re + E.init.im)))
+            return ConstAll!(E, E(value.re, -value.im), Dim)([_len[1], _len[0]]);
+        else
+            return ConstAll!(E, value, Dim)([_len[1], _len[0]]);
+    }
   }
 
   static if(Dim == 1)
