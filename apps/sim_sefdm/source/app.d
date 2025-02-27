@@ -55,7 +55,7 @@ shared static this()
     openblas_set_num_threads(1);
 }
 
-alias C = MirComplex!double;
+alias C = StdComplex!double;
 
 void main(string[] args)
 {
@@ -294,7 +294,7 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
 
         modMat[] = pamat;
 
-        auto idftM = genDFTMatrix!C(M).H;
+        auto idftM = idftMatrix!C(M);
         modMat[] = idftM * modMat;
     }
 
