@@ -292,6 +292,47 @@ if(isBlockConverter!(Dist, C, C[]))
     C[][] _buffer;
 }
 
+
+
+final class SimpleTimeDomainMultiInputFilter(C, alias genAdaptor)
+{
+    this(size_t numInputs, size_t numOfTaps)
+    {
+        _state = MultiFIRState!C(numInputs, numOfTaps);
+        _adaptor = genAdaptor(_state);
+    }
+
+
+    void apply(Flag!"learning" doLearning)(in C[][] inputs, in C[] desired, C[] errors)
+    in{
+        assert(inputs.length == desired.length);
+        assert(inputs.length == errors.length);
+        if(inputs.length > 0) assert(inputs[0].length == _state.numOfFIR);
+    }
+    do{
+        foreach(i; 0 .. inputs.length) {
+            _state.update(inputs[i]);
+            errors[i] = desired[i] - _state.output;
+
+            static if(doLearning)
+                _adaptor.adapt(_state, errors[i]);
+        }
+    }
+
+
+    ref MultiFIRState!C state() return @property 
+    {
+        return _state;
+    }
+
+
+  private:
+    MultiFIRState!C _state;
+    typeof(genAdaptor(_state)) _adaptor;
+}
+
+
+
 final class SimpleTimeDomainParallelHammersteinFilterWithDCM(C, Dist, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
@@ -372,15 +413,13 @@ if(isBlockConverter!(Dist, C, C[]))
 final class SimpleTimeDomainCascadeHammersteinFilter(C, Dist, alias genAdaptor)
 if(isBlockConverter!(Dist, C, C[]))
 {
-    this(Dist dist, size_t numOfFIR, size_t numOfTaps)
-    in{
-        assert(numOfFIR == dist.outputDim);
-    }
-    do {
+    this(Dist dist, size_t numOfTaps, size_t numIter = 2)
+    {
         _distorter = dist;
-        _state = MultiFIRState!C(numOfFIR, numOfTaps);
+        _state = MultiFIRState!C(dist.outputDim, numOfTaps);
+        _numIter = numIter;
 
-        foreach(i; 0 .. numOfFIR)
+        foreach(i; 0 .. dist.outputDim)
             _adapters ~= genAdaptor(i, _state.subFIRState(i));
 
         _buffer = new C[][](this.inputBlockLength, dist.outputDim);
@@ -402,26 +441,67 @@ if(isBlockConverter!(Dist, C, C[]))
     do{
         immutable size_t blk = this.inputBlockLength;
 
-        foreach(i; 0 .. input.length / blk){
-            auto ips = input[i*blk .. (i+1) * blk];
-            auto dss = desired[i*blk .. (i+1) * blk];
-            auto ers = errors[i*blk .. (i+1) * blk];
+        if(doLearning) {
+            _xsTr ~= input.dup;
+            _ysTr ~= desired.dup;
+            errors[] = desired[];
+        } else {
+            if(_lastState == State.train) {
+                // 1ブランチずつ学習していく
+                auto linear = new XApDistorter!(C, 1)();
+                assert(linear.outputDim == 1);
+                auto errorTr = new C[_ysTr.length];
+                auto _distTrXs = new C[][](_xsTr.length, _distorter.outputDim);
+                _distorter(_xsTr, _distTrXs);
 
-            _distorter(ips, _buffer);
-            foreach(j, e; _buffer){
-                _state.update(e);
+                // _distTrXsを転置する
+                auto distTrXs = new C[][](_distorter.outputDim, _xsTr.length);
+                foreach(i; 0 .. _distorter.outputDim) foreach(j; 0 .. _xsTr.length)
+                    distTrXs[i][j] = _distTrXs[j][i];
 
-                ers[j] = dss[j];
-                foreach(k, ref adaptor; _adapters){
-                    auto subState = _state.subFIRState(k);
-                    ers[j] -= subState.output;
+                auto lastRemained = _ysTr.dup;
+                foreach(_; 0 .. this._numIter) {
+                    foreach(i; 0 .. _distorter.outputDim) {
+                        auto lincanc = new SimpleTimeDomainParallelHammersteinFilter!(C, typeof(linear), (s) => genAdaptor(i, s))(linear, this._state.numOfTaps);
+                        lincanc.apply!(Yes.learning)(distTrXs[i], lastRemained, errorTr);
+                        // 学習した結果で除去をして，次のブランチへ進む
+                        lincanc.apply!(No.learning)(distTrXs[i], lastRemained, errorTr);
+                        lastRemained[] = errorTr[];
 
-                  static if(doLearning){
-                    adaptor.adapt(subState, ers[j]);
-                  }
+                        // 学習した重みをコピーする
+                        foreach(j; 0 .. this._state.numOfTaps) {
+                            _state.weight[j, i] += lincanc.state.weight[j, 0];
+                        }
+                    }
+                }
+
+                // Stateを最新状態にしておく
+                foreach(i; 0 .. _xsTr.length / blk){
+                    auto ips = _xsTr[i*blk .. (i+1) * blk];
+                    _distorter(ips, _buffer);
+                    foreach(j, e; _buffer)
+                        _state.update(e);
+                }
+
+                _xsTr = null;
+                _ysTr = null;
+            }
+
+            // 除去する
+            foreach(i; 0 .. input.length / blk){
+                auto ips = input[i*blk .. (i+1) * blk];
+                auto dss = desired[i*blk .. (i+1) * blk];
+                auto ers = errors[i*blk .. (i+1) * blk];
+
+                _distorter(ips, _buffer);
+                foreach(j, e; _buffer){
+                    _state.update(e);
+                    ers[j] = dss[j] - _state.output;
                 }
             }
         }
+
+        _lastState = doLearning ? State.train : State.canc;
     }
 
 
@@ -440,10 +520,15 @@ if(isBlockConverter!(Dist, C, C[]))
 
 
   private:
+    size_t _numIter;
     Dist _distorter;
     MultiFIRState!C _state;
-    typeof(genAdaptor(0, _state))[] _adapters;
+    typeof(genAdaptor(0, _state.subFIRState(0)))[] _adapters;
     C[][] _buffer;
+    C[] _xsTr, _ysTr;
+    State _lastState = State.train;
+
+    enum State { train, canc }
 }
 
 

@@ -1104,8 +1104,8 @@ if(is(typeof((Canceller canceller, in bool[][] selected){ canceller.selectedBasi
 
 unittest
 {
-    alias test1 = FrequencyDomainHammersteinFilter!(Complex!float, PADistorter!(Complex!float, 3), FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float))));
-    alias test2 = FrequencyDomainHammersteinFilter!(Complex!float, PADistorter!(Complex!float, 3), FrequencyDomainDCMHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float))));
+    alias test1 = FrequencyDomainHammersteinFilter!(Complex!float, XpXcqDistorter!(Complex!float, 3), FrequencyDomainParallelHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float))));
+    alias test2 = FrequencyDomainHammersteinFilter!(Complex!float, XpXcqDistorter!(Complex!float, 3), FrequencyDomainDCMHammersteinStateAdapter!(Complex!float, LSAdapter!(MultiFIRState!(Complex!float))));
 
     if(0){
         test1 obj;

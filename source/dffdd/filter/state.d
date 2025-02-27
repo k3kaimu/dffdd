@@ -6,7 +6,7 @@ import mir.ndslice;
 import carbon.math;
 
 
-struct MultiFIRState(C, SliceKind kind = Contiguous)
+struct MultiFIRState(C, SliceKind kind = Canonical)
 if(kind == Contiguous || kind == Canonical)
 {
     alias StateElementType = C;
@@ -49,7 +49,7 @@ if(kind == Contiguous || kind == Canonical)
     size_t numOfFIR() const @property { return state.length!1; }
 
 
-    void update(C[] x...)
+    void update(in C[] x...)
     in{
         assert(x.length == numOfFIR);
     }

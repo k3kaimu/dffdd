@@ -423,7 +423,7 @@ unittest
 
 C fact(C = ulong)(uint n)
 {
-    C dst = 1;
+    Unqual!C dst = 1;
     foreach(i; 2 .. n + 1)
         dst *= i;
 
@@ -468,7 +468,7 @@ unittest
 */
 C laguerre(C)(C x, int n, C a = 0) if(isComplex!C || isFloatingPoint!C)
 {
-    C sum = 0;
+    Unqual!C sum = 0;
     foreach(i; 0 .. n + 1)
         sum += (-1) ^^ i * binom(n + a, n - i) * x ^^ i / fact!C(i);
 
@@ -510,7 +510,7 @@ unittest
 /**
 一般ラゲール多項式に基づく正規直交基底を計算します
 */
-C laguerreOBF(C)(C x, int m, int n) if(isComplex!C || isFloatingPoint!C)
+Unqual!C laguerreOBF(C)(C x, int m, int n) if(isComplex!C || isFloatingPoint!C)
 {
     alias F = typeof(abs(x));
 
