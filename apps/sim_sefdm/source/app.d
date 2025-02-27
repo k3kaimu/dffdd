@@ -429,25 +429,27 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     //     recvMat[] = chMat * modMat;
     // }
 
-    static if(DETECT == "GaBP")
+    // static if(DETECT == "GaBP")
+    // {
+    //     auto recvMat = chMat * modMat;
+    //     auto detector = new GaBPDetector!(C, typeof(mod), GaBPDetectorMode.toBit)(mod, nFFT, nFFT, recvMat.sliced, SIGMA, args);
+    // }
+    // else
+    static if(DETECT == "DAMP")
     {
-        auto detector = new GaBPDetector!(C, typeof(mod), GaBPDetectorMode.toBit)(mod, nFFT, nFFT, recvMat.sliced, SIGMA, args);
-    }
-    else static if(DETECT == "DAMP")
-    {
+        auto recvMat = chMat * modMat;
         auto detector = new DAMPDectector!(C, typeof(mod))(mod, recvMat, args);
     }
     else static if(DETECT == "AMP")
     {
+        auto recvMat = chMat * modMat;
         auto detector = new AMPDetector!(C, typeof(mod))(mod, recvMat, SIGMA, args);
     }
     else static if(DETECT == "EP")
     {
-        // auto recvMat = matrix!C(nFFT, nFFT);
         auto recvMat = chMat * modMat;
         auto rwMat = dftMatrix!C(nFFT);
-        // auto rwMat = identity!C(nFFT);
-        // auto detector = new EPDetector!(C, typeof(mod))(mod, recvMat, SIGMA, args);
+
         C[] recvSVs = modMatSVs.dup;
         foreach(i; 0 .. nFFT)
             recvSVs[i] *= freqResp[i];
