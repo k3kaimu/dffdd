@@ -707,14 +707,36 @@ in(matQ.length!0 == matQ.length!1)
 in(matA.length!0 == matR.length!0)
 in(matA.length!1 == matR.length!1)
 {
+    import std.traits;
     import kaleidic.lubeck : qrDecomp;
+
+    alias R = typeof(C.init.re);
 
     auto viewA = makeViewOrNewSlice(matA, alloc);
     scope(exit) if(viewA.isAllocated) alloc.dispose(viewA.view.iterator);
 
-    auto qrResult = qrDecomp(viewA.view.as!C.slice);
-    matQ.sliced()[] = qrResult.Q;
-    matR.sliced()[] = qrResult.R;
+    static if(is(C == std.complex.Complex!R))
+    {
+        static U c2c(U, T)(T x) { return U(x.re, x.im); }
+
+        auto mirA = matrix!(MirComplex!R)(matA.length!0, matA.length!1);
+        foreach(i; 0 .. matA.length!0) foreach(j; 0 .. matA.length!1)
+            mirA[i, j] = c2c!(MirComplex!R)(viewA.view[i, j]);
+
+        auto qrResult = qrDecomp(mirA.sliced);
+
+        foreach(i; 0 .. matA.length!0) foreach(j; 0 .. matA.length!0)
+            matQ[i, j] = c2c!C(qrResult.Q[i, j]);
+
+        foreach(i; 0 .. matA.length!0) foreach(j; 0 .. matA.length!1)
+            matR[i, j] = c2c!C(qrResult.R[i, j]);
+    }
+    else
+    {
+        auto qrResult = qrDecomp(viewA.view.as!C.slice);
+        matQ.sliced()[] = qrResult.Q;
+        matR.sliced()[] = qrResult.R;
+    }
 }
 
 unittest
