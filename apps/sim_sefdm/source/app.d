@@ -481,6 +481,8 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     }
     else static if(DETECT == "ZF")
     {
+        auto recvMat = chMat * modMat;
+        auto rwMat = identity!C(nFFT);
         auto detector = makeZFDetector!(C, typeof(mod))(mod, recvMat);
     }
     // else static if(DETECT == "SVD")
