@@ -73,13 +73,13 @@ void main(string[] args)
     //     results = parseJSON(cast(const(char)[])read("resultsBER.json")).object;
     // }
 
-    auto isRayleigh = No.isRayleigh;
+    enum bool isRayleigh = No.isRayleigh;
     enum asWSV = Yes.asWSV;
     enum ModK = 2;              // 1シンボルあたりのビット数（1: BPSK, 2:QPSKなど）
     enum isSpecOP = No.SpecOP;  // 周波数スペクトルプリコーディング
     // auto isRayleigh = No.isRayleigh;
 
-    immutable resultDir = isRayleigh ? "results_Rayleigh" : "results_AWGN";
+    enum resultDir = isRayleigh ? "results_Rayleigh" : "results_AWGN";
 
     import mir.ndslice : map;
     // writeln(makeInterfereMatrix!C(0.5, 1, 8).sliced.map!"a.re");
@@ -87,7 +87,7 @@ void main(string[] args)
     // if(0)
     static foreach(usePrePost; [Yes.usePrecoding,/* No.usePrecoding*/])
     static foreach(ALGORITHM; ["EP"/*"SVD", "MMSE", "ZF", "EP", "DAMP", "AMP", "GaBP", "QRM-MLD", "Sphere"*/])
-    foreach(K; [16, 64, 256])
+    foreach(K; [/*16, 64, */256])
     {
         if(ALGORITHM == "Sphere" && K > 16)
             continue;
@@ -104,7 +104,7 @@ void main(string[] args)
 
         foreach(NTAPS; isRayleigh ? NTAPS_ARR : [0])
         foreach(ALPHA; [16/16.0, 12/16.0, 10/16.0, /*9/16.0*/ /*16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0, 9/16.0, 8/16.0*/]){
-            void task(uint K, uint NTAPS, double ALPHA) {
+            static void task(uint K, uint NTAPS, double ALPHA) {
                 immutable uint OSRate = 1;
                 // immutable uint NFFT = K * OSRate;                   // FFTサイズ
                 // immutable uint N = cast(uint)round(K * ALPHA);      // サブキャリア数
