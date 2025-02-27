@@ -485,29 +485,38 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
         auto rwMat = identity!C(nFFT);
         auto detector = makeZFDetector!(C, typeof(mod))(mod, recvMat);
     }
-    // else static if(DETECT == "SVD")
-    // {
-    //     rwMat = matrix!C(nFFT, nFFT, C(0));
-    //     rwMat[] = identity!C(nFFT);
-    //     {
-    //         import dffdd.math.exprtemplate;
-    //         import kaleidic.lubeck;
+    else static if(DETECT == "SVD")
+    {
+        auto recvMat = matrix!C(nFFT, nFFT);
+        auto rwMat = matrix!C(nFFT, nFFT);
 
-    //         auto svdResult = svd(modMat.sliced);
-    //         modMat[] = modMat * svdResult.vt.lightScope.matrixed.H;
-    //         rwMat[] = svdResult.u.lightScope.matrixed.H;
+        {
+            import dffdd.math.exprtemplate;
+            import kaleidic.lubeck;
 
-    //         auto diag = matrix!C(nFFT, nFFT, C(0));
-    //         foreach(i; 0 .. nFFT)
-    //             diag[i, i] = 1/svdResult.sigma[i];
+            recvMat[] = chMat * modMat;
+            auto recvMatmir = recvMat.mapMatrix!(a => MirComplex!double(a.re, a.im));
 
-    //         modMat[] = modMat * diag;
-    //     }
-    //     rwMat[] = rwMat * invChMat;
-    //     recvMat = matrix!C(nFFT, nFFT, C(0));
-    //     recvMat[] = rwMat * modMat;
-    //     auto detector = makeMMSEDetector!(C, typeof(mod))(mod, recvMat, SIGMA);
-    // }
+            auto svdResult = svd(recvMatmir.sliced);
+            recvMat[] = recvMat * svdResult.vt.lightScope.matrixed.H.mapMatrix!(a => C(a.re, a.im));
+            rwMat[] = svdResult.u.lightScope.matrixed.H.mapMatrix!(a => C(a.re, a.im));
+
+            auto diag = matrix!C(nFFT, nFFT, C(0));
+            double sum = 0;
+            foreach(i; 0 .. nFFT) {
+                diag[i, i] = 1/svdResult.sigma[i];
+                sum += (1/svdResult.sigma[i])^^2;
+            }
+
+            // 平均電力制約
+            foreach(i; 0 .. nFFT)
+                diag[i, i] = diag[i, i] / sqrt(sum / nFFT);
+
+            recvMat[] = recvMat * diag;
+        }
+
+        auto detector = makeMMSEDetector!(C, typeof(mod))(mod, rwMat * recvMat, SIGMA);
+    }
     else 
         static assert(0);
 
@@ -864,4 +873,17 @@ Matrix!(C, Contiguous) makePartialSelectMatrix(C)(size_t N, size_t M)
         mat[i, i] = scale;
     
     return mat;
+}
+
+
+auto mapMatrix(alias func, Mat)(Mat inmat)
+{
+    alias R = typeof(func(Mat.ElementType.init));
+
+    auto dst = matrix!R(inmat.length!0, inmat.length!1);
+    foreach(i; 0 .. inmat.length!0)
+        foreach(j; 0 .. inmat.length!1)
+            dst[i, j] = func(inmat[i, j]);
+    
+    return dst;
 }
