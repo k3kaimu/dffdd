@@ -2,6 +2,7 @@ module app;
 
 import std.algorithm;
 import std.complex;
+import std.conv : text;
 import std.math;
 import std.random;
 import std.range;
@@ -34,23 +35,20 @@ void main()
     auto env = defaultJobEnvironment();
     auto taskList = new MultiTaskList!void();
 
-    void run(string dir, uint nFFT, uint nTone, bool isChNorm, uint nChTap, uint nIter, Flag!"isPerfectChEst" isPerfectChEst, size_t numSymChEst, string chEstMethod)
+    void run(string dir, uint nFFT, uint nTone, bool isChNorm, uint nChTap, uint nIter, size_t numSymChEst, ChannelEstimationMethod chEstMethod)
     {
         import std.format;
         import std.json;
         import std.file;
         JSONValue[] berList;
 
-        string filename;
-        if(isPerfectChEst)
-            filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s_perfect.json", dir, nFFT, isChNorm, nTone, nChTap, nIter);
-        else
-            filename = format("%s/nFFT%s_isChNorm%s_nTone%s_nChTap%s_nIter%s_EstCh%s_%s.json", dir, nFFT, isChNorm, nTone, nChTap, nIter, numSymChEst, chEstMethod);
+        string filename = i"$(dir)/nFFT$(nFFT)_isChNorm$(isChNorm)_nTone$(nTone)_nChTap$(nChTap)_nIter$(nIter)_EstCh$(numSymChEst)_$(chEstMethod).json".text();
 
         if(std.file.exists(filename))
             return;
 
-        writefln!"[nFFT = %s, isChNorm = %s, nTone = %s, nChTap = %s, nIter = %s, Perfect = %s, numSymChEst = %s, chEstMethod = %s]"(nFFT, isChNorm, nTone, nChTap, nIter, isPerfectChEst, numSymChEst, chEstMethod);
+        // writefln!"[nFFT = %s, isChNorm = %s, nTone = %s, nChTap = %s, nIter = %s, numSymChEst = %s, chEstMethod = %s]"(nFFT, isChNorm, nTone, nChTap, nIter, numSymChEst, chEstMethod);
+        writeln(i"[nFFT = $(nFFT), isChNorm = $(isChNorm), nTone = $(nTone), nChTap = $(nChTap), nIter = $(nIter), numSymChEst = $(numSymChEst), chEstMethod = $(chEstMethod)]");
         foreach(vEbN0dB; iota(21)) {
             SimParams!(QPSK!C) params;
             params.sefdm.nFFT = nFFT;
@@ -61,7 +59,6 @@ void main()
             params.vEbN0dB = vEbN0dB;
             params.nChTaps = nChTap;
             params.isChNorm = isChNorm;
-            params.isPerfectChEst = isPerfectChEst;
             params.numSymChEst = numSymChEst;
             params.chEstMethod = chEstMethod;
             params.rndSeed = 0;
@@ -79,55 +76,51 @@ void main()
         std.file.write(filename, JSONValue(berList).toString());
     }
 
-    // AWGN
-    foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
-        mkdirRecurse("AWGN");
-        foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
-            taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1, null);
-        }
-    }
+    // // AWGN
+    // foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
+    //     mkdirRecurse("AWGN");
+    //     foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
+    //         taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1, "Perfect");
+    //     }
+    // }
 
 
-    // Rayleigh
-    foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
-        mkdirRecurse("Rayleigh");
-        foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
-        foreach(nChTap; [1, 4, 8, 16, 32, 64]) {
-            taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, Yes.isPerfectChEst, 1, null);
-        }
-    }
+    // // Rayleigh
+    // foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
+    //     mkdirRecurse("Rayleigh");
+    //     foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
+    //     foreach(nChTap; [1, 4, 8, 16, 32, 64]) {
+    //         taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, Yes.isPerfectChEst, 1, "Perfect");
+    //     }
+    // }
 
-    foreach(nFFT; [2048]) {
-        mkdirRecurse("Rayleigh_Iter");
-        foreach(nIter; iota(2, 41, 2)) {
-            taskList.append(&run, "Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, 8, nIter, Yes.isPerfectChEst, 1, null);
-        }
-    }
+    // foreach(nFFT; [2048]) {
+    //     mkdirRecurse("Rayleigh_Iter");
+    //     foreach(nIter; iota(2, 41, 2)) {
+    //         taskList.append(&run, "Rayleigh_Iter", nFFT, nFFT / 8 * 5, false, 8, nIter, Yes.isPerfectChEst, 1, "Perfect");
+    //     }
+    // }
 
-    foreach(chEstMethod; ["ZF", "MMSE"]) {
-        // AWGN, nonPerfectChEst
-        foreach(numSymChEst; [0, 1, 2, 4, 8, 16]) {
+    foreach(chEstMethod; [ChannelEstimationMethod.perfect, ChannelEstimationMethod.ZF, ChannelEstimationMethod.MMSE]) {
+        auto numSymChEstList = (chEstMethod == ChannelEstimationMethod.perfect) ? [1] : [1, 2, 4, 8, 16];
+
+        // AWGN
+        foreach(numSymChEst; numSymChEstList) {
             foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
                 mkdirRecurse("AWGN");
                 foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
-                    if(numSymChEst == 0)
-                        taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, Yes.isPerfectChEst, 1, chEstMethod);
-                    else
-                        taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, No.isPerfectChEst, numSymChEst, chEstMethod);
+                    taskList.append(&run, "AWGN", nFFT, nTone, true, 1, 20, numSymChEst, chEstMethod);
                 }
             }
         }
 
-        // Rayleigh, nonPerfectChEst
-        foreach(numSymChEst; [0, 1, 2, 4, 8, 16]) {
+        // Rayleigh
+        foreach(numSymChEst; numSymChEstList) {
             foreach(nFFT; [64, 128, 256, 512, 1024, 2048]) {
                 mkdirRecurse("Rayleigh");
                 foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
                 foreach(nChTap; [1, 4, 8, 16, 32, 64]) {
-                    if(numSymChEst == 0)
-                        taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, Yes.isPerfectChEst, 0, chEstMethod);
-                    else
-                        taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, No.isPerfectChEst, numSymChEst, chEstMethod);
+                    taskList.append(&run, "Rayleigh", nFFT, nTone, false, nChTap, 20, numSymChEst, chEstMethod);
                 }
             }
         }
@@ -166,6 +159,14 @@ struct RDFTsSEFDMParams(Mod)
 }
 
 
+enum ChannelEstimationMethod : string
+{
+    perfect = "Perfect",
+    ZF = "ZF",
+    MMSE = "MMSE",
+}
+
+
 struct SimParams(Mod)
 {
     RDFTsSEFDMParams!Mod sefdm;
@@ -175,8 +176,7 @@ struct SimParams(Mod)
     size_t minTotalbits = 1_000_000;
     size_t nChTaps = 8;
     bool isChNorm = false;
-    bool isPerfectChEst = true;
-    string chEstMethod = "ZF";
+    ChannelEstimationMethod chEstMethod = ChannelEstimationMethod.ZF;
     size_t numSymChEst = 1;
     size_t rndSeed;
 }
@@ -427,10 +427,7 @@ in(sig.length == chFR.length)
 
 
 C[] estimateChannelByOFDM(Mod)(in ref SimParams!Mod params, in C[] chFR, double SIGMA2)
-{
-    if(params.isPerfectChEst)
-        SIGMA2 = 0;
-    
+{   
     auto sefdm = new RDFTsSEFDM!(Mod, C)(params.sefdm.mod, params.sefdm.nFFT, 0, params.sefdm.nTone, 1, params.sefdm.nData, null, params.sefdm.rndSeed, SIGMA2, params.sefdm.nIter);
     auto ofdm = sefdm.ofdm;
 
@@ -447,17 +444,17 @@ C[] estimateChannelByOFDM(Mod)(in ref SimParams!Mod params, in C[] chFR, double 
     foreach(i; 0 .. params.numSymChEst) {
         auto sig = chEstOFDMtx.dup;
         auto rxsignal = sig.applyChannel(chFR);
-        rxsignal = rxsignal.addAWGN(i, SIGMA2);
+
+        if(params.chEstMethod != ChannelEstimationMethod.perfect)
+            rxsignal = rxsignal.addAWGN(i, SIGMA2);
 
         C[] chEstSCrx;
         ofdm.demodulate(rxsignal, chEstSCrx);
-        // foreach(k; 0 .. params.sefdm.nTone)
-        //     estChFR[k] += (chEstSCrx[k] / chEstSCtx[k]) / params.numSymChEst;
 
         foreach(k; 0 .. params.sefdm.nTone) {
-            if(params.chEstMethod == "MMSE")
+            if(params.chEstMethod == ChannelEstimationMethod.MMSE)
                 estChFR[k] += chEstSCrx[k] / (chEstSCtx[k].sqAbs + SIGMA2) * chEstSCtx[k].conj;
-            else if(params.chEstMethod == "ZF")
+            else if(params.chEstMethod == ChannelEstimationMethod.ZF || params.chEstMethod == ChannelEstimationMethod.perfect)
                 estChFR[k] += chEstSCrx[k] / chEstSCtx[k];
             else {
                 import std.exception;

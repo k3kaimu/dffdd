@@ -86,8 +86,8 @@ void main(string[] args)
     foreach(isRayleigh; [Yes.isRayleigh, No.isRayleigh])
     // foreach(asOFDM; [Yes.asOFDM, No.asOFDM])
     // static foreach(usePrePost; [Yes.usePrecoding, No.usePrecoding])
-    static foreach(ALGORITHM; ["EP",/* "SVD", "MMSE", "ZF", "AMP", "GaBP", "QRM-MLD", "Sphere"*/])
-    foreach(nFFT; [/*16, 64,*/ /*256,*/ 2048, /*1024, 4096*/])     // FFTサイズ = データ数
+    static foreach(ALGORITHM; [/*"EP",*/ /*"SVD",*/ /*"MMSE",*/ /*"ZF",*/ /*"AMP",*/ /*"GaBP",*/ "QRM-MLD", /*"Sphere"*/])
+    foreach(nFFT; [/*16, 64,*/ /*256,*/ 64, /*1024, 4096*/])     // FFTサイズ = データ数
     {
         immutable resultDir = isRayleigh ? "results_Rayleigh" : "results_AWGN";
 
@@ -105,7 +105,7 @@ void main(string[] args)
         auto NTAPS_ARR = [1, /*4, 8, 16, 32*/];
 
         foreach(NTAPS; isRayleigh ? NTAPS_ARR : [0])
-        foreach(ALPHA; [16/16.0, /*14/16.0, 12/16.0, 10/16.0,*/ /*9/16.0*/ /*16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0, 9/16.0, 8/16.0*/]){
+        foreach(ALPHA; [/*16/16.0,*/ 14/16.0, /*12/16.0, *//*10/16.0,*//**/ /*9/16.0*/ /*16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0, 9/16.0, 8/16.0*/]){
             static void task(bool isRayleigh, string resultDir, uint nFFT, uint NTAPS, double ALPHA) {
                 immutable uint OSRate = 1;
                 // immutable uint NFFT = K * OSRate;                   // FFTサイズ
@@ -435,17 +435,18 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     //     auto detector = new GaBPDetector!(C, typeof(mod), GaBPDetectorMode.toBit)(mod, nFFT, nFFT, recvMat.sliced, SIGMA, args);
     // }
     // else
-    static if(DETECT == "DAMP")
-    {
-        auto recvMat = chMat * modMat;
-        auto detector = new DAMPDectector!(C, typeof(mod))(mod, recvMat, args);
-    }
-    else static if(DETECT == "AMP")
-    {
-        auto recvMat = chMat * modMat;
-        auto detector = new AMPDetector!(C, typeof(mod))(mod, recvMat, SIGMA, args);
-    }
-    else static if(DETECT == "EP")
+    // static if(DETECT == "DAMP")
+    // {
+    //     auto recvMat = chMat * modMat;
+    //     auto detector = new DAMPDectector!(C, typeof(mod))(mod, recvMat, args);
+    // }
+    // else static if(DETECT == "AMP")
+    // {
+    //     auto recvMat = chMat * modMat;
+    //     auto detector = new AMPDetector!(C, typeof(mod))(mod, recvMat, SIGMA, args);
+    // }
+    // else
+    static if(DETECT == "EP")
     {
         auto recvMat = chMat * modMat;
         auto rwMat = dftMatrix!C(nFFT);
@@ -462,8 +463,10 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
         // rwMat[] = modMat.H * invChMat;
 
         // recvMat = matrix!C(nFFT, nFFT);
-        auto recvMat = modMat.H * modMat;
-        auto detector = makeQRMMLDDetector!C(mod, recvMat, args);
+        // auto recvMat = modMat.H * modMat;
+        auto recvMat = chMat * modMat;
+        auto rwMat = identity!C(nFFT);
+        auto detector = makeQRMMLDDetector!C(mod, recvMat.mapMatrix!(a => a), args);
         // assert(OSRate >= 2);
     }
     else static if(DETECT == "Sphere")
@@ -472,8 +475,9 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
         // rwMat[] = modMat.H * invChMat;
 
         // recvMat = matrix!C(nFFT, nFFT);
-        auto recvMat = modMat.H * modMat;
-        auto detector = makeSphereDetector!C(mod, recvMat, args);
+        auto recvMat = chMat * modMat;
+        auto rwMat = identity!C(nFFT);
+        auto detector = makeSphereDetector!C(mod, recvMat.mapMatrix!(a => a), args);
     }
     else static if(DETECT == "MMSE")
     {
