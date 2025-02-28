@@ -12,7 +12,7 @@ import dffdd.math.math;
 import dffdd.utils.fft;
 
 
-final class RDFTsSEFDM(Mod, C = Mod.OutputELementType)
+final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
 {
     alias InputElementType = Bit;
     alias OutputElementType = C;
