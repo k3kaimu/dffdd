@@ -21,28 +21,31 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
 
     this(
         Mod mod, uint nFFT, uint nCP, uint nTone, uint nUpSampling,
-        uint nData, immutable(size_t)[] shuffle = null, uint shuffleRandSeed = 0,
+        uint nSpreadIn, uint nSpreadOut, immutable(size_t)[] shuffle = null, uint shuffleRandSeed = 0,
         double N0 = 1e-6, size_t maxIter = 20)
-    in(shuffle.length == 0 || shuffle.length == nData)
-    in(nData >= nTone)
+    in(shuffle.length == 0 || shuffle.length == nSpreadIn)
+    in(nUpSampling >= 1)
     in(nFFT >= nTone)
+    in(nSpreadIn >= nSpreadOut)
+    in(nSpreadOut % nTone == 0)
     {
         _mod = mod;
         _ofdm = new OFDM!C(nFFT, nCP, nTone, nUpSampling);
         _nTone = nTone;
-        _nData = nData;
-        _cbuffer = new C[_nData];
-        _sbuffer = new C[_nTone];
+        _nSpreadIn = nSpreadIn;
+        _nSpreadOut = nSpreadOut;
+        _cbuffer = new C[_nSpreadIn];
+        _sbuffer = new C[_nSpreadOut];
 
-        _fftw = makeFFTWObject!C(_nData);
+        _fftw = makeFFTWObject!C(_nSpreadIn);
 
         // シャッフルするインデックス配列の設定
         if(shuffle !is null) {
             _rndIdx = shuffle;
         } else {
             // 引数で与えられていない場合は自分で生成する
-            auto perm = new size_t[nData];
-            foreach(i; 0 .. nData)
+            auto perm = new size_t[nSpreadIn];
+            foreach(i; 0 .. nSpreadIn)
                 perm[i] = i;
             
             Random rnd;
@@ -56,8 +59,17 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
     }
 
 
-    size_t symInputLength() const @property { return _nData * _mod.symInputLength; }
-    size_t symOutputLength() const @property { return _ofdm.symOutputLength; }
+    size_t symInputLength() const @property
+    {
+        return _mod.symInputLength * _nSpreadIn;
+    }
+
+
+    size_t symOutputLength() const @property
+    {
+        immutable nblock = _nSpreadOut / _nTone;
+        return _ofdm.symOutputLength * nblock;
+    }
 
 
     ref C[] modulate(in Bit[] inputs, return ref C[] outputs)
@@ -112,6 +124,17 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
     }
 
 
+    void setFrequencyResponse(in C[] freqResp)
+    in(freqResp.length == _nTone)
+    {
+        import mir.ndslice;
+        auto fr = freqResp.sliced;
+
+        foreach(i; 0 .. _nSpreadOut / _nTone)
+            _epdet.channelSingularValues.sliced()[i * _nTone .. (i+1) * _nTone] = freqResp.sliced;
+    }
+
+
     ref inout(OFDM!C) ofdm() inout
     {
         return _ofdm;
@@ -141,7 +164,7 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
     typeof(makeFFTWObject!C(0)) _fftw;
     C[] _sbuffer, _cbuffer;
     size_t _nTone;
-    size_t _nData;
+    size_t _nSpreadIn, _nSpreadOut;
     immutable(size_t)[] _rndIdx;
     typeof(_makeEPDet(0, 0)) _epdet;
 
@@ -154,21 +177,21 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
         import dffdd.detector.ep : makeSVDEPDetector;
 
         auto pmat = PermutationMatrix(_rndIdx);
-        auto wmat = dftMatrix!C(_nData);
-        return makeSVDEPDetector!C(_mod, identity!C(_nTone), vector!C(_nTone, C(1)), pmat * wmat, N0, maxIter);
+        auto wmat = dftMatrix!C(_nSpreadIn);
+        return makeSVDEPDetector!C(_mod, identity!C(_nSpreadOut), vector!C(_nSpreadOut, C(1)), pmat * wmat, N0, maxIter);
     }
 
 
     void _randomSpread(in C[] inbuf, C[] outbuf)
-    in(inbuf.length == _nData)
-    in(outbuf.length == _nTone)
+    in(inbuf.length == _nSpreadIn)
+    in(outbuf.length == _nSpreadOut)
     {
         alias F = typeof(C.init.re);
-        immutable F scale = 1/fast_sqrt!F(_nData);
+        immutable F scale = 1/fast_sqrt!F(_nSpreadIn);
 
         _fftw.inputs!F[] = inbuf[];
         _fftw.fft!F();
-        foreach(i; 0 .. _nTone)
+        foreach(i; 0 .. _nSpreadOut)
             outbuf[i] = _fftw.outputs!F[_rndIdx[i]] * scale;
     }
 }
@@ -186,27 +209,28 @@ unittest
     QPSK!C qpsk;
 
 
-    void runTestNoDist(uint nFFT, uint nCP, uint nTone, uint nUpSampling, uint nData, uint nSym)
+    void runTestNoDist(uint nFFT, uint nCP, uint nTone, uint nUpSampling, uint nSpreadIn, uint nSpreadOut, uint nSym)
     {
-        auto sefdm = new RDFTsSEFDM!(QPSK!C, C)(qpsk, nFFT, nCP, nTone, nUpSampling, nData, null, 0);
+        auto sefdm = new RDFTsSEFDM!(QPSK!C, C)(qpsk, nFFT, nCP, nTone, nUpSampling, nSpreadIn, nSpreadOut, null, 0);
         foreach(_; 0 .. 100) {
-            auto bits = randomBits().map!(a => Bit(a)).take(nData * 2 * nSym).array();
+            auto bits = randomBits().map!(a => Bit(a)).take(nSpreadIn * 2 * nSym).array();
 
             C[] dst_mod;
             sefdm.modulate(bits, dst_mod);
-            assert(dst_mod.length == (nFFT+nCP)*nSym);
+            assert(dst_mod.length == (nFFT+nCP) * nUpSampling * (nSpreadOut / nTone) * nSym);
 
             Bit[] dst_demod;
             sefdm.demodulate(dst_mod, dst_demod);
-            assert(dst_demod.length == nData * 2 * nSym);
+            assert(dst_demod.length == nSpreadIn * 2 * nSym);
             assert(bits == dst_demod);
         }
     }
 
 
-    runTestNoDist(64, 16, 52, 1, 80, 1);
-    runTestNoDist(64, 0, 64, 1, 64, 2);
-    runTestNoDist(2, 0, 2, 1, 2, 100);
+    runTestNoDist(64, 16, 52, 4, 53, 52, 100);
+    runTestNoDist(64, 0, 64, 1, 64, 64, 100);
+    runTestNoDist(2, 0, 2, 1, 2, 2, 100);
+    runTestNoDist(64, 16, 52, 4, 800, 520, 1);
 
 
     C[] toLTI(in C[] signal, in C[] taps)
@@ -221,11 +245,11 @@ unittest
     }
 
 
-    void runTestLTI(uint nFFT, uint nCP, uint nTone, uint nUpSampling, uint nData, uint nSym, in C[] taps)
+    void runTestLTI(uint nFFT, uint nCP, uint nTone, uint nUpSampling, uint nSpreadIn, uint nSpreadOut, uint nSym, in C[] taps)
     {
-        auto sefdm = new RDFTsSEFDM!(QPSK!C, C)(qpsk, nFFT, nCP, nTone, nUpSampling, nData, null, 0);
+        auto sefdm = new RDFTsSEFDM!(QPSK!C, C)(qpsk, nFFT, nCP, nTone, nUpSampling, nSpreadIn, nSpreadOut, null, 0);
 
-        // チャネルの周波数応答を推定する
+        // 1000個のOFDMシンボルでチャネルの周波数応答を推定する
         {
             import dffdd.mod.primitives : mod, demod;
             import mir.ndslice;
@@ -245,28 +269,29 @@ unittest
                 foreach(j; 0 .. scsrx.length / nTone)
                     ch[i] += scsrx[j*nTone + i] / (scsrx.length / nTone);
 
-            sefdm.epDetector.channelSingularValues[] = ch.sliced.vectored;
+            sefdm.setFrequencyResponse(ch);
         }
 
         foreach(_; 0 .. 100) {
-            auto bits = randomBits().map!(a => Bit(a)).take(nData * 2 * nSym).array();
+            auto bits = randomBits().map!(a => Bit(a)).take(nSpreadIn * 2 * nSym).array();
 
             C[] dst_mod;
             sefdm.modulate(bits, dst_mod);
-            assert(dst_mod.length == (nFFT+nCP)*nSym);
+            assert(dst_mod.length == (nFFT+nCP) * nUpSampling * (nSpreadOut / nTone) * nSym);
 
             C[] recv = toLTI(dst_mod, taps);
 
             Bit[] dst_demod;
             sefdm.demodulate(recv, dst_demod);
-            assert(dst_demod.length == nData * 2 * nSym);
+            assert(dst_demod.length == nSpreadIn * 2 * nSym);
             assert(bits == dst_demod);
         }
     }
 
 
-    runTestLTI(64, 16, 52, 1, 52, 1, [C(1), C(0.1), C(-0.1)]);
-    runTestLTI(64, 16, 52, 1, 80, 1, [C(0.1), C(1), C(-0.1), C(0.1), C(-0.1), C(0.1), C(-0.1)]);
+    runTestLTI(64, 16, 52, 1, 52, 52, 100, [C(1), C(0.1), C(-0.1)]);
+    runTestLTI(64, 16, 52, 4, 53, 52, 100, [C(0.1), C(1), C(-0.1), C(0.1), C(-0.1), C(0.1), C(-0.1)]);
+    runTestLTI(64, 16, 52, 1, 800, 520, 1, [C(0.1), C(1), C(-0.1), C(0.1), C(-0.1), C(0.1), C(-0.1)]);
 
 
     // auto sefdm = new RDFTsSEFDM!(QPSK!C, C)(qpsk, 32, 0, 20, 1, 20, null, 0);
