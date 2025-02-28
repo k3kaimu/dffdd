@@ -186,7 +186,7 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
 
 
     auto H() {
-        static if(is(typeof(E.init.re + E.init.im)))
+        static if(is(typeof(E(E.init.re, E.init.im))))
             return ConstAll!(E, E(value.re, -value.im), Dim)([_len[1], _len[0]]);
         else
             return ConstAll!(E, value, Dim)([_len[1], _len[0]]);
@@ -209,8 +209,15 @@ if(is(typeof(value) : E) && (Dim == 1 || Dim == 2) )
 
 unittest
 {
-    auto zeros = ConstAll!(int, 0, 2)();
+    auto zeros = ConstAll!(int, 0, 2)(4, 4);
     static assert(isMatrixLike!(typeof(zeros)));
+
+    auto a = zeros.T + zeros.H;
+
+    auto c11 = ConstAll!(Complex!float, Complex!float(1, 1), 2)(4, 4);
+    auto b = c11.T + c11.H;
+
+    assert(c11.H[0, 0].im == -1);
 }
 
 
