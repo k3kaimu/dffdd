@@ -13,6 +13,9 @@
         "release": {
             "buildOptions": ["releaseMode", "optimize", "inline"],
             "dflags-ldc": ["-enable-cross-module-inlining", "-mcpu=native", "-oq"]
+        },
+        "perf": {
+            "buildOptions": ["releaseMode", "debugInfo","optimize", "inline"]
         }
     }
 }
