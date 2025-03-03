@@ -210,6 +210,18 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
     }
 
 
+    void setNoisePower(double N0)
+    {
+        _N0 = N0;
+    }
+
+
+    void setMaxIteration(size_t maxIter)
+    {
+        _maxIter = maxIter;
+    }
+
+
   private:
     Mod _mod; 
     Vector!(F, Contiguous) _rowScales;
