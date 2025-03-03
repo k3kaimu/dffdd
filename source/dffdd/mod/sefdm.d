@@ -32,6 +32,7 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
         _mod = mod;
         _ofdm = new OFDM!C(nFFT, nCP, nTone, nUpSampling);
         _nTone = nTone;
+        _nFFT = nFFT;
         _nSpreadIn = nSpreadIn;
         _nSpreadOut = nSpreadOut;
         _cbuffer = new C[_nSpreadIn];
@@ -135,6 +136,12 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
     }
 
 
+    void setNoisePower(double N0)
+    {
+        _epdet.setNoisePower(N0 * _nTone / _nFFT);
+    }
+
+
     ref inout(OFDM!C) ofdm() inout
     {
         return _ofdm;
@@ -163,7 +170,7 @@ final class RDFTsSEFDM(Mod, C = Mod.OutputElementType)
     OFDM!C _ofdm;
     typeof(makeFFTWObject!C(0)) _fftw;
     C[] _sbuffer, _cbuffer;
-    size_t _nTone;
+    size_t _nTone, _nFFT;
     size_t _nSpreadIn, _nSpreadOut;
     immutable(size_t)[] _rndIdx;
     typeof(_makeEPDet(0, 0)) _epdet;
