@@ -28,6 +28,7 @@ struct SphereDetector(C)
         _chMatR = chMatR;
         _minError = F.infinity;
         _minVector = vector!C(decoded.length);
+        _minVector[] = C(0);
 
         foreach(p; _points) {
             decoded[$-1] = p;

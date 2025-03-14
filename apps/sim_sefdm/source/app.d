@@ -33,6 +33,7 @@ import dffdd.detector.ep;
 import dffdd.detector.qrm_mld;
 import dffdd.detector.linear;
 import dffdd.detector.tridiag_dp;
+import dffdd.detector.mld;
 
 import tuthpc.taskqueue;
 
@@ -83,15 +84,15 @@ void main(string[] args)
     // writeln(makeInterfereMatrix!C(0.5, 1, 8).sliced.map!"a.re");
     
     // if(0)
-    foreach(isRayleigh; [Yes.isRayleigh, No.isRayleigh])
+    foreach(isRayleigh; [No.isRayleigh, Yes.isRayleigh])
     // foreach(asOFDM; [Yes.asOFDM, No.asOFDM])
     // static foreach(usePrePost; [Yes.usePrecoding, No.usePrecoding])
-    static foreach(ALGORITHM; [/*"EP",*/ /*"SVD",*/ /*"MMSE",*/ /*"ZF",*/ /*"AMP",*/ /*"GaBP",*/ "QRM-MLD", /*"Sphere"*/])
-    foreach(nFFT; [/*16, 64,*/ /*256,*/ 64, /*1024, 4096*/])     // FFTサイズ = データ数
+    static foreach(ALGORITHM; [/*"EP",*/ "SVD", "MMSE", "ZF", /*"AMP",*/ /*"GaBP",*/ "QRM-MLD", "Sphere", "FullMLD"])
+    foreach(nFFT; [8, 64, /*256,*//*1024, 4096*/])     // FFTサイズ = データ数
     {
         immutable resultDir = isRayleigh ? "results_Rayleigh" : "results_AWGN";
 
-        if(ALGORITHM == "Sphere" && nFFT > 16)
+        if((ALGORITHM == "FullMLD" || ALGORITHM == "Sphere") && nFFT > 8)
             continue;
 
         if(isRayleigh && ALGORITHM == "QRM-MLD")
@@ -102,10 +103,22 @@ void main(string[] args)
 
         // auto NTAPS_ARR = [K/8];
         // if(ALGORITHM == "EP" && K == 256)
-        auto NTAPS_ARR = [1, /*4, 8, 16, 32*/];
+        // auto NTAPS_ARR = [1, 4, 8, 32];
+        int[] nTapsList;
+        double[] alphaList;
+        if(nFFT == 4) {
+            alphaList = [1, 3 / 4.0];
+            nTapsList = [1, 2, 3, 4];
+        } else if(nFFT == 8) {
+            alphaList = [1, 7 / 8.0, 6 / 8.0, 5 / 8.0];
+            nTapsList = [1, 2, 4, 8];
+        } else {
+            alphaList = [16/16.0, 14/16.0, 12/16.0, 10/16.0];
+            nTapsList = [1, 4, 8, 16];
+        }
 
-        foreach(NTAPS; isRayleigh ? NTAPS_ARR : [0])
-        foreach(ALPHA; [/*16/16.0,*/ 14/16.0, /*12/16.0, *//*10/16.0,*//**/ /*9/16.0*/ /*16/16.0, 15/16.0, 14/16.0, 13/16.0, 12/16.0, 11/16.0, 10/16.0, 9/16.0, 8/16.0*/]){
+        foreach(NTAPS; isRayleigh ? nTapsList : [0])
+        foreach(ALPHA; alphaList){
             static void task(bool isRayleigh, string resultDir, uint nFFT, uint NTAPS, double ALPHA) {
                 immutable uint OSRate = 1;
                 // immutable uint NFFT = K * OSRate;                   // FFTサイズ
@@ -200,7 +213,7 @@ void main(string[] args)
                             // auto res =  mainImpl!(ModK, "QRM-MLD")(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial, 100);
                             auto res = mainImpl(params, 100);
                         }
-                        else static if(ALGORITHM == "Sphere" || ALGORITHM == "MMSE" || ALGORITHM == "ZF" || ALGORITHM == "SVD" || ALGORITHM == "TDMLD")
+                        else static if(ALGORITHM == "Sphere" || ALGORITHM == "FullMLD" || ALGORITHM == "MMSE" || ALGORITHM == "ZF" || ALGORITHM == "SVD" || ALGORITHM == "TDMLD")
                         {
                             // auto res =  mainImpl!(ModK, ALGORITHM)(M, N, NFFT, ebno, isRayleigh, cast(uint)iTrial, NTAPS * OSRate, simBitsPerTrial);
                             auto res = mainImpl(params);
@@ -245,10 +258,9 @@ void main(string[] args)
     }
 
     // writefln!"num of Tasks: %s"(taskList.length);
-
-    // run(taskList, env);
-    foreach(i; 0 .. taskList.length)
-        taskList[i]();
+    run(taskList, env);
+    // foreach(i; 0 .. taskList.length)
+    //     taskList[i]();
 }
 
 
@@ -459,25 +471,38 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     }
     else static if(DETECT == "QRM-MLD")
     {
-        // rwMat = matrix!C(nFFT, nFFT);
-        // rwMat[] = modMat.H * invChMat;
-
-        // recvMat = matrix!C(nFFT, nFFT);
-        // auto recvMat = modMat.H * modMat;
-        auto recvMat = chMat * modMat;
         auto rwMat = identity!C(nFFT);
-        auto detector = makeQRMMLDDetector!C(mod, recvMat.mapMatrix!(a => a), args);
-        // assert(OSRate >= 2);
+        auto recvMat = chMat * modMat;
+        auto detectMat = rwMat * recvMat;
+        auto detector = makeQRMMLDDetector!C(mod, detectMat.mapMatrix!(a => a), args);
     }
+    // else static if(DETECT == "QRM-MLD2")
+    // {
+    //     auto rwMat = modMat.H;
+    //     auto recvMat = chMat * modMat;
+    //     auto detectMat = rwMat * recvMat;
+    //     auto detector = makeQRMMLDDetector!C(mod, detectMat.mapMatrix!(a => a), args);
+    // }
     else static if(DETECT == "Sphere")
     {
-        // rwMat = matrix!C(nFFT, nFFT);
-        // rwMat[] = modMat.H * invChMat;
-
-        // recvMat = matrix!C(nFFT, nFFT);
-        auto recvMat = chMat * modMat;
         auto rwMat = identity!C(nFFT);
-        auto detector = makeSphereDetector!C(mod, recvMat.mapMatrix!(a => a), args);
+        auto recvMat = chMat * modMat;
+        auto detectMat = rwMat * recvMat;
+        auto detector = makeSphereDetector!C(mod, detectMat.mapMatrix!(a => a), args);
+    }
+    // else static if(DETECT == "Sphere2")
+    // {
+    //     auto rwMat = modMat.H;
+    //     auto recvMat = chMat * modMat;
+    //     auto detectMat = rwMat * recvMat;
+    //     auto detector = makeSphereDetector!C(mod, detectMat.mapMatrix!(a => a), args);
+    // }
+    else static if(DETECT == "FullMLD")
+    {
+        auto rwMat = identity!C(nFFT);
+        auto recvMat = chMat * modMat;
+        auto detectMat = rwMat * recvMat;
+        auto detector = new MLDetector!C(mod.allConstellationPoints, detectMat.mapMatrix!(a => a), args);
     }
     else static if(DETECT == "MMSE")
     {
@@ -671,34 +696,34 @@ C[] genChannel(C)(uint N, uint NFFT, uint k)
 }
 
 
-// Matrix!(C, Contiguous) genSEFDMModMatrix(C)(uint N, double alpha)
-// {
-//     import std.complex : expi;
-
-//     auto mat = matrix!C(N, N);
-//     foreach(i; 0 .. N)
-//         foreach(j; 0 .. N)
-//             mat[i, j] = C(expi(-2*PI/N * i * j * alpha).tupleof) / sqrt(N*1.0);
-    
-//     return mat;
-// }
-
-auto genSEFDMModMatrix(C)(uint N, double alpha)
+Matrix!(C, Contiguous) genSEFDMModMatrix(C)(uint N, double alpha)
 {
-    import dffdd.math.matrixspecial;
+    import std.complex : expi;
 
-    immutable uint M = cast(uint)round(N / alpha);
-
-    C[] ones;
+    auto mat = matrix!C(N, N);
     foreach(i; 0 .. N)
-        ones ~= C(1);
-
-    auto diag1 = diag(M, N, ones);      // 入力N, 出力Mで，出力に(M-N)のゼロを追加する行列
-    auto idft = idftMatrix!C(M);     // M x MのIDFT行列
-    auto diag2 = diag(N, M, ones);      // 入力M, 出力Nで，出力の(M-N)個の要素を取り除く
+        foreach(j; 0 .. N)
+            mat[i, j] = C(expi(-2*PI/N * i * j * alpha).tupleof) / sqrt(N*1.0);
     
-    return diag2 * idft * diag1;
+    return mat;
 }
+
+// auto genSEFDMModMatrix(C)(uint N, double alpha)
+// {
+//     import dffdd.math.matrixspecial;
+
+//     immutable uint M = cast(uint)round(N / alpha);
+
+//     C[] ones;
+//     foreach(i; 0 .. N)
+//         ones ~= C(1);
+
+//     auto diag1 = diag(M, N, ones);      // 入力N, 出力Mで，出力に(M-N)のゼロを追加する行列
+//     auto idft = idftMatrix!C(M);     // M x MのIDFT行列
+//     auto diag2 = diag(N, M, ones);      // 入力M, 出力Nで，出力の(M-N)個の要素を取り除く
+    
+//     return diag2 * idft * diag1;
+// }
 
 
 // Matrix!(C, Contiguous) genDFTMatrix(C)(uint NFFT)

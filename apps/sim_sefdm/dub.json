@@ -6,7 +6,7 @@
     "dependencies": {
         "dffdd": { "path": "../../" },
         "lubeck": { "path": "../../../lubeck" },
-        "tuthpc": { "path": "../../../TUT-HPCLib4D" }
+        "tuthpc": { "path": "../../../TUT-HPCLIB4D" }
     },
     "buildTypes": {
         "debug": { "buildOptions": ["debugMode"] },
