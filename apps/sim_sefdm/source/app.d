@@ -88,11 +88,11 @@ void main(string[] args)
     // foreach(asOFDM; [Yes.asOFDM, No.asOFDM])
     // static foreach(usePrePost; [Yes.usePrecoding, No.usePrecoding])
     static foreach(ALGORITHM; [/*"EP",*/ "SVD", "MMSE", "ZF", /*"AMP",*/ /*"GaBP",*/ "QRM-MLD", "Sphere", "FullMLD"])
-    foreach(nFFT; [8, 64, /*256,*//*1024, 4096*/])     // FFTサイズ = データ数
+    foreach(nDFT; [8, 64, /*256,*//*1024, 4096*/])     // FFTサイズ = データ数
     {
         immutable resultDir = isRayleigh ? "results_Rayleigh" : "results_AWGN";
 
-        if((ALGORITHM == "FullMLD" || ALGORITHM == "Sphere") && nFFT > 8)
+        if((ALGORITHM == "FullMLD" || ALGORITHM == "Sphere") && nDFT > 8)
             continue;
 
         if(isRayleigh && ALGORITHM == "QRM-MLD")
@@ -106,10 +106,10 @@ void main(string[] args)
         // auto NTAPS_ARR = [1, 4, 8, 32];
         int[] nTapsList;
         double[] alphaList;
-        if(nFFT == 4) {
+        if(nDFT == 4) {
             alphaList = [1, 3 / 4.0];
             nTapsList = [1, 2, 3, 4];
-        } else if(nFFT == 8) {
+        } else if(nDFT == 8) {
             alphaList = [1, 7 / 8.0, 6 / 8.0, 5 / 8.0];
             nTapsList = [1, 2, 4, 8];
         } else {
@@ -117,9 +117,14 @@ void main(string[] args)
             nTapsList = [1, 4, 8, 16];
         }
 
+        if(!isRayleigh && nDFT == 8) {
+            foreach(i; 0 .. 200)
+                alphaList ~= 1 - i * 0.5 / 200;
+        }
+
         foreach(NTAPS; isRayleigh ? nTapsList : [0])
         foreach(ALPHA; alphaList){
-            static void task(bool isRayleigh, string resultDir, uint nFFT, uint NTAPS, double ALPHA) {
+            static void task(bool isRayleigh, string resultDir, uint nDFT, uint NTAPS, double ALPHA) {
                 immutable uint OSRate = 1;
                 // immutable uint NFFT = K * OSRate;                   // FFTサイズ
                 // immutable uint N = cast(uint)round(K * ALPHA);      // サブキャリア数
@@ -129,9 +134,9 @@ void main(string[] args)
                 // immutable uint N = cast(uint)round(K * ALPHA);
                 // immutable uint NFFT = K * OSRate;
                 // immutable uint M = N * OSRate;                      // 観測数
-                immutable uint nSC = cast(uint)round(nFFT * ALPHA);     // 有効サブキャリア数
+                // immutable uint nSC = cast(uint)round(nFFT * ALPHA);     // 有効サブキャリア数
                 // writefln("%s, K: %s, N: %s, alpha = %s/%s, nTaps=%s", ALGORITHM, K, N, N, NFFT, NTAPS);
-                writefln("%s, FFT: %s, Active: %s, alpha = %s/%s", ALGORITHM, nFFT, nSC, nSC, nFFT);
+                writefln("%s, nSC: %s, alpha = %.4f", ALGORITHM, nDFT, ALPHA);
 
                 float[] berResults;
                 double[] psd;
@@ -161,8 +166,8 @@ void main(string[] args)
                     enum string SEFDMType = "BasicSEFDM";
                 }
 
-                immutable filenameBER = "%s/ber_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, nSC, nFFT, NTAPS, SEFDMType);
-                immutable filenamePSD = "%s/psd_%s_%s_%s_%s_%s.json".format(resultDir, ALGORITHM, nSC, nFFT, NTAPS, SEFDMType);
+                immutable filenameBER = "%s/ber_%s_%s_%.4f_%s_%s.json".format(resultDir, ALGORITHM, nDFT, ALPHA, NTAPS, SEFDMType);
+                immutable filenamePSD = "%s/psd_%s_%s_%.4f_%s_%s.json".format(resultDir, ALGORITHM, nDFT, ALPHA, NTAPS, SEFDMType);
 
                 import std.file : exists;
                 if(filenameBER.exists())
@@ -186,9 +191,10 @@ void main(string[] args)
                         params.totalBits = simBitsPerTrial;
                         params.chNTaps = NTAPS;
                         params.chSeed = cast(uint)iTrial;
-                        params.nSC = nSC;
-                        params.nFFT = nFFT;
-                        params.nCP = nFFT / 8;
+                        params.nDFT = nDFT;
+                        // params.nSC = nSC;
+                        // params.nFFT = nFFT;
+                        params.nCP = nDFT / 8;
 
                         static if(ALGORITHM == "GaBP")
                         {
@@ -249,10 +255,10 @@ void main(string[] args)
                 }
             }
 
-            if(NTAPS > nFFT / 4)
+            if(NTAPS > nDFT / 4)
                 continue;
 
-            taskList.append(&task, cast(bool)isRayleigh, resultDir, nFFT, NTAPS, ALPHA);
+            taskList.append(&task, cast(bool)isRayleigh, resultDir, nDFT, NTAPS, ALPHA);
             // results["kbps_%s_%s_%s_%s".format(ALGORITHM, M, K, usePrePost ? "wP" : "woP")] = JSONValue(speedResults.map!(a => JSONValue(a)).array());
         }
     }
@@ -294,8 +300,9 @@ struct SimParams(size_t ModK_, string SEFDMType_, string DETECT_)
     uint chNTaps = 0;
     ptrdiff_t totalBits = 10_000_000;
     double EbN0dB = 10;
-    uint nFFT = 256;
-    uint nSC = 256;
+    uint nDFT = 256;
+    double alpha = 1.0;
+    // uint nSC = 256;
     uint nCP = 32;
 }
 
@@ -327,8 +334,9 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     }
 
     immutable size_t numBlockSyms = 4;
-    immutable size_t block_bits = nFFT * mod.symInputLength * numBlockSyms;
-    immutable double ALPHA = nSC * 1.0 / nFFT;
+    immutable size_t block_bits = nDFT * mod.symInputLength * numBlockSyms;
+    // immutable double ALPHA = nSC * 1.0 / nFFT;
+    immutable double ALPHA = alpha;
 
     size_t total_bits = 0;
     size_t error_bits = 0;
@@ -381,7 +389,7 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     }
     else static if(SEFDMType == "BasicSEFDM")
     {
-        auto modMat = genSEFDMModMatrix!C(nFFT, ALPHA);
+        auto modMat = genSEFDMModMatrix!C(nDFT, ALPHA);
         enum bool hasIDFT_SVD = false;
     }
     else static assert(0, "SEFDMType '" ~ SEFDMType ~ "' is not supported.");
@@ -396,21 +404,21 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     // }
 
 
-    alias ChannelMatrixType = typeof(idftMatrix!C(nFFT) * diag([C(1)]) * dftMatrix!C(nFFT));
+    alias ChannelMatrixType = typeof(idftMatrix!C(nDFT) * diag([C(1)]) * dftMatrix!C(nDFT));
     C[] freqResp;
     ChannelMatrixType chMat;
     ChannelMatrixType invChMat;
     if(isRayleigh) {
-        freqResp = makeRayleighFreqResp!C(nFFT, nSC, cast(uint)chNTaps, chSeed);
-        chMat = idftMatrix!C(nFFT) * diag(freqResp) * dftMatrix!C(nFFT);
+        freqResp = makeRayleighFreqResp!C(nDFT, cast(uint)chNTaps, chSeed);
+        chMat = idftMatrix!C(nDFT) * diag(freqResp) * dftMatrix!C(nDFT);
 
         auto invFreqResp = freqResp.dup;
         foreach(ref e; invFreqResp) e = 1/e;
-        invChMat = idftMatrix!C(nFFT) * diag(invFreqResp) * dftMatrix!C(nFFT);
+        invChMat = idftMatrix!C(nDFT) * diag(invFreqResp) * dftMatrix!C(nDFT);
     } else {
-        foreach(i; 0 .. nFFT) freqResp ~= C(1);
+        foreach(i; 0 .. nDFT) freqResp ~= C(1);
         
-        chMat = idftMatrix!C(nFFT) * diag(freqResp) * dftMatrix!C(nFFT);
+        chMat = idftMatrix!C(nDFT) * diag(freqResp) * dftMatrix!C(nDFT);
         invChMat = chMat;
     }
 
@@ -461,17 +469,17 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     static if(DETECT == "EP")
     {
         auto recvMat = chMat * modMat;
-        auto rwMat = dftMatrix!C(nFFT);
+        auto rwMat = dftMatrix!C(nDFT);
 
         C[] recvSVs = modMatSVs.dup;
-        foreach(i; 0 .. nFFT)
+        foreach(i; 0 .. nDFT)
             recvSVs[i] *= freqResp[i];
 
-        auto detector = makeSVDEPDetector!C(mod, identity!C(nFFT), recvSVs.sliced.vectored, precodeMat, SIGMA, args);
+        auto detector = makeSVDEPDetector!C(mod, identity!C(nDFT), recvSVs.sliced.vectored, precodeMat, SIGMA, args);
     }
     else static if(DETECT == "QRM-MLD")
     {
-        auto rwMat = identity!C(nFFT);
+        auto rwMat = identity!C(nDFT);
         auto recvMat = chMat * modMat;
         auto detectMat = rwMat * recvMat;
         auto detector = makeQRMMLDDetector!C(mod, detectMat.mapMatrix!(a => a), args);
@@ -485,7 +493,7 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     // }
     else static if(DETECT == "Sphere")
     {
-        auto rwMat = identity!C(nFFT);
+        auto rwMat = identity!C(nDFT);
         auto recvMat = chMat * modMat;
         auto detectMat = rwMat * recvMat;
         auto detector = makeSphereDetector!C(mod, detectMat.mapMatrix!(a => a), args);
@@ -499,7 +507,7 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     // }
     else static if(DETECT == "FullMLD")
     {
-        auto rwMat = identity!C(nFFT);
+        auto rwMat = identity!C(nDFT);
         auto recvMat = chMat * modMat;
         auto detectMat = rwMat * recvMat;
         auto detector = new MLDetector!C(mod.allConstellationPoints, detectMat.mapMatrix!(a => a), args);
@@ -507,19 +515,19 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
     else static if(DETECT == "MMSE")
     {
         auto recvMat = chMat * modMat;
-        auto rwMat = identity!C(nFFT);
+        auto rwMat = identity!C(nDFT);
         auto detector = makeMMSEDetector!(C, typeof(mod))(mod, recvMat, SIGMA);
     }
     else static if(DETECT == "ZF")
     {
         auto recvMat = chMat * modMat;
-        auto rwMat = identity!C(nFFT);
+        auto rwMat = identity!C(nDFT);
         auto detector = makeZFDetector!(C, typeof(mod))(mod, recvMat);
     }
     else static if(DETECT == "SVD")
     {
-        auto recvMat = matrix!C(nFFT, nFFT);
-        auto rwMat = matrix!C(nFFT, nFFT);
+        auto recvMat = matrix!C(nDFT, nDFT);
+        auto rwMat = matrix!C(nDFT, nDFT);
 
         {
             import dffdd.math.exprtemplate;
@@ -532,16 +540,16 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
             recvMat[] = recvMat * svdResult.vt.lightScope.matrixed.H.mapMatrix!(a => C(a.re, a.im));
             rwMat[] = svdResult.u.lightScope.matrixed.H.mapMatrix!(a => C(a.re, a.im));
 
-            auto diag = matrix!C(nFFT, nFFT, C(0));
+            auto diag = matrix!C(nDFT, nDFT, C(0));
             double sum = 0;
-            foreach(i; 0 .. nFFT) {
+            foreach(i; 0 .. nDFT) {
                 diag[i, i] = 1/svdResult.sigma[i];
                 sum += (1/svdResult.sigma[i])^^2;
             }
 
             // 平均電力制約
-            foreach(i; 0 .. nFFT)
-                diag[i, i] = diag[i, i] / sqrt(sum / nFFT);
+            foreach(i; 0 .. nDFT)
+                diag[i, i] = diag[i, i] / sqrt(sum / nDFT);
 
             recvMat[] = recvMat * diag;
         }
@@ -582,9 +590,9 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
         if(sum.length != syms.length)
             sum = vector!C(syms.length);
 
-        foreach(i; 0 .. syms.length / nFFT) {
-            auto s = syms[i*nFFT .. (i+1)*nFFT].sliced.vectored;
-            auto v = sum.sliced()[i*nFFT .. (i+1)*nFFT].vectored;
+        foreach(i; 0 .. syms.length / nDFT) {
+            auto s = syms[i*nDFT .. (i+1)*nDFT].sliced.vectored;
+            auto v = sum.sliced()[i*nDFT .. (i+1)*nDFT].vectored;
             v[] = recvMat * s;
             // v[] = chMat * v;
         }
@@ -593,10 +601,10 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
         foreach(i; 0 .. numBlockSyms) {
             // CP分
             foreach(j; 0 .. nCP)
-                specAnalyzer.put(sum[(i+1)*nFFT - nCP + j]);
+                specAnalyzer.put(sum[(i+1)*nDFT - nCP + j]);
 
-            foreach(j; 0 .. nFFT)
-                specAnalyzer.put(sum[i*nFFT + j]);
+            foreach(j; 0 .. nDFT)
+                specAnalyzer.put(sum[i*nDFT + j]);
         }
 
         sum.sliced.addAWGN(baseSeed, SIGMA);
@@ -837,7 +845,7 @@ Matrix!(C, Contiguous) makeCirculantIIDChannelMatrix(C)(size_t N, size_t nTaps, 
 // }
 
 
-C[] makeRayleighFreqResp(C)(size_t nFFT, size_t nSC, size_t nTaps, uint seed)
+C[] makeRayleighFreqResp(C)(size_t nFFT, size_t nTaps, uint seed)
 {
     import dffdd.blockdiagram.noise;
     import dffdd.utils.distribution;

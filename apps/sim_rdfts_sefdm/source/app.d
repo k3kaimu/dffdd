@@ -41,6 +41,7 @@ void main()
         import std.json;
         import std.file;
         JSONValue[] berList;
+        JSONValue[] PAPRs;
 
         if(std.file.exists(filename))
             return;
@@ -50,13 +51,15 @@ void main()
             writefln!"\t%s: %s, MOD: %s Mbps, DEMOD: %s Mbps"(p.vEbN0dB, simResult.ber, simResult.modThroughput / 1e6, simResult.demodThroughput / 1e6);
 
             berList ~= JSONValue(simResult.ber);
+            PAPRs ~= simResult.PAPRs.map!(a => JSONValue(a)).array;
 
             if(shortcut && simResult.ber < 1e-7)
                 break;
         }
         writeln();
 
-        std.file.write(filename, JSONValue(berList).toString());
+        std.file.write(filename ~ "_BER.json", JSONValue(berList).toString());
+        std.file.write(filename ~ "_PAPR.json", JSONValue(PAPRs).toString());
     }
 
     // // AWGN
@@ -88,19 +91,40 @@ void main()
         auto numSymChEstList = (chEstMethod == ChannelEstimationMethod.perfect) ? [1] : [1, 2, 4, 8, 16];
 
         // AWGN
+        if(chEstMethod == ChannelEstimationMethod.perfect)
+        foreach(isRDFTs; [true, false])
+        foreach(nSpreadIn; [64, 128, 256, 512, 1024, 2048, 4096])
         foreach(numSymChEst; numSymChEstList) {
-            foreach(nFFT; [64, 128, 256, 512, 1024, 2048, 4096]) {
-                mkdirRecurse("AWGN");
-                foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5]) {
+            foreach(nFFT; [8, 64, 256, 1024, 4096]) {
+                if(nSpreadIn < nFFT)
+                    continue;
+
+                string dirName = "AWGN";
+                if(!isRDFTs)
+                    dirName ~= "_NotShuffle";
+
+                if(!isRDFTs && nSpreadIn != 4096 && nFFT != 4096)
+                    continue;
+
+                mkdirRecurse(dirName);
+
+                double[] alphaList = [1.0, 7 / 8.0, 6 / 8.0, 5 / 8.0];
+                if(nFFT == nSpreadIn) foreach(i; 0 .. min(nFFT, 512) / 2) {
+                    alphaList ~= 1.0 - i * 1.0 / min(nFFT, 512);
+                }
+
+                foreach(alpha; alphaList) {
                     alias M = QPSK!C;
 
+                    immutable nTone = cast(int)round(nFFT * alpha);
+                    immutable nSpreadOut = cast(int)round(nSpreadIn * alpha);
                     SimParams!M[] params;
                     foreach(vEbN0dB; iota(21)) {
                         SimParams!M p;
                         p.sefdm.nFFT = nFFT;
                         p.sefdm.nTone = nTone;
-                        p.sefdm.nSpreadIn = 4096;
-                        p.sefdm.nSpreadOut = 4096 / nFFT * nTone;
+                        p.sefdm.nSpreadIn = nSpreadIn;
+                        p.sefdm.nSpreadOut = nSpreadOut;
                         // p.sefdm.nData = nFFT;
                         p.sefdm.nIter = 20;
                         p.sefdm.rndSeed = 0;
@@ -111,14 +135,148 @@ void main()
                         p.chEstMethod = chEstMethod;
                         p.rndSeed = 0;
 
+                        if(!isRDFTs)
+                            p.sefdm.shuffleList = iota(nSpreadIn).map!"cast(size_t)a".array;
+
                         params ~= p;
                     }
 
-                    auto filename = i"AWGN/nFFT$(nFFT)_nTone$(nTone)_nIter20_EstCh$(numSymChEst)_$(chEstMethod).json".text();
+                    string filename = i"$(dirName)/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nIter20_EstCh$(numSymChEst)_$(chEstMethod)".text();
                     taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
                 }
             }
         }
+
+        /+
+
+        // AWGN, change shuffle
+        if(chEstMethod == ChannelEstimationMethod.perfect)
+        {
+            immutable nSpreadIn = 4096;
+            immutable nFFT = nSpreadIn;
+
+            string dirName = "AWGN_ChangeShuffle";
+            mkdirRecurse(dirName);
+
+            immutable double alpha = 5 / 8.0;
+            uint[] nShuffleList = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384];
+
+            foreach(nShuffle; nShuffleList) {
+                alias M = QPSK!C;
+
+                immutable nTone = cast(int)round(nFFT * alpha);
+                immutable nSpreadOut = cast(int)round(nSpreadIn * alpha);
+                SimParams!M[] params;
+                foreach(vEbN0dB; iota(21)) {
+                    SimParams!M p;
+                    p.sefdm.nFFT = nFFT;
+                    p.sefdm.nTone = nTone;
+                    p.sefdm.nSpreadIn = nSpreadIn;
+                    p.sefdm.nSpreadOut = nSpreadOut;
+                    // p.sefdm.nData = nFFT;
+                    p.sefdm.nIter = 20;
+                    p.sefdm.rndSeed = 0;
+                    p.vEbN0dB = vEbN0dB;
+                    p.channelType = "AWGN";
+                    p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
+                    p.numSymChEst = 1;
+                    p.chEstMethod = chEstMethod;
+                    p.rndSeed = 0;
+
+                    // p.sefdm.shuffleList = iota(nSpreadIn).map!"cast(size_t)a".array;
+                    {
+                        size_t[] shuffleList = iota(nSpreadIn).map!"cast(size_t)a".array;
+                        shuffleNPairs(shuffleList, nShuffle, 0);
+
+                        p.sefdm.shuffleList = shuffleList.dup;
+                    }
+
+                    params ~= p;
+                }
+
+                string filename = i"$(dirName)/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nIter20_nShuffle$(nShuffle)".text();
+                taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
+            }
+        }
+
+        +/
+
+        // AWGN, change block shuffle
+        if(chEstMethod == ChannelEstimationMethod.perfect)
+        {
+            immutable nSpreadIn = 4096;
+
+            string dirName = "AWGN_ChangeBlockShuffle";
+            mkdirRecurse(dirName);
+
+            immutable double alpha = 5 / 8.0;
+            uint[] nBlockSizeList = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
+
+            foreach(nBlockSize; nBlockSizeList) {
+                alias M = QPSK!C;
+
+                immutable nFFT = nBlockSize;
+                immutable nTone = cast(int)round(nFFT * alpha);
+                immutable nSpreadOut = cast(int)round(nSpreadIn * alpha);
+                SimParams!M[] params;
+                foreach(vEbN0dB; iota(21)) {
+                    SimParams!M p;
+                    p.sefdm.nFFT = nFFT;
+                    p.sefdm.nTone = nTone;
+                    p.sefdm.nSpreadIn = nSpreadIn;
+                    p.sefdm.nSpreadOut = nSpreadOut;
+                    // p.sefdm.nData = nFFT;
+                    p.sefdm.nIter = 20;
+                    p.sefdm.rndSeed = 0;
+                    p.vEbN0dB = vEbN0dB;
+                    p.channelType = "AWGN";
+                    p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
+                    p.numSymChEst = 1;
+                    p.chEstMethod = chEstMethod;
+                    p.rndSeed = 0;
+
+                    // p.sefdm.shuffleList = iota(nSpreadIn).map!"cast(size_t)a".array;
+                    {
+                        size_t[] blockShuffleList = iota(nSpreadIn / nBlockSize).map!"cast(size_t)a".array;
+                        // shuffleNPairs(blockShuffleList, nBlockSize * 4, 0);
+                        auto rnd = makeRNG(0, "BLOCK_SHUFFLE");
+                        randomShuffle(blockShuffleList, rnd);
+
+                        size_t[] shuffleList = new size_t[nSpreadIn];
+                        immutable nBlockSizeAlpha = cast(int)round(nBlockSize * alpha);
+
+                        size_t cnt;
+                        size_t[] remains;
+                        foreach(i; 0 .. nSpreadIn / nBlockSize) {
+                            // auto randsel = makeRandomSelectedIndex(nBlockSize, nBlockSizeAlpha, 0);
+
+                            foreach(j; 0 .. nBlockSizeAlpha) {
+                                shuffleList[cnt] = blockShuffleList[i] * nBlockSize + j;
+                                ++cnt;
+                            }
+
+                            foreach(j ; nBlockSizeAlpha .. nBlockSize)
+                                remains ~= blockShuffleList[i] * nBlockSize + j;
+                        }
+
+                        foreach(e; remains) {
+                            shuffleList[cnt] = e;
+                            ++cnt;
+                        }
+
+                        p.sefdm.shuffleList = shuffleList.dup;
+                    }
+
+                    params ~= p;
+                }
+
+                string filename = i"$(dirName)/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nIter20_nBlockSize$(nBlockSize)".text();
+                taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
+            }
+        }
+
+
+        /+
 
         // Rayleigh
         foreach(numSymChEst; numSymChEstList) {
@@ -158,6 +316,8 @@ void main()
                 }
             }
         }
+
+        +/
     }
 
 
@@ -174,24 +334,41 @@ void main()
     //     taskList[i]();
 }
 
+
+
+size_t[] makeRandomSelectedIndex(size_t nBlock, size_t nOut, uint rndSeed)
+{
+    auto rnd = makeRNG(rndSeed, "RND_PUNCTURE");
+    size_t[] list = iota(nBlock).map!"cast(size_t)a".array;
+    randomShuffle(list, rnd);
+    sort(list[0 .. nOut]);
+    return list;
+}
+
+
 struct SimResult
 {
     double ber;
     long errbits;
     long totalbits;
     double modThroughput, demodThroughput;
+    double[] PAPRs;
 }
 
 
 struct RDFTsSEFDMParams(Mod)
 {
     Mod mod;
+    
     uint nFFT;
     uint nTone;
     uint nSpreadIn;
     uint nSpreadOut;
     uint rndSeed = 0;
     uint nIter;
+    bool isShuffle = true;
+    immutable(size_t)[] shuffleList = null;
+    // size_t numShuffle;
     // alias nData = nFFT;
 }
 
@@ -217,7 +394,21 @@ struct SimParams(Mod)
     // bool isChNorm = false;
     ChannelEstimationMethod chEstMethod = ChannelEstimationMethod.ZF;
     size_t numSymChEst = 1;
-    size_t rndSeed;
+    uint rndSeed;
+}
+
+
+void shuffleNPairs(size_t[] list, size_t n, uint rndSeed)
+{
+    auto rnd = makeRNG(rndSeed, "SHUFFLE");
+    foreach(_; 0 .. n) {
+        auto i = rnd.front % list.length;
+        rnd.popFront();
+        auto j = rnd.front % list.length;
+        rnd.popFront();
+
+        swap(list[i], list[j]);
+    }
 }
 
 
@@ -235,6 +426,7 @@ SimResult runSimImpl(C, Mod)(SimParams!Mod params)
     // auto sefdm = new RDFTsSEFDM!Mod(params.sefdm, SIGMA2);
     StopWatch swMod, swDem;
 
+    double[] PAPRs;
     while(totalbits < params.minTotalbits || errbits < params.maxErrbits )
     {
         if(totalbits > params.maxTotalbits)
@@ -266,6 +458,15 @@ SimResult runSimImpl(C, Mod)(SimParams!Mod params)
         swDem.stop();
         errbits += txbits.zip(rxbits).map!"a[0] != a[1] ? 1 : 0".sum();
         totalbits += txbits.length;
+
+        if(PAPRs.length < 1e4) {
+            immutable b = params.sefdm.nSpreadIn / params.sefdm.nFFT;
+            foreach(i; 0 .. b) {
+                auto peak = txsignal[$/b * i .. $/b * (i+1)].map!(a => a.sqAbs).reduce!max;
+                auto avg = txsignal[$/b * i .. $/b * (i+1)].map!(a => a.sqAbs).sum / (txsignal.length / b);
+                PAPRs ~= peak / avg;
+            }
+        }
     }
 
 
@@ -275,6 +476,7 @@ SimResult runSimImpl(C, Mod)(SimParams!Mod params)
     result.ber = errbits * 1.0 / totalbits;
     result.modThroughput = totalbits * 1.0 / swMod.peek.total!"usecs" * 1e6;
     result.demodThroughput = totalbits * 1.0 / swDem.peek.total!"usecs" * 1e6;
+    result.PAPRs = PAPRs.dup;
     return result;
 }
 
@@ -285,7 +487,7 @@ in(txbits.length == params.mod.symInputLength * params.nSpreadIn)
     // auto sefdm = new RDFTsSEFDM!(Mod, C)(params.mod, params.nFFT, 0, params.nTone, 1, params.nSpreadIn, params.nSpreadOut, null, params.rndSeed);
     auto sefdm = new RDFTsSEFDM!(Mod, C)(params.mod,
         params.nFFT, nCP: params.nFFT/4, params.nTone, nUpSampling: 1,
-        params.nSpreadIn, params.nSpreadOut, shuffle: null, params.rndSeed, N0: 0, params.nIter);
+        params.nSpreadIn, params.nSpreadOut, shuffle: params.shuffleList, params.rndSeed, N0: 0, params.nIter);
 
 
     C[] dst;
@@ -332,7 +534,7 @@ Bit[] demodulateSEFDM(Mod)(in ref RDFTsSEFDMParams!Mod params, C[] rxsignal, C[]
     // auto sefdm = new RDFTsSEFDM!(Mod, C)(params.mod, params.nFFT, 0, params.nSpreadIn, params.nSpreadOut, 1, params.nData, null, params.rndSeed, N0, params.nIter);
     auto sefdm = new RDFTsSEFDM!(Mod, C)(params.mod,
         params.nFFT, nCP: params.nFFT/4, params.nTone, nUpSampling: 1,
-        params.nSpreadIn, params.nSpreadOut, shuffle: null, params.rndSeed, N0, params.nIter);
+        params.nSpreadIn, params.nSpreadOut, shuffle: params.shuffleList, params.rndSeed, N0, params.nIter);
 
     import mir.ndslice : sliced;
     import dffdd.math.vector : vectored;
