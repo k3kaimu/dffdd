@@ -14,11 +14,11 @@
     "__versions": ["CBLAS_STD_COMPLEX"],
 
     "dependencies": {
-        "carbon": { "path": "../carbon" },
+        "carbon": "~>1.8.0",
         "dfftw3": "~>1.0.1",
         "cblas": "~>2.3.4",
         "mir-algorithm": "~>3.22.1",
-        "lubeck": { "path": "../lubeck" },
+        "lubeck": "~>1.5.1",
         "mir-lapack": "~>1.2.12",
         "mir-blas": "~>1.1.17",
         "dffdd_simd": { "path": "dffdd_simd" },
