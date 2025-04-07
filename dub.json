@@ -14,7 +14,7 @@
     "__versions": ["CBLAS_STD_COMPLEX"],
 
     "dependencies": {
-        "carbon": "~>1.8.0",
+        "carbon": "~>1.9.0",
         "dfftw3": "~>1.0.1",
         "cblas": "~>2.3.4",
         "mir-algorithm": "~>3.22.1",
