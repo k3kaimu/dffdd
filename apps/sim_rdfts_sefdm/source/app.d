@@ -12,6 +12,7 @@ import std.traits;
 import dffdd.mod;
 import dffdd.utils.fft;
 import dffdd.mod.sefdm;
+import dffdd.dsp.statistics : makeFilterBankSpectrumAnalyzer;
 
 import tuthpc.taskqueue;
 
@@ -42,8 +43,9 @@ void main()
         import std.file;
         JSONValue[] berList;
         JSONValue[] PAPRs;
+        JSONValue[] psd;
 
-        if(std.file.exists(filename))
+        if(std.file.exists(filename ~ "_BER.json"))
             return;
 
         foreach(p; params) {
@@ -51,7 +53,11 @@ void main()
             writefln!"\t%s: %s, MOD: %s Mbps, DEMOD: %s Mbps"(p.vEbN0dB, simResult.ber, simResult.modThroughput / 1e6, simResult.demodThroughput / 1e6);
 
             berList ~= JSONValue(simResult.ber);
-            PAPRs ~= simResult.PAPRs.map!(a => JSONValue(a)).array;
+            if(p.outputPAPR)
+                PAPRs ~= simResult.PAPRs.map!(a => JSONValue(a)).array;
+
+            if(p.outputPSD)
+                psd = simResult.psd.map!(a => JSONValue(a)).array;
 
             if(shortcut && simResult.ber < 1e-7)
                 break;
@@ -59,7 +65,12 @@ void main()
         writeln();
 
         std.file.write(filename ~ "_BER.json", JSONValue(berList).toString());
-        std.file.write(filename ~ "_PAPR.json", JSONValue(PAPRs).toString());
+
+        if(PAPRs.length > 0)
+            std.file.write(filename ~ "_PAPR.json", JSONValue(PAPRs).toString());
+
+        if(psd.length > 0)
+            std.file.write(filename ~ "_PSD.json", JSONValue(psd).toString());
     }
 
     // // AWGN
@@ -87,33 +98,28 @@ void main()
     //     }
     // }
 
-    foreach(chEstMethod; [ChannelEstimationMethod.perfect, ChannelEstimationMethod.ZF, ChannelEstimationMethod.MMSE]) {
+    foreach(chEstMethod; [ChannelEstimationMethod.perfect, ChannelEstimationMethod.ZF]) {
         auto numSymChEstList = (chEstMethod == ChannelEstimationMethod.perfect) ? [1] : [1, 2, 4, 8, 16];
 
         // AWGN
         if(chEstMethod == ChannelEstimationMethod.perfect)
-        foreach(isRDFTs; [true, false])
-        foreach(nSpreadIn; [64, 128, 256, 512, 1024, 2048, 4096])
-        foreach(numSymChEst; numSymChEstList) {
+        foreach(nSpreadIn; [64, 128, 256, 512, 1024, 2048, 4096]) {
+            immutable numSymChEst = 1;
+
             foreach(nFFT; [8, 64, 256, 1024, 4096]) {
                 if(nSpreadIn < nFFT)
                     continue;
 
-                string dirName = "AWGN";
-                if(!isRDFTs)
-                    dirName ~= "_NotShuffle";
-
-                if(!isRDFTs && nSpreadIn != 4096 && nFFT != 4096)
-                    continue;
-
+                immutable string dirName = "AWGN";
                 mkdirRecurse(dirName);
 
                 double[] alphaList = [1.0, 7 / 8.0, 6 / 8.0, 5 / 8.0];
+                immutable initAlphaListSize = alphaList.length;
                 if(nFFT == nSpreadIn) foreach(i; 0 .. min(nFFT, 512) / 2) {
                     alphaList ~= 1.0 - i * 1.0 / min(nFFT, 512);
                 }
 
-                foreach(alpha; alphaList) {
+                foreach(ia, alpha; alphaList) {
                     alias M = QPSK!C;
 
                     immutable nTone = cast(int)round(nFFT * alpha);
@@ -134,9 +140,12 @@ void main()
                         p.numSymChEst = numSymChEst;
                         p.chEstMethod = chEstMethod;
                         p.rndSeed = 0;
-
-                        if(!isRDFTs)
-                            p.sefdm.shuffleList = iota(nSpreadIn).map!"cast(size_t)a".array;
+                        p.update = delegate(ref SimParams!M p, uint seed) {
+                            p.rndSeed = seed;
+                            p.sefdm.rndSeed = seed;
+                            p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-p.vEbN0dB / 10.0) / M.symInputLength, seed: seed);
+                        };
+                        p.outputPSD = (ia < initAlphaListSize) ? true : false;
 
                         params ~= p;
                     }
@@ -144,6 +153,58 @@ void main()
                     string filename = i"$(dirName)/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nIter20_EstCh$(numSymChEst)_$(chEstMethod)".text();
                     taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
                 }
+            }
+        }
+
+
+        // AWGN, change nIter, xaxis = alpha
+        if(chEstMethod == ChannelEstimationMethod.perfect)
+        foreach(nIter; [1, 5, 10, 20, 40, 80]) {
+
+            immutable string dirName = "AWGN_Change_nIter";
+            mkdirRecurse(dirName);
+
+            immutable nSpreadIn = 4096;
+            immutable nFFT = nSpreadIn;
+            immutable numSymChEst = 1;
+
+            double[] alphaList;
+            foreach(i; 0 .. min(nFFT, 512) / 2) {
+                alphaList ~= 1.0 - i * 1.0 / min(nFFT, 512);
+            }
+
+            foreach(alpha; alphaList) {
+                alias M = QPSK!C;
+
+                immutable nTone = cast(int)round(nFFT * alpha);
+                immutable nSpreadOut = cast(int)round(nSpreadIn * alpha);
+                SimParams!M[] params;
+                foreach(vEbN0dB; iota(21)) {
+                    SimParams!M p;
+                    p.sefdm.nFFT = nFFT;
+                    p.sefdm.nTone = nTone;
+                    p.sefdm.nSpreadIn = nSpreadIn;
+                    p.sefdm.nSpreadOut = nSpreadOut;
+                    // p.sefdm.nData = nFFT;
+                    p.sefdm.nIter = nIter;
+                    p.sefdm.rndSeed = 0;
+                    p.vEbN0dB = vEbN0dB;
+                    p.channelType = "AWGN";
+                    p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
+                    p.numSymChEst = numSymChEst;
+                    p.chEstMethod = chEstMethod;
+                    p.rndSeed = 0;
+                    p.update = delegate(ref SimParams!M p, uint seed) {
+                        p.rndSeed = seed;
+                        p.sefdm.rndSeed = seed;
+                        p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-p.vEbN0dB / 10.0) / M.symInputLength, seed: seed);
+                    };
+
+                    params ~= p;
+                }
+
+                string filename = i"$(dirName)/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nIter$(nIter)_EstCh$(numSymChEst)_$(chEstMethod)".text();
+                taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
             }
         }
 
@@ -205,17 +266,17 @@ void main()
         if(chEstMethod == ChannelEstimationMethod.perfect)
         {
             immutable nSpreadIn = 4096;
+            immutable nFFT = 4096;
 
-            string dirName = "AWGN_ChangeBlockShuffle";
+            string dirName = "AWGN_ChangeSwap";
             mkdirRecurse(dirName);
 
             immutable double alpha = 5 / 8.0;
-            uint[] nBlockSizeList = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
+            uint[] numSwapList = [0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 
-            foreach(nBlockSize; nBlockSizeList) {
+            foreach(numSwap; numSwapList) {
                 alias M = QPSK!C;
 
-                immutable nFFT = nBlockSize;
                 immutable nTone = cast(int)round(nFFT * alpha);
                 immutable nSpreadOut = cast(int)round(nSpreadIn * alpha);
                 SimParams!M[] params;
@@ -230,57 +291,33 @@ void main()
                     p.sefdm.rndSeed = 0;
                     p.vEbN0dB = vEbN0dB;
                     p.channelType = "AWGN";
-                    p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
+                    // p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
                     p.numSymChEst = 1;
                     p.chEstMethod = chEstMethod;
                     p.rndSeed = 0;
+                    p.update = ((numSwap) => delegate(ref SimParams!M p, uint seed) {
+                        p.rndSeed = seed;
+                        p.sefdm.rndSeed = seed;
+                        p.channel = makeAWGNChannel!C(sigma2: 10.0^^(-p.vEbN0dB / 10.0) / M.symInputLength, seed: seed);
 
-                    // p.sefdm.shuffleList = iota(nSpreadIn).map!"cast(size_t)a".array;
-                    {
-                        size_t[] blockShuffleList = iota(nSpreadIn / nBlockSize).map!"cast(size_t)a".array;
-                        // shuffleNPairs(blockShuffleList, nBlockSize * 4, 0);
-                        auto rnd = makeRNG(0, "BLOCK_SHUFFLE");
-                        randomShuffle(blockShuffleList, rnd);
-
-                        size_t[] shuffleList = new size_t[nSpreadIn];
-                        immutable nBlockSizeAlpha = cast(int)round(nBlockSize * alpha);
-
-                        size_t cnt;
-                        size_t[] remains;
-                        foreach(i; 0 .. nSpreadIn / nBlockSize) {
-                            // auto randsel = makeRandomSelectedIndex(nBlockSize, nBlockSizeAlpha, 0);
-
-                            foreach(j; 0 .. nBlockSizeAlpha) {
-                                shuffleList[cnt] = blockShuffleList[i] * nBlockSize + j;
-                                ++cnt;
-                            }
-
-                            foreach(j ; nBlockSizeAlpha .. nBlockSize)
-                                remains ~= blockShuffleList[i] * nBlockSize + j;
-                        }
-
-                        foreach(e; remains) {
-                            shuffleList[cnt] = e;
-                            ++cnt;
-                        }
-
+                        size_t[] shuffleList = iota(p.sefdm.nSpreadIn).map!"cast(size_t)a".array;
+                        shuffleNPairs(shuffleList, numSwap, seed);
                         p.sefdm.shuffleList = shuffleList.dup;
-                    }
+                    })(numSwap);
+                    p.outputPAPR = true;
 
                     params ~= p;
                 }
 
-                string filename = i"$(dirName)/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nIter20_nBlockSize$(nBlockSize)".text();
+                string filename = i"$(dirName)/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nIter20_numSwap$(numSwap)".text();
                 taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
             }
         }
 
 
-        /+
-
         // Rayleigh
         foreach(numSymChEst; numSymChEstList) {
-            foreach(nFFT; [64, 128, 256, 512, 1024, 2048, 4096]) {
+            foreach(nFFT; [64, 256, 1024, 4096]) {
                 mkdirRecurse("Rayleigh");
                 foreach(nTone; [nFFT, nFFT / 8 * 7, nFFT / 8 * 6, nFFT / 8 * 5])
                 foreach(nChTap; [1, 2, 4, 8, 16, 32, 64, 128])
@@ -290,34 +327,87 @@ void main()
 
                     alias M = QPSK!C;
                     immutable nIter = 20;
+                    immutable nSpreadIn = 4096;
 
                     SimParams!M[] params;
                     foreach(vEbN0dB; iota(21)) {
                         SimParams!M p;
                         p.sefdm.nFFT = nFFT;
                         p.sefdm.nTone = nTone;
-                        p.sefdm.nSpreadIn = 4096;
-                        p.sefdm.nSpreadOut = 4096 / nFFT * nTone;
+                        p.sefdm.nSpreadIn = nSpreadIn;
+                        p.sefdm.nSpreadOut = nSpreadIn / nFFT * nTone;
                         // p.sefdm.nData = nFFT;
                         p.sefdm.nIter = nIter;
                         p.sefdm.rndSeed = 0;
                         p.vEbN0dB = vEbN0dB;
                         p.channelType = "Rayleigh";
-                        p.channel = makeRayleighChannel!C(nTaps: nChTap / 8, sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
+                        p.channel = makeRayleighChannel!C(nTaps: nChTap, sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
                         p.numSymChEst = numSymChEst;
                         p.chEstMethod = chEstMethod;
                         p.rndSeed = 0;
+                        p.update = ((nChTap) => delegate(ref SimParams!M p, uint seed) {
+                            p.rndSeed = seed;
+                            p.sefdm.rndSeed = seed;
+                            p.channel = makeRayleighChannel!C(nTaps: nChTap, sigma2: 10.0^^(-p.vEbN0dB / 10.0) / M.symInputLength, seed: seed);
+                        })(nChTap);
 
                         params ~= p;
                     }
 
-                    auto filename = i"Rayleigh/nFFT$(nFFT)_nTone$(nTone)_nChTap$(nChTap)_nIter$(nIter)_EstCh$(numSymChEst)_$(chEstMethod).json".text();
+                    auto filename = i"Rayleigh/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nChTap$(nChTap)_nIter$(nIter)_EstCh$(numSymChEst)_$(chEstMethod)".text();
                     taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
                 }
             }
         }
 
-        +/
+
+        // Rayleigh, compression factor
+        foreach(numSymChEst; numSymChEstList)
+        {
+            immutable nSpreadIn = 4096;
+            immutable nFFT = nSpreadIn;
+
+            double[] alphaList;
+            foreach(i; 0 .. min(nFFT, 512) / 2) {
+                alphaList ~= 1.0 - i * 1.0 / min(nFFT, 512);
+            }
+
+            foreach(alpha; alphaList) {
+                alias M = QPSK!C;
+                immutable nIter = 20;
+                immutable nChTap = 16;
+                immutable nTone = cast(int)round(nFFT * alpha);
+
+
+                SimParams!M[] params;
+                foreach(vEbN0dB; iota(21)) {
+                    SimParams!M p;
+                    p.sefdm.nFFT = nFFT;
+                    p.sefdm.nTone = nTone;
+                    p.sefdm.nSpreadIn = nSpreadIn;
+                    p.sefdm.nSpreadOut = nSpreadIn / nFFT * nTone;
+                    // p.sefdm.nData = nFFT;
+                    p.sefdm.nIter = nIter;
+                    p.sefdm.rndSeed = 0;
+                    p.vEbN0dB = vEbN0dB;
+                    p.channelType = "Rayleigh";
+                    p.channel = makeRayleighChannel!C(nTaps: nChTap, sigma2: 10.0^^(-vEbN0dB / 10.0) / M.symInputLength, seed: 0);
+                    p.numSymChEst = numSymChEst;
+                    p.chEstMethod = chEstMethod;
+                    p.rndSeed = 0;
+                    p.update = ((nChTap) => delegate(ref SimParams!M p, uint seed) {
+                        p.rndSeed = seed;
+                        p.sefdm.rndSeed = seed;
+                        p.channel = makeRayleighChannel!C(nTaps: nChTap, sigma2: 10.0^^(-p.vEbN0dB / 10.0) / M.symInputLength, seed: seed);
+                    })(nChTap);
+
+                    params ~= p;
+                }
+
+                auto filename = i"Rayleigh/nSpreadIn$(nSpreadIn)_nFFT$(nFFT)_nTone$(nTone)_nChTap$(nChTap)_nIter$(nIter)_EstCh$(numSymChEst)_$(chEstMethod)".text();
+                taskList.append(&run!(runSimImpl!(C, M), SimParams!M), filename, params, Yes.shortcut);
+            }
+        }
     }
 
 
@@ -353,6 +443,7 @@ struct SimResult
     long totalbits;
     double modThroughput, demodThroughput;
     double[] PAPRs;
+    float[] psd;
 }
 
 
@@ -383,6 +474,7 @@ enum ChannelEstimationMethod : string
 
 struct SimParams(Mod)
 {
+    void delegate(ref SimParams!Mod, uint seed) update;
     RDFTsSEFDMParams!Mod sefdm;
     string channelType;
     WirelessChannel!C channel;
@@ -390,11 +482,14 @@ struct SimParams(Mod)
     size_t maxErrbits = 1000;
     size_t maxTotalbits = 100_000_000;
     size_t minTotalbits = 1_000_000;
+    size_t minTrials = 10000;
     // size_t nChTaps = 8;
     // bool isChNorm = false;
     ChannelEstimationMethod chEstMethod = ChannelEstimationMethod.ZF;
     size_t numSymChEst = 1;
     uint rndSeed;
+    bool outputPAPR = false;
+    bool outputPSD = false;
 }
 
 
@@ -421,28 +516,33 @@ SimResult runSimImpl(C, Mod)(SimParams!Mod params)
     size_t totalbits = 0;
     size_t errbits = 0;
 
-    size_t rndSeed = 0;
+    uint iTrial = 0;
 
     // auto sefdm = new RDFTsSEFDM!Mod(params.sefdm, SIGMA2);
     StopWatch swMod, swDem;
+    auto specAnalyzer = makeFilterBankSpectrumAnalyzer!C(1_000_000, 256, 256);
 
     double[] PAPRs;
-    while(totalbits < params.minTotalbits || errbits < params.maxErrbits )
+    while(iTrial < params.minTrials || totalbits < params.minTotalbits || errbits < params.maxErrbits || (params.outputPSD && specAnalyzer.avgCount < 1000))
     {
-        if(totalbits > params.maxTotalbits)
+        if(iTrial > params.minTrials && totalbits > params.maxTotalbits)
             break;
 
-        ++rndSeed;
-        // auto chFR = makeChannel(params, rndSeed);
+        ++iTrial;
+
+        params.update(params, seed: iTrial);
+        // auto chFR = makeChannel(params, iTrial);
 
         // 送信ビット系列の生成
         Bit[] txbits;
-        txbits = genBits(params.sefdm.nSpreadIn * params.sefdm.mod.symInputLength, rndSeed, txbits);
+        txbits = genBits(params.sefdm.nSpreadIn * params.sefdm.mod.symInputLength, seed: iTrial, dst: txbits);
 
         // RDFT-s-SEFDM変調
         swMod.start();
         auto txsignal = modulateSEFDM(params.sefdm, txbits);
         swMod.stop();
+
+        if(params.outputPSD) std.range.put(specAnalyzer, txsignal);
         // auto rxsignal = txsignal.applyChannel(chFR);
         // rxsignal = rxsignal.addAWGN(rndSeed, SIGMA2);
         C[] rxsignal;
@@ -459,7 +559,7 @@ SimResult runSimImpl(C, Mod)(SimParams!Mod params)
         errbits += txbits.zip(rxbits).map!"a[0] != a[1] ? 1 : 0".sum();
         totalbits += txbits.length;
 
-        if(PAPRs.length < 1e4) {
+        if(params.outputPAPR && PAPRs.length < 1e4) {
             immutable b = params.sefdm.nSpreadIn / params.sefdm.nFFT;
             foreach(i; 0 .. b) {
                 auto peak = txsignal[$/b * i .. $/b * (i+1)].map!(a => a.sqAbs).reduce!max;
@@ -476,7 +576,8 @@ SimResult runSimImpl(C, Mod)(SimParams!Mod params)
     result.ber = errbits * 1.0 / totalbits;
     result.modThroughput = totalbits * 1.0 / swMod.peek.total!"usecs" * 1e6;
     result.demodThroughput = totalbits * 1.0 / swDem.peek.total!"usecs" * 1e6;
-    result.PAPRs = PAPRs.dup;
+    if(params.outputPAPR) result.PAPRs = PAPRs.dup;
+    if(params.outputPSD) result.psd = specAnalyzer.psd.dup;
     return result;
 }
 
@@ -488,7 +589,6 @@ in(txbits.length == params.mod.symInputLength * params.nSpreadIn)
     auto sefdm = new RDFTsSEFDM!(Mod, C)(params.mod,
         params.nFFT, nCP: params.nFFT/4, params.nTone, nUpSampling: 1,
         params.nSpreadIn, params.nSpreadOut, shuffle: params.shuffleList, params.rndSeed, N0: 0, params.nIter);
-
 
     C[] dst;
     return sefdm.modulate(txbits, dst);

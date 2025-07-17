@@ -152,6 +152,12 @@ struct FilterBankSpectrumAnalyzerImpl(C)
     }
 
 
+    size_t avgCount() const
+    {
+        return _cnt;
+    }
+
+
   private:
     RefCounted!(FiberBuffer!C) _inst;
     DFTAnalysisFilterBank!C _afb;

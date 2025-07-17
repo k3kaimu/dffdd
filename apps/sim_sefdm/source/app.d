@@ -87,7 +87,7 @@ void main(string[] args)
     foreach(isRayleigh; [No.isRayleigh, Yes.isRayleigh])
     // foreach(asOFDM; [Yes.asOFDM, No.asOFDM])
     // static foreach(usePrePost; [Yes.usePrecoding, No.usePrecoding])
-    static foreach(ALGORITHM; [/*"EP",*/ "SVD", "MMSE", "ZF", /*"AMP",*/ /*"GaBP",*/ "QRM-MLD", "Sphere", "FullMLD"])
+    static foreach(ALGORITHM; [/*"EP",*/ /*"SVD",*/ "MMSE", /*"ZF",*/ /*"AMP",*/ /*"GaBP",*/ "QRM-MLD", "Sphere", "FullMLD"])
     foreach(nDFT; [8, 64, /*256,*//*1024, 4096*/])     // FFTサイズ = データ数
     {
         immutable resultDir = isRayleigh ? "results_Rayleigh" : "results_AWGN";
@@ -95,8 +95,8 @@ void main(string[] args)
         if((ALGORITHM == "FullMLD" || ALGORITHM == "Sphere") && nDFT > 8)
             continue;
 
-        if(isRayleigh && ALGORITHM == "QRM-MLD")
-            continue;
+        // if(isRayleigh && ALGORITHM == "QRM-MLD")
+        //     continue;
 
         // if(usePrePost && !(ALGORITHM == "EP" || ALGORITHM == "AMP" || ALGORITHM == "DAMP" || ALGORITHM == "GaBP"))
         //     continue;
@@ -117,7 +117,7 @@ void main(string[] args)
             nTapsList = [1, 4, 8, 16];
         }
 
-        if(!isRayleigh && nDFT == 8) {
+        if(!isRayleigh && (nDFT == 8 || nDFT == 64)) {
             foreach(i; 0 .. 200)
                 alphaList ~= 1 - i * 0.5 / 200;
         }
@@ -149,7 +149,7 @@ void main(string[] args)
                 // immutable long simBitsPerTrial = simTotalBits / nChTrial;
 
                 long nChTrial = isRayleigh ? 100 : 1;
-                long simBitsPerTrial = isRayleigh ? /*100_000*/ 1_000 : 1_000_000;
+                long simBitsPerTrial = isRayleigh ? /*100_000*/ 100_000 : 10_000_000;
 
                 // bool usePrePost = false;            // ランダムDFTプリコーディングの有無
                 // bool asOFDM = false;                // OFDMのサブキャリアに載せるシンボルを圧縮
@@ -195,6 +195,7 @@ void main(string[] args)
                         // params.nSC = nSC;
                         // params.nFFT = nFFT;
                         params.nCP = nDFT / 8;
+                        params.alpha = ALPHA;
 
                         static if(ALGORITHM == "GaBP")
                         {
@@ -258,6 +259,8 @@ void main(string[] args)
             if(NTAPS > nDFT / 4)
                 continue;
 
+            import std.file : mkdirRecurse;
+            mkdirRecurse(resultDir);
             taskList.append(&task, cast(bool)isRayleigh, resultDir, nDFT, NTAPS, ALPHA);
             // results["kbps_%s_%s_%s_%s".format(ALGORITHM, M, K, usePrePost ? "wP" : "woP")] = JSONValue(speedResults.map!(a => JSONValue(a)).array());
         }
@@ -639,7 +642,7 @@ SimResult mainImpl(Params, Args...)(Params params, Args args)
 
         // writefln("total_bits: %s, error_bits: %s", total_bits, error_bits);
 
-        if(/*simTotalBits == -1 && */error_bits > 100) {
+        if(error_bits > 100 && specAnalyzer.avgCount > 1000) {
             break;
         }
     }

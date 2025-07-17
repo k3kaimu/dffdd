@@ -147,7 +147,7 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
                     else
                     {
                         import std.math : SQRT1_2;
-                        res = EP!(/*softDecisionQPSK!C*/approx_softDecisionQPSK, C, typeof(C.init.re))
+                        res = EP!(softDecisionQPSK!C/*approx_softDecisionQPSK*/, C, typeof(C.init.re))
                             (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
                     }
                     break;
@@ -159,7 +159,7 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
                     }
                     else
                     {
-                        res = EP!(/*softDecision16QAM!C*/approx_softDecision16QAM, C, typeof(C.init.re))
+                        res = EP!(softDecision16QAM!C/*approx_softDecision16QAM*/, C, typeof(C.init.re))
                             (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
                     }
                     break;
@@ -171,7 +171,7 @@ if((is(Mod : QPSK!C) || is(Mod : QAM!C)) && isComplex!C && (is(typeof(C.init.re)
                     }
                     else
                     {
-                        res = EP!(/*softDecision64QAM!C*/approx_softDecision64QAM, C, typeof(C.init.re))
+                        res = EP!(softDecision64QAM!C/*approx_softDecision64QAM*/, C, typeof(C.init.re))
                             (inpvecs, _chMatU, _chMatSigma, _chMatV, 1, _N0, _maxIter);
                     }
                     break;
