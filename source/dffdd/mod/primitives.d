@@ -63,13 +63,13 @@ struct Bit
     alias value this;
 
 
-    this(long v)
+    this(long v) pure nothrow @safe @nogc
     {
         this.opAssign(v);
     }
 
 
-    void opAssign(long v)
+    void opAssign(long v) pure nothrow @safe @nogc
     {
         if(v)
             value = 1;

@@ -12,7 +12,7 @@ import dffdd.utils.unit;
 import dffdd.math.complex : isNarrowComplex;
 
 
-Bit[][] getGrayCode(size_t N)
+Bit[][] getGrayCode(size_t N) pure nothrow @safe
 {
   if(N == 1)
   {
@@ -43,6 +43,8 @@ if(isNarrowComplex!C)
 
     this(uint mary)
     {
+        import std.exception : assumeUnique;
+
         _M = mary;
         while(mary != 1){
             mary >>= 1;
@@ -54,11 +56,13 @@ if(isNarrowComplex!C)
         immutable avgE = (_M - 1) * 2.0 / 3;
         _scale = sqrt(avgE);
 
-        _grayCode = getGrayCode(_k/2);
+        _grayCode = getGrayCode(_k/2).assumeUnique;
 
-        _toSymbol.length = _grayCode.length;
-        foreach(i; 0 .. _toSymbol.length)
-            _toSymbol[toInt(_grayCode[i])] = ((_L - 1.0) - i*2) / _scale;
+        real[] toSymbol = new real[](_grayCode.length);
+        foreach(i; 0 .. toSymbol.length)
+            toSymbol[toInt(_grayCode[i])] = ((_L - 1.0) - i*2) / _scale;
+          
+        _toSymbol = toSymbol.assumeUnique;
     }
 
 
@@ -66,7 +70,7 @@ if(isNarrowComplex!C)
     size_t symOutputLength() const @property { return 1; }
 
 
-    ref C[] modulate(in Bit[] inputs, return ref C[] outputs)
+    ref C[] modulate(in Bit[] inputs, return ref C[] outputs) const
     in{
         assert(inputs.length % _k == 0);
     }
@@ -84,7 +88,7 @@ if(isNarrowComplex!C)
     }
 
 
-    ref Bit[] demodulate(in C[] inputs, return ref Bit[] outputs)
+    ref Bit[] demodulate(in C[] inputs, return ref Bit[] outputs) const
     {
         if(outputs.length != inputs.length * _k)
             outputs.length = inputs.length * _k;
@@ -106,7 +110,7 @@ if(isNarrowComplex!C)
     }
 
 
-    ref ushort[] demodulate_symbol(in C[] inputs, ref return ushort[] symbols)
+    ref ushort[] demodulate_symbol(in C[] inputs, ref return ushort[] symbols) const
     {
         if(symbols.length != inputs.length)
             symbols.length = inputs.length;
@@ -131,11 +135,11 @@ if(isNarrowComplex!C)
   private:
     size_t _k, _M, _L;
     real _scale;
-    Bit[][] _grayCode;
-    real[] _toSymbol;
+    immutable(Bit[])[] _grayCode;
+    immutable(real)[] _toSymbol;
 
 
-    size_t toInt(I)(I[] bits)
+    static size_t toInt(I)(I[] bits)
     {
         size_t dst;
         foreach(e; bits)
@@ -145,7 +149,7 @@ if(isNarrowComplex!C)
     }
 
 
-    ushort demodulate_symbol_impl(C input)
+    ushort demodulate_symbol_impl(C input) const
     {
         R inpRe = input.re,
           inpIm = input.im;
@@ -322,4 +326,12 @@ unittest
             assert(isClose(ber, berQAMFromSNR!scheme(dB), 0.2, 1));
         }
     }
+}
+
+unittest
+{
+    // constでコピーできるかのテスト
+    alias C = Complex!float;
+    const QAM!C qam1;
+    QAM!C qam2 = qam1; // コピーできる
 }
