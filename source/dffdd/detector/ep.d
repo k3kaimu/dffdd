@@ -366,6 +366,8 @@ in(U.length!0 <= V.length!1)
         gamma_vBA = N / traceInvXiAA;
         x_AB.noalias = x_BA + gamma_vBA * tmpVecN;
         v_AB = gamma_vBA - v_BA;
+        if(v_AB < EPS)
+            v_AB = EPS;
         
         // pxs[] = x_AB.sliced.map!(e => prox(e, v_AB));
         // x_B.noalias = pxs.map!"a.value".vectored;
@@ -420,7 +422,7 @@ in(U.length!0 <= V.length!1)
         }
 
         F vden = v_AB - v_B;
-        if(fast_abs!F(vden) < EPS)
+        if(vden < EPS)
             vden += EPS;
 
         v_BA = (v_B * v_AB)/vden;
